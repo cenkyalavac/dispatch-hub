@@ -11,10 +11,14 @@ Deno.serve(async (req) => {
     const serviceAccount = Deno.env.get('SYMFONIE_SERVICE_ACCOUNT');
 
     if (!clientId || !clientSecret) {
-      return Response.json({ error: 'SYMFONIE_CLIENT_ID veya SYMFONIE_CLIENT_SECRET eksik' }, { status: 400 });
+      return Response.json({ error: 'Eksik secret' }, { status: 400 });
     }
 
-    // Moravia Login (service account flow)
+    // Debug: log what we're sending (first chars only for security)
+    console.log('clientId:', clientId);
+    console.log('clientSecret length:', clientSecret?.length);
+    console.log('serviceAccount:', serviceAccount);
+
     const params = new URLSearchParams();
     params.append('grant_type', 'service');
     params.append('client_id', clientId);
@@ -22,24 +26,30 @@ Deno.serve(async (req) => {
     params.append('scope', 'symfonie2-api');
     if (serviceAccount) params.append('service_account', serviceAccount);
 
+    console.log('Sending to Moravia:', params.toString().replace(clientSecret, '***'));
+
     const tokenRes = await fetch('https://login.moravia.com/connect/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params.toString()
     });
 
+    const responseText = await tokenRes.text();
+    console.log('Moravia response status:', tokenRes.status);
+    console.log('Moravia response:', responseText);
+
     if (!tokenRes.ok) {
-      const err = await tokenRes.text();
-      return Response.json({ error: 'Token alınamadı', details: err, method: 'moravia_login' }, { status: 400 });
+      return Response.json({ error: 'Token alınamadı', details: responseText, status: tokenRes.status }, { status: 400 });
     }
 
-    const tokenData = await tokenRes.json();
+    const tokenData = JSON.parse(responseText);
     return Response.json({
       access_token: tokenData.access_token,
       expires_in: tokenData.expires_in,
       method: 'moravia_login'
     });
   } catch (error) {
+    console.error('Exception:', error.message);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
