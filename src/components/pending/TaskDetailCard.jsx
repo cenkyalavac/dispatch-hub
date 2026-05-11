@@ -78,7 +78,19 @@ export default function TaskDetailCard({ task, accepting, onAccept }) {
             {task.service_tag && <span className="text-[10px] uppercase tracking-wider text-ink-3 bg-surface-2 px-1.5 py-0.5 rounded">{task.service_tag}</span>}
             {task.workflow_name && <span className="text-[10px] uppercase tracking-wider text-accent-ink bg-accent-soft px-1.5 py-0.5 rounded">{task.workflow_name}</span>}
           </div>
-          <p className="text-[12px] text-ink-3 mt-0.5 truncate italic-editorial">{task.project_name || EM}</p>
+          <div className="flex items-center gap-2 mt-0.5 text-[12px] flex-wrap">
+            {task.account_name && (
+              <span className="font-medium text-ink-2">{task.account_name}</span>
+            )}
+            {task.account_name && task.project_name && <span className="text-ink-4">·</span>}
+            {task.project_name && (
+              <span className="italic-editorial text-ink-3 truncate">{task.project_name}</span>
+            )}
+            {task.project_code && (
+              <span className="font-mono text-[10px] text-ink-4 bg-surface-2 px-1.5 py-0.5 rounded">{task.project_code}</span>
+            )}
+            {!task.account_name && !task.project_name && <span className="italic-editorial text-ink-4">{EM}</span>}
+          </div>
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[12px]">
             {(task.source_language || task.target_language) && (
@@ -138,11 +150,33 @@ export default function TaskDetailCard({ task, accepting, onAccept }) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[12px]">
             <div><p className="text-[10px] uppercase tracking-wider text-ink-3">Task ID</p><p className="font-mono mt-0.5 text-ink-1">{task.id || EM}</p></div>
             <div><p className="text-[10px] uppercase tracking-wider text-ink-3">Type</p><p className="mt-0.5 text-ink-1">{task.task_type || EM}</p></div>
-            <div><p className="text-[10px] uppercase tracking-wider text-ink-3">CAT</p><p className="mt-0.5 text-ink-1">{task.cat_tool || EM}</p></div>
-            <div><p className="text-[10px] uppercase tracking-wider text-ink-3">Assigned</p><p className="mt-0.5 text-ink-1">{task.assigned_to || EM}</p></div>
-            {task.updated_at && <div><p className="text-[10px] uppercase tracking-wider text-ink-3">Updated</p><p className="mt-0.5 text-ink-1 tabular-nums">{format(new Date(task.updated_at), 'dd MMM HH:mm')}</p></div>}
+            <div><p className="text-[10px] uppercase tracking-wider text-ink-3">State</p><p className="mt-0.5 text-ink-1">{task.state || EM}</p></div>
+            <div><p className="text-[10px] uppercase tracking-wider text-ink-3">Position</p><p className="mt-0.5 text-ink-1 tabular-nums">{task.position ?? EM}</p></div>
+            {task.account_name && <div><p className="text-[10px] uppercase tracking-wider text-ink-3">Account</p><p className="mt-0.5 text-ink-1 truncate" title={task.account_name}>{task.account_name}</p></div>}
+            {task.account_code && <div><p className="text-[10px] uppercase tracking-wider text-ink-3">Account code</p><p className="font-mono mt-0.5 text-ink-1">{task.account_code}</p></div>}
             {task.project_id && <div><p className="text-[10px] uppercase tracking-wider text-ink-3">Project ID</p><p className="font-mono mt-0.5 text-ink-1">{task.project_id}</p></div>}
+            {task.project_manager_id && <div><p className="text-[10px] uppercase tracking-wider text-ink-3">PM ID</p><p className="font-mono mt-0.5 text-ink-1">{task.project_manager_id}</p></div>}
+            {task.job_id && <div><p className="text-[10px] uppercase tracking-wider text-ink-3">Job ID</p><p className="font-mono mt-0.5 text-ink-1">{task.job_id}</p></div>}
+            {task.updated_at && <div><p className="text-[10px] uppercase tracking-wider text-ink-3">Updated</p><p className="mt-0.5 text-ink-1 tabular-nums">{format(new Date(task.updated_at), 'dd MMM HH:mm')}</p></div>}
           </div>
+
+          {task.job_name && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-ink-3 mb-1">Job</p>
+              <p className="text-[12px] text-ink-2 bg-surface-2 border border-line-1 rounded p-2 font-mono break-all">{task.job_name}</p>
+            </div>
+          )}
+
+          {task.tags?.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-ink-3 mb-1.5">Tags</p>
+              <div className="flex flex-wrap gap-1">
+                {task.tags.map(tag => (
+                  <span key={tag} className="text-[10px] font-mono text-ink-2 bg-surface-2 border border-line-1 px-1.5 py-0.5 rounded">{tag}</span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {(task.description || task.instructions) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

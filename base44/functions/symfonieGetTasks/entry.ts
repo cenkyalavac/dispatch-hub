@@ -70,19 +70,19 @@ Deno.serve(async (req) => {
     // Project is structural too in practice (its V5 OData type rejects $expand) — inline if present.
     // V5 Tasks endpoint only accepts FinanceRows in $expand on this tenant.
     // Other collections (Tags, Project, Requestors, Assignees, CustomFields) arrive inline.
-    const expand = 'FinanceRows';
-
-    const url = `${BASE_URL}/Tasks?$filter=State eq 'Order'&$expand=${encodeURIComponent(expand)}&$orderby=CreatedAt desc&$top=200`;
+    // Tasks endpoint:
+    //   - Project, Assignees, Requestors, Tags, JobName all arrive inline (no $expand needed)
+    //   - Project is NOT a real navigation property — it rejects $expand explicitly, but the data is there anyway
+    //   - FinanceRows must be explicitly expanded
+    const url = `${BASE_URL}/Tasks?$filter=State eq 'Order'&$expand=FinanceRows&$orderby=CreatedAt desc&$top=200`;
     const tasks = await fetchAllPages(url, token);
 
-    // Resolve account/division via Jobs → Projects → Customers.
-    // (Tasks endpoint won't expand Project on this tenant, so we resolve in two batched lookups.)
-    const jobIds = [...new Set(tasks.map(t => t.JobId).filter(Boolean))];
-    const jobMap = new Map();
-    const projectMap = new Map();
+    // Each task carries inline { Project: { Id, Name, Code, ProjectState } } — but no Customer.
+    // Fetch Customers via /Projects?$filter=Id eq X (Customer is inline on Projects).
+    const projectIds = [...new Set(tasks.map(t => t.Project?.Id).filter(Boolean))];
+    const projectDetailMap = new Map(); // projectId -> full Project incl. Customer + ProjectManagerId
 
     async function batchLookup(resource, ids) {
-      // Batch in chunks of 20 with `Id eq X or Id eq Y` (V5 OData doesn't accept `Id in (…)`).
       const out = [];
       for (let i = 0; i < ids.length; i += 20) {
         const chunk = ids.slice(i, i + 20);
@@ -96,21 +96,10 @@ Deno.serve(async (req) => {
       return out;
     }
 
-    if (jobIds.length > 0) {
-      const jobs = await batchLookup('Jobs', jobIds);
-      jobs.forEach(j => jobMap.set(j.Id, j));
-      console.log(`Jobs resolved: ${jobs.length}/${jobIds.length}`);
-      if (jobs[0]) console.log('Sample job keys:', Object.keys(jobs[0]).join(','));
-
-      const projectIds = [...new Set(jobs.map(j => j.ProjectId).filter(Boolean))];
-      if (projectIds.length > 0) {
-        const projects = await batchLookup('Projects', projectIds);
-        projects.forEach(p => projectMap.set(p.Id, p));
-        console.log(`Projects resolved: ${projects.length}/${projectIds.length}`);
-        if (projects[0]) console.log('Sample project keys:', Object.keys(projects[0]).join(','), 'Customer:', JSON.stringify(projects[0].Customer));
-      } else {
-        console.log('No ProjectId on any job');
-      }
+    if (projectIds.length > 0) {
+      const projects = await batchLookup('Projects', projectIds);
+      projects.forEach(p => projectDetailMap.set(p.Id, p));
+      console.log(`Projects resolved: ${projects.length}/${projectIds.length} — Customer inline: ${!!projects[0]?.Customer}`);
     }
 
     const mapped = tasks.map(raw => {
@@ -170,11 +159,11 @@ Deno.serve(async (req) => {
       const billableCount = financeRows.filter(r => r.purchase_order?.is_billable).length;
       const proposalCount = financeRows.filter(r => r.purchase_order?.is_proposal).length;
 
-      // Project / Customer = "account" + "project / division"
-      // Resolved via the Jobs → Projects pre-fetch above (since Tasks expand is restricted).
-      const job = jobMap.get(raw.JobId) || null;
-      const project = job ? projectMap.get(job.ProjectId) : null;
-      const customer = project?.Customer || null;
+      // Project comes inline on each Task; Customer comes from the Projects pre-fetch.
+      const inlineProject = raw.Project || null;
+      const projectDetail = inlineProject ? projectDetailMap.get(inlineProject.Id) : null;
+      const project = projectDetail || inlineProject;
+      const customer = projectDetail?.Customer || null;
 
       // Custom fields → flatten name:value map
       const customFields = (raw.CustomFields || []).reduce((acc, cf) => {
@@ -203,9 +192,9 @@ Deno.serve(async (req) => {
 
         // Job / workflow — Job is the "division" tier between Project and Task
         job_id: raw.JobId || null,
-        job_name: raw.JobName || job?.Name || '',
-        job_external_id: job?.ExternalId || '',
-        job_identifier: job?.Identifier || '',
+        job_name: raw.JobName || '',
+        job_external_id: '',
+        job_identifier: '',
         workflow_id: raw.WorkflowId || null,
         workflow_name: raw.WorkflowName || '',
         workflow_group_name: raw.WorkflowGroupName || '',
