@@ -17,22 +17,39 @@ function FinanceRowsTable({ rows }) {
             <th className="text-right px-3 py-2 font-medium">Unit price</th>
             <th className="text-right px-3 py-2 font-medium">Min USD</th>
             <th className="text-right px-3 py-2 font-medium">Max USD</th>
-            <th className="text-left px-3 py-2 font-medium">Name</th>
+            <th className="text-left px-3 py-2 font-medium">PO #</th>
+            <th className="text-left px-3 py-2 font-medium">Activity</th>
+            <th className="text-left px-3 py-2 font-medium">Model</th>
+            <th className="text-center px-3 py-2 font-medium">Flags</th>
             <th className="text-center px-3 py-2 font-medium">✓</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => (
-            <tr key={i} className="border-b border-line-1 last:border-0">
-              <td className="px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-ink-2">{r.billing_unit || EM}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-ink-2">{fmtNumber(r.quantity)}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-ink-2">{r.unit_price_usd > 0 ? `$${r.unit_price_usd.toFixed(4)}` : EM}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-ink-3">{r.min_usd > 0 ? `$${r.min_usd.toFixed(2)}` : EM}</td>
-              <td className="px-3 py-2 text-right tabular-nums font-medium text-ink-1">{r.max_usd > 0 ? `$${r.max_usd.toFixed(2)}` : EM}</td>
-              <td className="px-3 py-2 text-ink-3 max-w-[150px] truncate">{r.name || EM}</td>
-              <td className="px-3 py-2 text-center">{r.is_confirmed ? <span className="text-success">✓</span> : <span className="text-ink-4">{EM}</span>}</td>
-            </tr>
-          ))}
+          {rows.map((r, i) => {
+            const po = r.purchase_order;
+            return (
+              <tr key={i} className="border-b border-line-1 last:border-0 align-top">
+                <td className="px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-ink-2">{r.billing_unit || EM}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-2">{fmtNumber(r.quantity)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-2">{r.unit_price_usd > 0 ? `$${r.unit_price_usd.toFixed(4)}` : EM}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-3">{r.min_usd > 0 ? `$${r.min_usd.toFixed(2)}` : EM}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-medium text-ink-1">{r.max_usd > 0 ? `$${r.max_usd.toFixed(2)}` : EM}</td>
+                <td className="px-3 py-2 font-mono text-[11px] text-ink-2">{po?.po_number || EM}</td>
+                <td className="px-3 py-2 font-mono text-[11px] text-ink-3">{po?.activity_no || EM}</td>
+                <td className="px-3 py-2 text-ink-3 max-w-[140px] truncate" title={po?.model_name || ''}>{po?.model_name || EM}</td>
+                <td className="px-3 py-2 text-center">
+                  <div className="inline-flex gap-1 flex-wrap justify-center">
+                    {po?.is_billable && <span className="text-[9px] uppercase tracking-wider bg-success-soft text-success px-1 py-0.5 rounded">Bill</span>}
+                    {po?.is_proposal && <span className="text-[9px] uppercase tracking-wider bg-warning-soft text-warning px-1 py-0.5 rounded">Prop</span>}
+                    {po?.is_rejected && <span className="text-[9px] uppercase tracking-wider bg-danger-soft text-danger px-1 py-0.5 rounded">Rej</span>}
+                    {po?.discount > 0 && <span className="text-[9px] uppercase tracking-wider bg-surface-3 text-ink-2 px-1 py-0.5 rounded">−{po.discount}%</span>}
+                    {!po && <span className="text-ink-4">{EM}</span>}
+                  </div>
+                </td>
+                <td className="px-3 py-2 text-center">{r.is_confirmed ? <span className="text-success">✓</span> : <span className="text-ink-4">{EM}</span>}</td>
+              </tr>
+            );
+          })}
         </tbody>
         <tfoot>
           <tr className="bg-surface-2 font-semibold border-t border-line-1">
@@ -40,7 +57,7 @@ function FinanceRowsTable({ rows }) {
             <td colSpan={2}></td>
             <td className="px-3 py-2 text-right tabular-nums text-ink-3">${rows.reduce((s, r) => s + (r.min_usd || 0), 0).toFixed(2)}</td>
             <td className="px-3 py-2 text-right tabular-nums text-accent">${rows.reduce((s, r) => s + (r.max_usd || 0), 0).toFixed(2)}</td>
-            <td colSpan={2}></td>
+            <td colSpan={5}></td>
           </tr>
         </tfoot>
       </table>
@@ -145,8 +162,36 @@ export default function TaskDetailCard({ task, accepting, onAccept }) {
           )}
 
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-ink-3 mb-2">Finance rows</p>
+            <div className="flex items-baseline justify-between mb-2 flex-wrap gap-2">
+              <p className="text-[10px] uppercase tracking-wider text-ink-3">Finance rows</p>
+              {task.finance_rows?.length > 0 && (
+                <div className="flex items-center gap-3 text-[11px] text-ink-3 tabular-nums">
+                  <span>{task.finance_rows.length} row{task.finance_rows.length === 1 ? '' : 's'}</span>
+                  {task.price_confirmed_usd > 0 && (
+                    <span className="text-success">Confirmed ${task.price_confirmed_usd.toFixed(2)}</span>
+                  )}
+                  {task.finance_summary?.billable_rows > 0 && (
+                    <span>Billable {task.finance_summary.billable_rows}</span>
+                  )}
+                  {task.finance_summary?.proposal_rows > 0 && (
+                    <span className="text-warning">Proposal {task.finance_summary.proposal_rows}</span>
+                  )}
+                </div>
+              )}
+            </div>
             <FinanceRowsTable rows={task.finance_rows} />
+            {(() => {
+              const pos = [...new Set((task.finance_rows || []).map(r => r.purchase_order?.po_number).filter(Boolean))];
+              if (pos.length === 0) return null;
+              return (
+                <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px]">
+                  <span className="text-[10px] uppercase tracking-wider text-ink-3">PO numbers:</span>
+                  {pos.map(po => (
+                    <span key={po} className="font-mono bg-surface-2 border border-line-1 text-ink-2 px-1.5 py-0.5 rounded">{po}</span>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
