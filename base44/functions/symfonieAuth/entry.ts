@@ -54,9 +54,9 @@ Deno.serve(async (req) => {
     const whoText = await whoRes.text();
     console.log('WhoAmI status:', whoRes.status, whoText.substring(0, 200));
 
-    // Test: fetch one task to verify Tasks API access
+    // Test: fetch one task to verify Tasks API access (no $expand — Project is not a navigation property)
     const tasksTestRes = await fetch(
-      `${BASE_URL}/Tasks?$filter=State eq 'Order'&$top=1`,
+      `${BASE_URL}/Tasks?$filter=State eq 'Order'&$expand=FinanceRows&$top=1`,
       {
         headers: {
           'Authorization': `Bearer ${tokenData.access_token}`,

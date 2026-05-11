@@ -57,15 +57,15 @@ async function fetchAllPages(url, token) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    const user = await base44.auth.me().catch(() => null);
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const token = await getToken();
 
     // Filter directly via OData: State eq 'Order' = tasks awaiting acceptance
-    // Expand Project to get project name
-    // FinanceRows is a collection — expand to get pricing data
-    const url = `${BASE_URL}/Tasks?$filter=State eq 'Order'&$expand=Project,FinanceRows&$orderby=CreatedAt desc&$top=200`;
+    // Note: 'Project' is NOT a navigation property on TaskViewModel — use JobName for project name
+    // FinanceRows IS expandable for pricing/word count data
+    const url = `${BASE_URL}/Tasks?$filter=State eq 'Order'&$expand=FinanceRows&$orderby=CreatedAt desc&$top=200`;
 
     const tasks = await fetchAllPages(url, token);
 
@@ -73,8 +73,8 @@ Deno.serve(async (req) => {
     const mapped = tasks.map(raw => ({
       id: raw.Id,
       name: raw.Name || '',
-      project_id: raw.Project?.Id || null,
-      project_name: raw.Project?.Name || raw.JobName || '',
+      project_id: raw.ProjectId || null,
+      project_name: raw.JobName || raw.ProjectName || '',
       source_language: raw.SourceLanguageCode || '',
       target_language: raw.TargetLanguageCode || '',
       word_count: raw.FinanceRows?.find(r => r.BillingUnit === 'Words')?.Quantity || 0,

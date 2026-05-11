@@ -168,7 +168,9 @@ Deno.serve(async (req) => {
 
     // 3. Fetch tasks in 'Order' state (awaiting acceptance) with Project and FinanceRows expanded
     // State eq 'Order' = TaskStates.Order (value=3) = "Ordered task" = tasks assigned to us, awaiting our Accept/Reject
-    const url = `${BASE_URL}/Tasks?$filter=State eq 'Order'&$expand=Project,FinanceRows&$orderby=CreatedAt asc&$top=200`;
+    // Note: 'Project' is NOT a navigation property on TaskViewModel — removed from $expand
+    // Use JobName/ProjectName fields directly on the task for project name
+    const url = `${BASE_URL}/Tasks?$filter=State eq 'Order'&$expand=FinanceRows&$orderby=CreatedAt asc&$top=200`;
     const rawTasks = await fetchAllPages(url, token);
     console.log(`Found ${rawTasks.length} tasks in Order state`);
 
@@ -198,8 +200,8 @@ Deno.serve(async (req) => {
       const task = {
         task_id: taskId,
         task_name: raw.Name || '',
-        project_name: raw.Project?.Name || raw.JobName || '',
-        client_name: '', // ProjectSimpleViewModel doesn't include customer — only available via separate Projects call
+        project_name: raw.JobName || raw.ProjectName || '',
+        client_name: '',
         source_language: raw.SourceLanguageCode || '',
         target_language: raw.TargetLanguageCode || '',
         word_count: wordCount,
