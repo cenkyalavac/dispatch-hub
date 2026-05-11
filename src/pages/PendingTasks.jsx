@@ -79,7 +79,7 @@ export default function PendingTasks() {
 
   const handleRefresh = () => {
     refetch();
-    toast.info('Yenileniyor...');
+    toast.info('Refreshing...');
   };
 
   const handleManualAccept = async (task) => {
@@ -96,17 +96,17 @@ export default function PendingTasks() {
         due_date: task.due_date,
       });
       if (res.data?.success) {
-        toast.success(`"${task.name}" kabul edildi`);
+        toast.success(`"${task.name}" accepted`);
         refetch();
       } else {
-        toast.error(res.data?.error || 'Kabul başarısız');
+        toast.error(res.data?.error || 'Acceptance failed');
       }
     } catch (err) {
-      toast.error('Hata: ' + err.message);
+      toast.error('Error: ' + err.message);
     } finally {
       setAcceptingIds(prev => { const s = new Set(prev); s.delete(task.id); return s; });
     }
-  };
+    };
 
   const totalWords = tasks.reduce((s, t) => s + (t.word_count || 0), 0);
   const totalMaxUsd = tasks.reduce((s, t) => s + (t.price_max_usd || 0), 0);
@@ -119,7 +119,7 @@ export default function PendingTasks() {
           <h1 className="text-2xl font-bold text-foreground">Pending Tasks</h1>
           <p className="text-muted-foreground text-sm mt-1">
             <Badge variant="outline" className="text-xs mr-1">Order</Badge>
-            durumundaki görevler — kabul veya reddi bekleniyor
+            status tasks — awaiting acceptance or rejection
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -130,31 +130,31 @@ export default function PendingTasks() {
             className="gap-2"
           >
             <Download className="w-4 h-4" />
-            CSV İndir
-          </Button>
-          <Button variant="outline" onClick={handleRefresh} disabled={isFetching} className="gap-2">
-            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-            Yenile
-          </Button>
+             Export CSV
+            </Button>
+            <Button variant="outline" onClick={handleRefresh} disabled={isFetching} className="gap-2">
+             <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+             Refresh
+            </Button>
         </div>
       </div>
 
       {!isLoading && !isError && tasks.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <div className="bg-card rounded-xl border p-4">
-            <p className="text-xs text-muted-foreground">Toplam Görev</p>
+            <p className="text-xs text-muted-foreground">Total Tasks</p>
             <p className="text-2xl font-bold mt-1">{tasks.length}</p>
           </div>
           <div className="bg-card rounded-xl border p-4">
-            <p className="text-xs text-muted-foreground">Toplam Kelime</p>
+            <p className="text-xs text-muted-foreground">Total Words</p>
             <p className="text-2xl font-bold mt-1">{totalWords.toLocaleString()}</p>
           </div>
           <div className="bg-card rounded-xl border p-4">
-            <p className="text-xs text-muted-foreground">Min Gelir (USD)</p>
+            <p className="text-xs text-muted-foreground">Min Revenue (USD)</p>
             <p className="text-2xl font-bold mt-1 text-muted-foreground">${totalMinUsd.toFixed(2)}</p>
           </div>
           <div className="bg-card rounded-xl border p-4">
-            <p className="text-xs text-muted-foreground">Maks Gelir (USD)</p>
+            <p className="text-xs text-muted-foreground">Max Revenue (USD)</p>
             <p className="text-2xl font-bold mt-1 text-primary">${totalMaxUsd.toFixed(2)}</p>
           </div>
         </div>
@@ -165,7 +165,7 @@ export default function PendingTasks() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             className="pl-9"
-            placeholder="Görev, proje, dil, ID ara..."
+            placeholder="Search by task, project, language, ID..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -173,7 +173,7 @@ export default function PendingTasks() {
         {!isLoading && !isError && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Clock className="w-4 h-4" />
-            <span>{filtered.length} / {tasks.length} görev</span>
+            <span>{filtered.length} / {tasks.length} tasks</span>
           </div>
         )}
       </div>
@@ -183,10 +183,10 @@ export default function PendingTasks() {
           <CardContent className="p-6 flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
             <div>
-              <p className="font-medium text-sm text-destructive">Görevler yüklenemedi</p>
-              <p className="text-xs text-muted-foreground mt-1">{error?.message || 'Bilinmeyen hata'}</p>
+              <p className="font-medium text-sm text-destructive">Failed to load tasks</p>
+              <p className="text-xs text-muted-foreground mt-1">{error?.message || 'Unknown error'}</p>
               <Button variant="outline" size="sm" onClick={handleRefresh} className="mt-3 gap-2">
-                <RefreshCw className="w-3 h-3" /> Tekrar Dene
+                <RefreshCw className="w-3 h-3" /> Try Again
               </Button>
             </div>
           </CardContent>
@@ -206,7 +206,7 @@ export default function PendingTasks() {
           <CardContent className="py-16 text-center text-muted-foreground">
             <Globe2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="text-sm font-medium">
-              {tasks.length === 0 ? 'Order durumunda görev yok' : 'Aramanızla eşleşen görev yok'}
+              {tasks.length === 0 ? 'No tasks in Order status' : 'No tasks match your search'}
             </p>
           </CardContent>
         </Card>

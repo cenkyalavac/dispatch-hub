@@ -78,7 +78,7 @@ export default function Dashboard() {
         due_date: task.due_date,
       });
       if (res.data?.success) {
-        toast.success(`"${task.name}" kabul edildi`);
+        toast.success(`"${task.name}" accepted`);
         // Remove from skipped list
         setLastResult(prev => ({
           ...prev,
@@ -94,10 +94,10 @@ export default function Dashboard() {
         }));
         refetch();
       } else {
-        toast.error(res.data?.error || 'Kabul başarısız');
+        toast.error(res.data?.error || 'Acceptance failed');
       }
     } catch (err) {
-      toast.error('Hata: ' + err.message);
+      toast.error('Error: ' + err.message);
     } finally {
       setAcceptingIds(prev => { const s = new Set(prev); s.delete(task.id); return s; });
     }
@@ -108,13 +108,13 @@ export default function Dashboard() {
     try {
       const res = await base44.functions.invoke('sheetsSyncPending', {});
       if (res.data?.success) {
-        toast.success(`${res.data.synced} görev Google Sheets'e aktarıldı`);
+        toast.success(`${res.data.synced} tasks exported to Google Sheets`);
         refetch();
       } else {
-        toast.error(res.data?.error || 'Sync başarısız');
+        toast.error(res.data?.error || 'Sync failed');
       }
     } catch (err) {
-      toast.error('Sheets sync hatası: ' + err.message);
+      toast.error('Sheets sync error: ' + err.message);
     } finally {
       setIsSyncing(false);
     }
@@ -138,7 +138,7 @@ export default function Dashboard() {
         toast.error(result.error || 'Operation failed');
       }
     } catch (err) {
-      toast.error('Hata: ' + err.message);
+      toast.error('Error: ' + err.message);
     } finally {
       setIsRunning(false);
     }
@@ -169,7 +169,7 @@ export default function Dashboard() {
             disabled={isSyncing}
             variant="outline"
             className="gap-2"
-            title="sheets_synced=false olan tüm kabul edilmiş görevleri Sheets'e yaz"
+            title="Export all accepted tasks with sheets_synced=false to Sheets"
           >
             {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <TableProperties className="w-4 h-4" />}
             {isSyncing ? 'Syncing...' : 'Sync to Sheets'}
@@ -227,7 +227,7 @@ export default function Dashboard() {
                         onClick={() => handleManualAccept(s)}
                       >
                         {acceptingIds.has(s.id) ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ThumbsUp className="w-3 h-3 mr-1" />}
-                        {acceptingIds.has(s.id) ? '' : 'Kabul Et'}
+                        {acceptingIds.has(s.id) ? '' : 'Accept'}
                       </Button>
                     </div>
                   ))}
