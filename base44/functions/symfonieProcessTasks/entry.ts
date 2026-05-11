@@ -227,7 +227,7 @@ Deno.serve(async (req) => {
 
       if (!matchedRule) {
         // No rule matched — skip (don't touch the task)
-        results.skipped.push(taskId);
+        results.skipped.push({ id: taskId, name: raw.Name, project_name: task.project_name, source_language: task.source_language, target_language: task.target_language });
         console.log(`Task ${taskId} "${raw.Name}": no matching rule, skipped`);
         continue;
       }

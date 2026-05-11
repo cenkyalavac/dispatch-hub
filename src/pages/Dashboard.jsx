@@ -132,11 +132,28 @@ export default function Dashboard() {
               <AlertCircle className="w-4 h-4 text-primary" />
               <span className="font-medium text-sm">Last Run Result</span>
             </div>
-            <div className="flex gap-4 text-sm">
+            <div className="flex gap-4 text-sm mb-3">
               <span className="text-green-600 font-medium">✓ {lastResult.summary?.accepted || 0} Accepted</span>
               <span className="text-red-500 font-medium">✗ {lastResult.summary?.rejected || 0} Rejected</span>
               <span className="text-muted-foreground">⊘ {lastResult.summary?.skipped || 0} Skipped</span>
+              {lastResult.summary?.errors > 0 && (
+                <span className="text-orange-500 font-medium">⚠ {lastResult.summary.errors} Errors</span>
+              )}
             </div>
+            {lastResult.details?.skipped?.length > 0 && lastResult.details?.skipped?.some(s => typeof s === 'object') && (
+              <div className="mt-2">
+                <p className="text-xs text-muted-foreground font-medium mb-1">Skipped (no matching rule):</p>
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {lastResult.details.skipped.filter(s => typeof s === 'object').map((s, i) => (
+                    <div key={i} className="text-xs bg-background/60 rounded px-2 py-1">
+                      <span className="font-medium">{s.name}</span>
+                      {s.source_language && <span className="text-muted-foreground ml-2">{s.source_language} → {s.target_language}</span>}
+                      {s.project_name && <span className="text-muted-foreground ml-2">· {s.project_name}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
