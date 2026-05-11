@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import TaskDetailCard from '@/components/pending/TaskDetailCard';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 function exportToCsv(tasks) {
   const headers = [
@@ -49,16 +50,27 @@ function exportToCsv(tasks) {
 
 export default function PendingTasks() {
   const [search, setSearch] = useState('');
+  const [selectedPortal, setSelectedPortal] = useState('symfonie');
   const [acceptingIds, setAcceptingIds] = useState(new Set());
 
+  const { data: portals = [] } = useQuery({
+    queryKey: ['portals-all'],
+    queryFn: () => base44.entities.Portal.list(),
+  });
+
+  const activePortal = portals.find(p => p.key === selectedPortal);
+  const fetchFn = activePortal?.fetch_function || 'symfonieGetTasks';
+  const acceptFn = activePortal?.accept_function || 'symfonieAcceptTask';
+
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
-    queryKey: ['symfonie-pending-tasks'],
+    queryKey: ['pending-tasks', selectedPortal, fetchFn],
     queryFn: async () => {
-      const res = await base44.functions.invoke('symfonieGetTasks', {});
+      const res = await base44.functions.invoke(fetchFn, {});
       return res.data;
     },
     staleTime: 60_000,
     retry: false,
+    enabled: !!activePortal,
   });
 
   const tasks = data?.tasks || [];
@@ -85,7 +97,7 @@ export default function PendingTasks() {
   const handleManualAccept = async (task) => {
     setAcceptingIds(prev => new Set([...prev, task.id]));
     try {
-      const res = await base44.functions.invoke('symfonieAcceptTask', {
+      const res = await base44.functions.invoke(acceptFn, {
         task_id: task.id,
         task_name: task.name,
         project_name: task.project_name,
@@ -114,15 +126,25 @@ export default function PendingTasks() {
 
   return (
     <div className="p-6 max-w-6xl">
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Pending Tasks</h1>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">Pending Tasks</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            <Badge variant="outline" className="text-xs mr-1">Order</Badge>
-            status tasks — awaiting acceptance or rejection
+            Live tasks awaiting acceptance or rejection across all connected portals.
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Select value={selectedPortal} onValueChange={setSelectedPortal}>
+            <SelectTrigger className="w-48">
+              <Globe2 className="w-4 h-4 mr-1 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {portals.filter(p => p.is_active && p.fetch_function).map(p => (
+                <SelectItem key={p.key} value={p.key}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             variant="outline"
             onClick={() => exportToCsv(filtered)}

@@ -37,10 +37,10 @@ export default function Tasks() {
   });
 
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-8 max-w-7xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">Processed Tasks</h1>
-        <p className="text-muted-foreground text-sm mt-1">Log of all accepted and rejected tasks</p>
+        <h1 className="text-3xl font-bold text-foreground tracking-tight">Activity Log</h1>
+        <p className="text-muted-foreground text-sm mt-1">Complete history of accepted and rejected tasks across all connectors.</p>
       </div>
 
       <div className="flex gap-3 mb-6">

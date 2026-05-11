@@ -50,10 +50,10 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="p-8 max-w-2xl">
+    <div className="p-8 max-w-3xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-        <p className="text-muted-foreground text-sm mt-1">Connection tests and setup tools</p>
+        <h1 className="text-3xl font-bold text-foreground tracking-tight">Settings</h1>
+        <p className="text-muted-foreground text-sm mt-1">Connection tests, integration tooling and required secrets reference.</p>
       </div>
 
       <div className="space-y-4">
@@ -162,18 +162,28 @@ export default function SettingsPage() {
         <Card className="bg-secondary/50 border-dashed">
           <CardContent className="p-6">
             <h3 className="font-medium text-sm mb-3">Required Secrets</h3>
-            <div className="space-y-2 text-xs text-muted-foreground font-mono">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-blue-400 inline-block flex-shrink-0" />
-                <span>SYMFONIE_CLIENT_ID</span>
+            <div className="space-y-3 text-xs">
+              <div>
+                <p className="font-semibold text-foreground mb-1.5 uppercase tracking-wide text-[10px]">Moravia Symfonie</p>
+                <div className="space-y-1 font-mono text-muted-foreground">
+                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> SYMFONIE_CLIENT_ID</div>
+                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> SYMFONIE_CLIENT_SECRET</div>
+                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> SYMFONIE_TENANT_ID</div>
+                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> SYMFONIE_SERVICE_ACCOUNT</div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-blue-400 inline-block flex-shrink-0" />
-                <span>SYMFONIE_CLIENT_SECRET</span>
+              <div>
+                <p className="font-semibold text-foreground mb-1.5 uppercase tracking-wide text-[10px]">Welocalize Junction</p>
+                <div className="space-y-1 font-mono text-muted-foreground">
+                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-purple-400 inline-block" /> JUNCTION_JWT <span className="text-[10px] text-muted-foreground/70">(JWT from Chrome DevTools, expires every 30 days)</span></div>
+                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-purple-400 inline-block" /> JUNCTION_API_BASE <span className="text-[10px] text-muted-foreground/70">(optional, defaults to production)</span></div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-orange-400 inline-block flex-shrink-0" />
-                <span>GOOGLE_SHEETS_SPREADSHEET_ID (optional, for Sheets sync)</span>
+              <div>
+                <p className="font-semibold text-foreground mb-1.5 uppercase tracking-wide text-[10px]">Google Sheets</p>
+                <div className="space-y-1 font-mono text-muted-foreground">
+                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" /> GOOGLE_SHEETS_SPREADSHEET_ID</div>
+                </div>
               </div>
             </div>
             <p className="text-xs text-muted-foreground mt-3">Set via Dashboard → Code → Secrets</p>
