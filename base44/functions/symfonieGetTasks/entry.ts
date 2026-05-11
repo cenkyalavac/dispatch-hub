@@ -7,6 +7,7 @@ const BASE_URL = 'https://projects.moravia.com/Api/V5';
 async function getToken() {
   const clientId = Deno.env.get('SYMFONIE_CLIENT_ID');
   const clientSecret = Deno.env.get('SYMFONIE_CLIENT_SECRET');
+  if (!clientId || !clientSecret) throw new Error('SYMFONIE_CLIENT_ID or SYMFONIE_CLIENT_SECRET is missing');
 
   const params = new URLSearchParams();
   params.append('grant_type', 'client_credentials');
@@ -20,9 +21,37 @@ async function getToken() {
     body: params.toString()
   });
 
-  if (!tokenRes.ok) throw new Error('Token alınamadı: ' + await tokenRes.text());
+  if (!tokenRes.ok) throw new Error('Failed to get token: ' + await tokenRes.text());
   const d = await tokenRes.json();
   return d.access_token;
+}
+
+async function fetchAllPages(url, token) {
+  const results = [];
+  let nextUrl = url;
+
+  while (nextUrl) {
+    const res = await fetch(nextUrl, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`API error ${res.status}: ${err}`);
+    }
+
+    const data = await res.json();
+    const items = data.value || [];
+    results.push(...items);
+
+    // OData next link for pagination
+    nextUrl = data['@odata.nextLink'] || null;
+  }
+
+  return results;
 }
 
 Deno.serve(async (req) => {
@@ -31,32 +60,39 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const access_token = await getToken();
+    const token = await getToken();
 
-    // Fetch all tasks ordered by newest first, filter InOrder client-side
-    const tasksRes = await fetch(
-      `${BASE_URL}/Tasks?$top=200&$orderby=CreatedAt desc`,
-      {
-        headers: {
-          'Authorization': `Bearer ${access_token}`,
-          'Accept': 'application/json'
-        }
-      }
-    );
+    // Filter directly via OData: State eq 'Order' = tasks awaiting acceptance
+    // Expand Project to get project name
+    // FinanceRows is a collection — expand to get pricing data
+    const url = `${BASE_URL}/Tasks?$filter=State eq 'Order'&$expand=Project,FinanceRows&$orderby=CreatedAt desc&$top=200`;
 
-    if (!tasksRes.ok) {
-      const err = await tasksRes.text();
-      return Response.json({ error: 'Task listesi alınamadı', details: err }, { status: 400 });
-    }
+    const tasks = await fetchAllPages(url, token);
 
-    const data = await tasksRes.json();
-    const allTasks = data.value || [];
+    // Map to clean structure
+    const mapped = tasks.map(raw => ({
+      id: raw.Id,
+      name: raw.Name || '',
+      project_id: raw.Project?.Id || null,
+      project_name: raw.Project?.Name || raw.JobName || '',
+      source_language: raw.SourceLanguageCode || '',
+      target_language: raw.TargetLanguageCode || '',
+      word_count: raw.FinanceRows?.find(r => r.BillingUnit === 'Words')?.Quantity || 0,
+      price: raw.FinanceRows?.reduce((sum, r) => sum + (r.MaxUsd || 0), 0) || 0,
+      due_date: raw.DueDate || null,
+      created_at: raw.CreatedAt || null,
+      state: raw.State,
+      workflow_name: raw.WorkflowName || '',
+      job_name: raw.JobName || '',
+      service_tag: raw.ServiceTag || '',
+    }));
 
-    // Filter only InOrder tasks (awaiting acceptance)
-    const tasks = allTasks.filter(t => t.State === 'InOrder');
-
-    return Response.json({ tasks, total: tasks.length, all_total: allTasks.length });
+    return Response.json({
+      tasks: mapped,
+      total: mapped.length
+    });
   } catch (error) {
+    console.error('symfonieGetTasks error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });

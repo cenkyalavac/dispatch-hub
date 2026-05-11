@@ -7,6 +7,7 @@ const BASE_URL = 'https://projects.moravia.com/Api/V5';
 async function getToken() {
   const clientId = Deno.env.get('SYMFONIE_CLIENT_ID');
   const clientSecret = Deno.env.get('SYMFONIE_CLIENT_SECRET');
+  if (!clientId || !clientSecret) throw new Error('SYMFONIE_CLIENT_ID or SYMFONIE_CLIENT_SECRET is missing');
 
   const params = new URLSearchParams();
   params.append('grant_type', 'client_credentials');
@@ -20,37 +21,63 @@ async function getToken() {
     body: params.toString()
   });
 
-  if (!tokenRes.ok) throw new Error('Token alınamadı: ' + await tokenRes.text());
+  if (!tokenRes.ok) throw new Error('Failed to get token: ' + await tokenRes.text());
   const d = await tokenRes.json();
   return d.access_token;
 }
 
+async function fetchAllPages(url, token) {
+  const results = [];
+  let nextUrl = url;
+
+  while (nextUrl) {
+    const res = await fetch(nextUrl, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Symfonie API error ${res.status}: ${err.substring(0, 500)}`);
+    }
+
+    const data = await res.json();
+    results.push(...(data.value || []));
+    nextUrl = data['@odata.nextLink'] || null;
+  }
+
+  return results;
+}
+
 function evaluateCondition(condition, task) {
   const { field, operator, value } = condition;
-  let taskValue = '';
+  let taskValue;
 
   switch (field) {
     case 'project_name': taskValue = (task.project_name || '').toLowerCase(); break;
     case 'source_language': taskValue = (task.source_language || '').toLowerCase(); break;
     case 'target_language': taskValue = (task.target_language || '').toLowerCase(); break;
     case 'client_name': taskValue = (task.client_name || '').toLowerCase(); break;
-    case 'word_count': taskValue = task.word_count || 0; break;
-    case 'price': taskValue = task.price || 0; break;
-    case 'quantity': taskValue = task.word_count || 0; break;
+    case 'word_count':
+    case 'quantity': taskValue = Number(task.word_count) || 0; break;
+    case 'price': taskValue = Number(task.price) || 0; break;
     default: return true;
   }
 
-  const compareValue = value && value.toLowerCase ? value.toLowerCase() : Number(value);
+  const lowerValue = (value || '').toLowerCase();
+  const numValue = Number(value);
 
   switch (operator) {
-    case 'contains': return String(taskValue).includes(String(compareValue));
-    case 'not_contains': return !String(taskValue).includes(String(compareValue));
-    case 'equals': return String(taskValue) === String(compareValue);
-    case 'starts_with': return String(taskValue).startsWith(String(compareValue));
-    case 'greater_than': return Number(taskValue) > Number(compareValue);
-    case 'less_than': return Number(taskValue) < Number(compareValue);
-    case 'greater_equal': return Number(taskValue) >= Number(compareValue);
-    case 'less_equal': return Number(taskValue) <= Number(compareValue);
+    case 'contains': return String(taskValue).includes(lowerValue);
+    case 'not_contains': return !String(taskValue).includes(lowerValue);
+    case 'equals': return String(taskValue) === lowerValue;
+    case 'starts_with': return String(taskValue).startsWith(lowerValue);
+    case 'greater_than': return taskValue > numValue;
+    case 'less_than': return taskValue < numValue;
+    case 'greater_equal': return taskValue >= numValue;
+    case 'less_equal': return taskValue <= numValue;
     default: return true;
   }
 }
@@ -60,7 +87,9 @@ function matchesRule(rule, task) {
   return rule.conditions.every(c => evaluateCondition(c, task));
 }
 
-async function acceptTaskInSymfonie(taskId, token) {
+async function executeTaskCommand(taskId, command, token) {
+  // POST /v5/Tasks({id})/Default.ExecuteTaskCommand
+  // Valid commands: HeadsUp, Order, Claim, Accept, Reject, Complete, Cancel, Reopen, Archive, Approve, Unarchive, OnHold, RejectCompany
   const res = await fetch(`${BASE_URL}/Tasks(${taskId})/Default.ExecuteTaskCommand`, {
     method: 'POST',
     headers: {
@@ -68,13 +97,15 @@ async function acceptTaskInSymfonie(taskId, token) {
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     },
-    body: JSON.stringify({ taskCommand: 'Accept' })
+    body: JSON.stringify({ taskCommand: command })
   });
+
+  const responseText = await res.text();
   if (!res.ok) {
-    const err = await res.text();
-    console.error(`Task ${taskId} kabul hatası:`, err);
+    console.error(`ExecuteTaskCommand(${command}) for task ${taskId} failed [${res.status}]:`, responseText.substring(0, 300));
+    return { ok: false, status: res.status, error: responseText };
   }
-  return res.ok;
+  return { ok: true };
 }
 
 async function appendToSheets(base44, taskRecord) {
@@ -108,79 +139,82 @@ async function appendToSheets(base44, taskRecord) {
       body: JSON.stringify({ values: [row] })
     }
   );
-  return res.ok;
+  if (!res.ok) {
+    console.error('Sheets append failed:', res.status, await res.text());
+    return false;
+  }
+  return true;
 }
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
+    // Auth: allow admin users and scheduled/system calls (no user context)
     const user = await base44.auth.me().catch(() => null);
-    if (user && user.role !== 'admin') {
-      return Response.json({ error: 'Forbidden: Admin only' }, { status: 403 });
+    if (user !== null && user?.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
-    console.log('symfonieProcessTasks başladı, kullanıcı:', user?.email || 'scheduled/system');
+    console.log('symfonieProcessTasks started, user:', user?.email || 'scheduled/system');
 
-    // 1. Get active rules sorted by priority
-    const rules = await base44.asServiceRole.entities.Rule.filter({ is_active: true }, 'priority', 100);
-    console.log(`${rules.length} aktif kural bulundu`);
+    // 1. Get active rules sorted by priority (ascending = higher priority runs first)
+    const rules = await base44.asServiceRole.entities.Rule.filter({ portal: 'symfonie', is_active: true }, 'priority', 200);
+    console.log(`Found ${rules.length} active rules`);
 
-    // 2. Get Symfonie token (Azure AD)
+    // 2. Get Azure AD token
     const token = await getToken();
-    console.log('Azure AD token alındı');
+    console.log('Azure AD token acquired');
 
-    // 3. Fetch all recent tasks, filter InOrder client-side
-    const tasksRes = await fetch(
-      `${BASE_URL}/Tasks?$top=200&$orderby=CreatedAt desc`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json'
-        }
-      }
-    );
+    // 3. Fetch tasks in 'Order' state (awaiting acceptance) with Project and FinanceRows expanded
+    // State eq 'Order' = TaskStates.Order (value=3) = "Ordered task" = tasks assigned to us, awaiting our Accept/Reject
+    const url = `${BASE_URL}/Tasks?$filter=State eq 'Order'&$expand=Project,FinanceRows&$orderby=CreatedAt asc&$top=200`;
+    const rawTasks = await fetchAllPages(url, token);
+    console.log(`Found ${rawTasks.length} tasks in Order state`);
 
-    if (!tasksRes.ok) {
-      const err = await tasksRes.text();
-      console.error('Task listesi alınamadı:', err);
-      return Response.json({ error: 'Task listesi alınamadı', details: err }, { status: 400 });
-    }
-
-    const data = await tasksRes.json();
-    const allTasks = data.value || [];
-    const rawTasks = allTasks.filter(t => t.State === 'InOrder');
-    console.log(`${allTasks.length} toplam task, ${rawTasks.length} InOrder task bulundu`);
-
-    // 4. Get already processed task IDs to avoid duplicates
-    const existing = await base44.asServiceRole.entities.AcceptedTask.filter({}, '-created_date', 1000);
-    const existingIds = new Set(existing.map(t => t.task_id));
+    // 4. Get already-processed task IDs to avoid re-processing
+    // Use a Set of numeric task IDs from our AcceptedTask records
+    const existing = await base44.asServiceRole.entities.AcceptedTask.list('-created_date', 2000);
+    const existingIds = new Set(existing.map(t => Number(t.task_id)));
+    console.log(`Already processed: ${existingIds.size} tasks`);
 
     const results = { accepted: [], rejected: [], skipped: [], errors: [] };
 
     for (const raw of rawTasks) {
-      if (existingIds.has(raw.Id)) {
-        results.skipped.push(raw.Id);
+      const taskId = Number(raw.Id);
+
+      if (existingIds.has(taskId)) {
+        results.skipped.push(taskId);
         continue;
       }
 
+      // Extract price: sum of MaxUsd from FinanceRows (most meaningful cost indicator)
+      // Word count: find the FinanceRow with BillingUnit = 'Words' (= 1)
+      const financeRows = raw.FinanceRows || [];
+      const wordRow = financeRows.find(r => String(r.BillingUnit) === 'Words' || r.BillingUnit === 1);
+      const wordCount = wordRow?.Quantity || 0;
+      const totalPrice = financeRows.reduce((sum, r) => sum + (Number(r.MaxUsd) || 0), 0);
+
       const task = {
-        task_id: raw.Id,
+        task_id: taskId,
         task_name: raw.Name || '',
         project_name: raw.Project?.Name || raw.JobName || '',
-        client_name: raw.Project?.CustomerName || '',
+        client_name: '', // ProjectSimpleViewModel doesn't include customer — only available via separate Projects call
         source_language: raw.SourceLanguageCode || '',
         target_language: raw.TargetLanguageCode || '',
-        word_count: raw.WordCount || 0,
-        price: 0,
+        word_count: wordCount,
+        price: totalPrice,
         due_date: raw.DueDate || null,
         accepted_at: new Date().toISOString(),
         matched_rule: null,
-        status: 'rejected',
+        status: 'skipped',
         portal: 'symfonie',
-        sheets_synced: false
+        sheets_synced: false,
+        service_tag: raw.ServiceTag || '',
+        workflow_name: raw.WorkflowName || '',
       };
 
+      // Find first matching rule (rules sorted by priority asc)
       let matchedRule = null;
       for (const rule of rules) {
         if (matchesRule(rule, task)) {
@@ -189,13 +223,28 @@ Deno.serve(async (req) => {
         }
       }
 
-      if (matchedRule && matchedRule.action === 'accept') {
-        task.matched_rule = matchedRule.name;
+      if (!matchedRule) {
+        // No rule matched — skip (don't touch the task)
+        results.skipped.push(taskId);
+        console.log(`Task ${taskId} "${raw.Name}": no matching rule, skipped`);
+        continue;
+      }
+
+      task.matched_rule = matchedRule.name;
+
+      if (matchedRule.action === 'accept') {
         task.status = 'accepted';
 
-        const accepted = await acceptTaskInSymfonie(raw.Id, token);
-        console.log(`Task ${raw.Id} kabul edildi:`, accepted);
+        const cmdResult = await executeTaskCommand(taskId, 'Accept', token);
+        if (!cmdResult.ok) {
+          task.status = 'error';
+          const saved = await base44.asServiceRole.entities.AcceptedTask.create(task);
+          results.errors.push({ id: taskId, name: raw.Name, rule: matchedRule.name, error: cmdResult.error });
+          console.error(`Task ${taskId} Accept failed:`, cmdResult.error);
+          continue;
+        }
 
+        console.log(`Task ${taskId} "${raw.Name}" accepted via rule "${matchedRule.name}"`);
         const saved = await base44.asServiceRole.entities.AcceptedTask.create(task);
 
         const synced = await appendToSheets(base44, task);
@@ -203,31 +252,43 @@ Deno.serve(async (req) => {
           await base44.asServiceRole.entities.AcceptedTask.update(saved.id, { sheets_synced: true });
         }
 
-        results.accepted.push({ id: raw.Id, name: raw.Name, rule: matchedRule.name });
-      } else if (matchedRule && matchedRule.action === 'reject') {
-        task.matched_rule = matchedRule.name;
+        results.accepted.push({ id: taskId, name: raw.Name, rule: matchedRule.name });
+
+      } else if (matchedRule.action === 'reject') {
         task.status = 'rejected';
+
+        const cmdResult = await executeTaskCommand(taskId, 'Reject', token);
+        if (!cmdResult.ok) {
+          task.status = 'error';
+          await base44.asServiceRole.entities.AcceptedTask.create(task);
+          results.errors.push({ id: taskId, name: raw.Name, rule: matchedRule.name, error: cmdResult.error });
+          console.error(`Task ${taskId} Reject failed:`, cmdResult.error);
+          continue;
+        }
+
+        console.log(`Task ${taskId} "${raw.Name}" rejected via rule "${matchedRule.name}"`);
         await base44.asServiceRole.entities.AcceptedTask.create(task);
-        results.rejected.push({ id: raw.Id, name: raw.Name, rule: matchedRule.name });
-      } else {
-        results.skipped.push(raw.Id);
+        results.rejected.push({ id: taskId, name: raw.Name, rule: matchedRule.name });
       }
     }
 
-    console.log('Tamamlandı:', results.accepted.length, 'kabul,', results.rejected.length, 'red');
+    console.log(`Finished: ${results.accepted.length} accepted, ${results.rejected.length} rejected, ${results.skipped.length} skipped, ${results.errors.length} errors`);
 
     return Response.json({
       success: true,
       summary: {
-        total: rawTasks.length,
+        total_in_order: rawTasks.length,
+        new_tasks_seen: rawTasks.length - results.skipped.filter(id => existingIds.has(id)).length,
         accepted: results.accepted.length,
         rejected: results.rejected.length,
-        skipped: results.skipped.length
+        skipped: results.skipped.length,
+        errors: results.errors.length
       },
       details: results
     });
+
   } catch (error) {
-    console.error('symfonieProcessTasks hatası:', error.message);
+    console.error('symfonieProcessTasks error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });

@@ -11,6 +11,7 @@ import Rules from './pages/Rules';
 import Tasks from './pages/Tasks';
 import SettingsPage from './pages/SettingsPage';
 import Portals from './pages/Portals';
+import PendingTasks from './pages/PendingTasks';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -39,6 +40,7 @@ const AuthenticatedApp = () => {
         <Route path="/rules" element={<Rules />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/portals" element={<Portals />} />
+        <Route path="/pending" element={<PendingTasks />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
