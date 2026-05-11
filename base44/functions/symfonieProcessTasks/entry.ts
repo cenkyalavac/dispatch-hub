@@ -193,7 +193,7 @@ Deno.serve(async (req) => {
       // Extract price: sum of MaxUsd from FinanceRows (most meaningful cost indicator)
       // Word count: find the FinanceRow with BillingUnit = 'Words' (= 1)
       const financeRows = raw.FinanceRows || [];
-      const wordRow = financeRows.find(r => String(r.BillingUnit) === 'Words' || r.BillingUnit === 1);
+      const wordRow = financeRows.find(r => String(r.BillingUnit) === 'Words' || String(r.BillingUnit) === 'Word' || r.BillingUnit === 1);
       const wordCount = wordRow?.Quantity || 0;
       const totalPrice = financeRows.reduce((sum, r) => sum + (Number(r.MaxUsd) || 0), 0);
 

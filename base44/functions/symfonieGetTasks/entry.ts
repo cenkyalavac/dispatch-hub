@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
       }));
 
       // Word count: find the Words billing row
-      const wordRow = financeRows.find(r => r.billing_unit === 'Words');
+      const wordRow = financeRows.find(r => r.billing_unit === 'Words' || r.billing_unit === 'Word');
       const wordCount = wordRow?.quantity || 0;
       const totalMaxUsd = financeRows.reduce((sum, r) => sum + (r.max_usd || 0), 0);
       const totalMinUsd = financeRows.reduce((sum, r) => sum + (r.min_usd || 0), 0);

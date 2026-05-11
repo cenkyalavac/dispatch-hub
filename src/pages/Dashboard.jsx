@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, XCircle, Clock, Play, RefreshCw, TrendingUp, AlertCircle, Globe, ThumbsUp } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, Play, RefreshCw, TrendingUp, AlertCircle, Globe, ThumbsUp, TableProperties } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -38,6 +38,7 @@ export default function Dashboard() {
   const [lastResult, setLastResult] = useState(null);
   const [selectedPortal, setSelectedPortal] = useState('symfonie');
   const [acceptingIds, setAcceptingIds] = useState(new Set());
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const { data: portals = [] } = useQuery({
     queryKey: ['portals'],
@@ -99,6 +100,23 @@ export default function Dashboard() {
     }
   };
 
+  const handleSyncSheets = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await base44.functions.invoke('sheetsSyncPending', {});
+      if (res.data?.success) {
+        toast.success(`${res.data.synced} görev Google Sheets'e aktarıldı`);
+        refetch();
+      } else {
+        toast.error(res.data?.error || 'Sync başarısız');
+      }
+    } catch (err) {
+      toast.error('Sheets sync hatası: ' + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleRun = async () => {
     const fnName = PORTAL_FUNCTIONS[selectedPortal];
     if (!fnName) {
@@ -143,6 +161,16 @@ export default function Dashboard() {
               ))}
             </SelectContent>
           </Select>
+          <Button
+            onClick={handleSyncSheets}
+            disabled={isSyncing}
+            variant="outline"
+            className="gap-2"
+            title="sheets_synced=false olan tüm kabul edilmiş görevleri Sheets'e yaz"
+          >
+            {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <TableProperties className="w-4 h-4" />}
+            {isSyncing ? 'Syncing...' : 'Sync to Sheets'}
+          </Button>
           <Button
             onClick={handleRun}
             disabled={isRunning || selectedPortal === 'all'}
