@@ -193,8 +193,9 @@ Deno.serve(async (req) => {
       // Extract price: sum of MaxUsd from FinanceRows (most meaningful cost indicator)
       // Word count: find the FinanceRow with BillingUnit = 'Words' (= 1)
       const financeRows = raw.FinanceRows || [];
-      const wordRow = financeRows.find(r => String(r.BillingUnit) === 'Words' || String(r.BillingUnit) === 'Word' || r.BillingUnit === 1);
-      const wordCount = wordRow?.Quantity || 0;
+      // BillingUnit comes as either a numeric code (1 = Words) or a string ("Words"/"Word").
+      const wordRow = financeRows.find(r => r.BillingUnit === 1 || r.BillingUnit === 'Words' || r.BillingUnit === 'Word');
+      const wordCount = Number(wordRow?.Quantity) || 0;
       const totalPrice = financeRows.reduce((sum, r) => sum + (Number(r.MaxUsd) || 0), 0);
 
       const task = {
@@ -276,11 +277,15 @@ Deno.serve(async (req) => {
 
     console.log(`Finished: ${results.accepted.length} accepted, ${results.rejected.length} rejected, ${results.skipped.length} skipped, ${results.errors.length} errors`);
 
+    // `results.skipped` is a mixed array — numbers (already-processed) and objects (no-rule-match).
+    // Count numbers to derive how many tasks were genuinely new this run.
+    const alreadyProcessedCount = results.skipped.filter(s => typeof s === 'number').length;
+
     return Response.json({
       success: true,
       summary: {
         total_in_order: rawTasks.length,
-        new_tasks_seen: rawTasks.length - results.skipped.filter(id => existingIds.has(id)).length,
+        new_tasks_seen: rawTasks.length - alreadyProcessedCount,
         accepted: results.accepted.length,
         rejected: results.rejected.length,
         skipped: results.skipped.length,

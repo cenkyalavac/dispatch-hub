@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, Search, Download } from 'lucide-react';
@@ -10,25 +10,30 @@ import EmptyState from '@/components/ui/EmptyState';
 import ErrorState from '@/components/ui/ErrorState';
 import { fmtNumber, EM } from '@/lib/format';
 
+// Quote every cell so commas/quotes/newlines inside values can't break the columns.
+const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+
 function exportToCsv(tasks) {
-  const headers = ['ID','Task','Project','Source','Target','Words','Min USD','Max USD','Due','Created','Workflow','Service','Type','CAT','Assigned'];
+  const headers = ['ID','Task','Account','Project','Project Code','Source','Target','Words','Min USD','Max USD','Due','Created','Workflow','Service','Type'];
   const rows = tasks.map(t => [
     t.id,
-    `"${(t.name || '').replace(/"/g, '""')}"`,
-    `"${(t.project_name || '').replace(/"/g, '""')}"`,
-    t.source_language || '', t.target_language || '',
+    csvCell(t.name),
+    csvCell(t.account_name),
+    csvCell(t.project_name),
+    csvCell(t.project_code),
+    csvCell(t.source_language),
+    csvCell(t.target_language),
     t.word_count || 0,
-    t.price_min_usd?.toFixed(2) || '0.00',
-    t.price_max_usd?.toFixed(2) || '0.00',
+    (t.price_min_usd || 0).toFixed(2),
+    (t.price_max_usd || 0).toFixed(2),
     t.due_date ? new Date(t.due_date).toISOString() : '',
     t.created_at ? new Date(t.created_at).toISOString() : '',
-    `"${(t.workflow_name || '').replace(/"/g, '""')}"`,
-    `"${(t.service_tag || '').replace(/"/g, '""')}"`,
-    `"${(t.task_type || '').replace(/"/g, '""')}"`,
-    `"${(t.cat_tool || '').replace(/"/g, '""')}"`,
-    `"${(t.assigned_to || '').replace(/"/g, '""')}"`,
+    csvCell(t.workflow_name),
+    csvCell(t.service_tag),
+    csvCell(t.task_type),
   ]);
-  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  // \r\n is the RFC 4180 line ending — Excel on Windows requires it; BOM prefix fixes UTF-8 detection.
+  const csv = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -60,17 +65,18 @@ export default function PendingTasks() {
 
   const tasks = data?.tasks || [];
 
-  const filtered = tasks.filter(t => {
-    if (!search) return true;
+  const filtered = useMemo(() => {
+    if (!search) return tasks;
     const q = search.toLowerCase();
-    return (
+    return tasks.filter(t =>
       t.name?.toLowerCase().includes(q) ||
       t.project_name?.toLowerCase().includes(q) ||
+      t.account_name?.toLowerCase().includes(q) ||
       t.source_language?.toLowerCase().includes(q) ||
       t.target_language?.toLowerCase().includes(q) ||
       String(t.id).includes(q)
     );
-  });
+  }, [tasks, search]);
 
   const handleManualAccept = async (task) => {
     setAcceptingIds(prev => new Set([...prev, task.id]));
@@ -86,11 +92,21 @@ export default function PendingTasks() {
     finally { setAcceptingIds(prev => { const s = new Set(prev); s.delete(task.id); return s; }); }
   };
 
-  const totalWords = tasks.reduce((s, t) => s + (t.word_count || 0), 0);
-  const totalMaxUsd = tasks.reduce((s, t) => s + (t.price_max_usd || 0), 0);
-  const totalMinUsd = tasks.reduce((s, t) => s + (t.price_min_usd || 0), 0);
+  // Single-pass totals.
+  const { totalWords, totalMaxUsd, totalMinUsd } = useMemo(() => {
+    let w = 0, max = 0, min = 0;
+    for (const t of tasks) {
+      w += t.word_count || 0;
+      max += t.price_max_usd || 0;
+      min += t.price_min_usd || 0;
+    }
+    return { totalWords: w, totalMaxUsd: max, totalMinUsd: min };
+  }, [tasks]);
 
-  const portalOptions = portals.filter(p => p.is_active && p.fetch_function);
+  const portalOptions = useMemo(
+    () => portals.filter(p => p.is_active && p.fetch_function),
+    [portals]
+  );
 
   return (
     <div className="px-8 py-7 max-w-6xl">

@@ -1,9 +1,17 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { format } from 'date-fns';
 import { CheckCircle2, ChevronDown, ChevronUp, Calendar, Clock, Layers } from 'lucide-react';
 import { EM, fmtNumber } from '@/lib/format';
 
 function FinanceRowsTable({ rows }) {
+  // Compute footer totals once per `rows` reference instead of twice per render.
+  const totals = useMemo(() => {
+    if (!rows) return { min: 0, max: 0 };
+    let min = 0, max = 0;
+    for (const r of rows) { min += r.min_usd || 0; max += r.max_usd || 0; }
+    return { min, max };
+  }, [rows]);
+
   if (!rows || rows.length === 0) {
     return <p className="text-[12px] text-ink-3 italic-editorial">No finance rows.</p>;
   }
@@ -55,12 +63,28 @@ function FinanceRowsTable({ rows }) {
           <tr className="bg-surface-2 font-semibold border-t border-line-1">
             <td className="px-3 py-2 text-[10px] uppercase tracking-wider text-ink-3">Total</td>
             <td colSpan={2}></td>
-            <td className="px-3 py-2 text-right tabular-nums text-ink-3">${rows.reduce((s, r) => s + (r.min_usd || 0), 0).toFixed(2)}</td>
-            <td className="px-3 py-2 text-right tabular-nums text-accent">${rows.reduce((s, r) => s + (r.max_usd || 0), 0).toFixed(2)}</td>
+            <td className="px-3 py-2 text-right tabular-nums text-ink-3">${totals.min.toFixed(2)}</td>
+            <td className="px-3 py-2 text-right tabular-nums text-accent">${totals.max.toFixed(2)}</td>
             <td colSpan={5}></td>
           </tr>
         </tfoot>
       </table>
+    </div>
+  );
+}
+
+function PoNumbersStrip({ rows }) {
+  const pos = useMemo(
+    () => [...new Set((rows || []).map(r => r.purchase_order?.po_number).filter(Boolean))],
+    [rows]
+  );
+  if (pos.length === 0) return null;
+  return (
+    <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px]">
+      <span className="text-[10px] uppercase tracking-wider text-ink-3">PO numbers:</span>
+      {pos.map(po => (
+        <span key={po} className="font-mono bg-surface-2 border border-line-1 text-ink-2 px-1.5 py-0.5 rounded">{po}</span>
+      ))}
     </div>
   );
 }
@@ -214,18 +238,7 @@ export default function TaskDetailCard({ task, accepting, onAccept }) {
               )}
             </div>
             <FinanceRowsTable rows={task.finance_rows} />
-            {(() => {
-              const pos = [...new Set((task.finance_rows || []).map(r => r.purchase_order?.po_number).filter(Boolean))];
-              if (pos.length === 0) return null;
-              return (
-                <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px]">
-                  <span className="text-[10px] uppercase tracking-wider text-ink-3">PO numbers:</span>
-                  {pos.map(po => (
-                    <span key={po} className="font-mono bg-surface-2 border border-line-1 text-ink-2 px-1.5 py-0.5 rounded">{po}</span>
-                  ))}
-                </div>
-              );
-            })()}
+            <PoNumbersStrip rows={task.finance_rows} />
           </div>
         </div>
       )}

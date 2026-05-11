@@ -26,7 +26,8 @@ export default function Connectors() {
 
   const { data: portals = [], isLoading } = useQuery({
     queryKey: ['portals-all'],
-    queryFn: () => base44.entities.Portal.list(),
+    // Sort by name so the grid order is deterministic across renders / refetches.
+    queryFn: () => base44.entities.Portal.list('name'),
   });
 
   const saveMutation = useMutation({

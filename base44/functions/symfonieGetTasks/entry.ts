@@ -82,24 +82,19 @@ Deno.serve(async (req) => {
     const projectIds = [...new Set(tasks.map(t => t.Project?.Id).filter(Boolean))];
     const projectDetailMap = new Map(); // projectId -> full Project incl. Customer + ProjectManagerId
 
-    async function batchLookup(resource, ids) {
-      const out = [];
-      for (let i = 0; i < ids.length; i += 20) {
-        const chunk = ids.slice(i, i + 20);
+    if (projectIds.length > 0) {
+      // Parallelize batches of 20 — Symfonie tolerates ~5 concurrent requests well.
+      const chunks = [];
+      for (let i = 0; i < projectIds.length; i += 20) chunks.push(projectIds.slice(i, i + 20));
+      const batches = await Promise.all(chunks.map(async (chunk) => {
         const filter = chunk.map(id => `Id eq ${id}`).join(' or ');
-        const items = await fetchAllPages(
-          `${BASE_URL}/${resource}?$filter=${encodeURIComponent(filter)}&$top=${chunk.length}`,
+        return fetchAllPages(
+          `${BASE_URL}/Projects?$filter=${encodeURIComponent(filter)}&$top=${chunk.length}`,
           token
         );
-        out.push(...items);
-      }
-      return out;
-    }
-
-    if (projectIds.length > 0) {
-      const projects = await batchLookup('Projects', projectIds);
-      projects.forEach(p => projectDetailMap.set(p.Id, p));
-      console.log(`Projects resolved: ${projects.length}/${projectIds.length} — Customer inline: ${!!projects[0]?.Customer}`);
+      }));
+      batches.flat().forEach(p => projectDetailMap.set(p.Id, p));
+      console.log(`Projects resolved: ${projectDetailMap.size}/${projectIds.length}`);
     }
 
     const mapped = tasks.map(raw => {
@@ -151,13 +146,19 @@ Deno.serve(async (req) => {
         };
       });
 
-      const wordRow = financeRows.find(r => r.billing_unit === 'Words' || r.billing_unit === 'Word');
+      // Single pass over finance rows for all aggregates (was 5 separate iterations).
+      let totalMaxUsd = 0, totalMinUsd = 0, totalConfirmedUsd = 0;
+      let billableCount = 0, proposalCount = 0;
+      let wordRow = null;
+      for (const r of financeRows) {
+        totalMaxUsd += r.max_usd || 0;
+        totalMinUsd += r.min_usd || 0;
+        if (r.is_confirmed) totalConfirmedUsd += r.total_usd || 0;
+        if (r.purchase_order?.is_billable) billableCount++;
+        if (r.purchase_order?.is_proposal) proposalCount++;
+        if (!wordRow && (r.billing_unit === 'Words' || r.billing_unit === 'Word')) wordRow = r;
+      }
       const wordCount = wordRow?.quantity || 0;
-      const totalMaxUsd = financeRows.reduce((s, r) => s + (r.max_usd || 0), 0);
-      const totalMinUsd = financeRows.reduce((s, r) => s + (r.min_usd || 0), 0);
-      const totalConfirmedUsd = financeRows.filter(r => r.is_confirmed).reduce((s, r) => s + (r.total_usd || 0), 0);
-      const billableCount = financeRows.filter(r => r.purchase_order?.is_billable).length;
-      const proposalCount = financeRows.filter(r => r.purchase_order?.is_proposal).length;
 
       // Project comes inline on each Task; Customer comes from the Projects pre-fetch.
       const inlineProject = raw.Project || null;
@@ -181,7 +182,7 @@ Deno.serve(async (req) => {
         name: raw.Name || '',
 
         // Project / Account / Customer
-        project_id: project?.Id ?? job?.ProjectId ?? null,
+        project_id: project?.Id ?? null,
         project_name: project?.Name || '',
         project_code: project?.Code || '',
         project_state: project?.ProjectState || null,

@@ -28,18 +28,25 @@ export default function Rules() {
         : base44.entities.Rule.filter({ portal: portalFilter }, 'priority', 100),
   });
 
+  // Bug fix: toggling/deleting/saving a rule on this page didn't refresh the active-rules count
+  // shown on the Dashboard. Invalidate both query keys whenever rules change.
+  const invalidateAllRuleQueries = () => {
+    qc.invalidateQueries({ queryKey: ['rules-all'] });
+    qc.invalidateQueries({ queryKey: ['rules-active'] });
+  };
+
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Rule.update(id, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['rules-all'] }),
+    onSuccess: invalidateAllRuleQueries,
   });
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.Rule.delete(id),
-    onSuccess: () => { toast.success('Rule deleted'); qc.invalidateQueries({ queryKey: ['rules-all'] }); },
+    onSuccess: () => { toast.success('Rule deleted'); invalidateAllRuleQueries(); },
   });
 
   const handleClose = () => {
     setShowForm(false); setEditingRule(null);
-    qc.invalidateQueries({ queryKey: ['rules-all'] });
+    invalidateAllRuleQueries();
   };
 
   return (

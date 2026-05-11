@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, XCircle, Search } from 'lucide-react';
@@ -27,14 +27,17 @@ export default function Tasks() {
         : base44.entities.AcceptedTask.filter({ portal: portalFilter }, '-accepted_at', 500),
   });
 
-  const filtered = tasks.filter(t => {
-    const matchSearch = !search ||
-      t.task_name?.toLowerCase().includes(search.toLowerCase()) ||
-      t.project_name?.toLowerCase().includes(search.toLowerCase()) ||
-      t.client_name?.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === 'all' || t.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return tasks.filter(t => {
+      const matchSearch = !q ||
+        t.task_name?.toLowerCase().includes(q) ||
+        t.project_name?.toLowerCase().includes(q) ||
+        t.client_name?.toLowerCase().includes(q);
+      const matchStatus = statusFilter === 'all' || t.status === statusFilter;
+      return matchSearch && matchStatus;
+    });
+  }, [tasks, search, statusFilter]);
 
   return (
     <div className="px-8 py-7 max-w-7xl">

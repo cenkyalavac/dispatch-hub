@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
@@ -34,15 +34,30 @@ export default function Dashboard() {
 
   const loading = portalsLoading || tasksLoading;
 
-  const tasks = selectedPortal === 'all' ? allTasks : allTasks.filter(t => t.portal === selectedPortal);
-  const accepted = tasks.filter(t => t.status === 'accepted').length;
-  const rejected = tasks.filter(t => t.status === 'rejected').length;
-  const unsyncedCount = allTasks.filter(t => t.status === 'accepted' && !t.sheets_synced).length;
-  const connectedCount = portals.filter(p => p.connection_status === 'connected').length;
-  const taskCounts = portals.reduce((acc, p) => {
-    acc[p.key] = allTasks.filter(t => t.portal === p.key).length; return acc;
-  }, {});
+  // Memoize derived counters — single pass over the (potentially 500-row) tasks list.
+  const { tasks, accepted, rejected, unsyncedCount, syncedCount, taskCounts } = useMemo(() => {
+    const counts = {};
+    let unsynced = 0, synced = 0;
+    for (const t of allTasks) {
+      counts[t.portal] = (counts[t.portal] || 0) + 1;
+      if (t.status === 'accepted') {
+        if (t.sheets_synced) synced++; else unsynced++;
+      }
+    }
+    const scoped = selectedPortal === 'all' ? allTasks : allTasks.filter(t => t.portal === selectedPortal);
+    let acc = 0, rej = 0;
+    for (const t of scoped) {
+      if (t.status === 'accepted') acc++;
+      else if (t.status === 'rejected') rej++;
+    }
+    return { tasks: scoped, accepted: acc, rejected: rej, unsyncedCount: unsynced, syncedCount: synced, taskCounts: counts };
+  }, [allTasks, selectedPortal]);
 
+  const connectedCount = useMemo(
+    () => portals.filter(p => p.connection_status === 'connected').length,
+    [portals]
+  );
+  const activePortalsCount = useMemo(() => portals.filter(p => p.is_active).length, [portals]);
   const selectedPortalObj = portals.find(p => p.key === selectedPortal);
 
   const handleRun = async () => {
@@ -90,7 +105,7 @@ export default function Dashboard() {
         setLastResult(prev => prev && ({
           ...prev,
           details: { ...prev.details, skipped: prev.details.skipped.filter(s => s.id !== task.id) },
-          summary: { ...prev.summary, skipped: (prev.summary?.skipped || 1) - 1, accepted: (prev.summary?.accepted || 0) + 1 },
+          summary: { ...prev.summary, skipped: Math.max(0, (prev.summary?.skipped || 0) - 1), accepted: (prev.summary?.accepted || 0) + 1 },
         }));
         refetch();
       } else toast.error(res.data?.error || 'Accept failed');
@@ -134,7 +149,7 @@ export default function Dashboard() {
           [1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-[88px]" />)
         ) : (
           <>
-            <Metric label="Connectors" value={`${connectedCount}/${portals.length}`} sub={`${portals.filter(p => p.is_active).length} active`} />
+            <Metric label="Connectors" value={`${connectedCount}/${portals.length}`} sub={`${activePortalsCount} active`} />
             <Metric label="Processed" value={fmtNumber(tasks.length)} sub={selectedPortal === 'all' ? 'all' : selectedPortalObj?.name} />
             <Metric label="Accepted" value={fmtNumber(accepted)} />
             <Metric label="Rejected" value={fmtNumber(rejected)} />
@@ -162,7 +177,7 @@ export default function Dashboard() {
             <div>
               <p className="text-[10px] uppercase tracking-wider text-ink-3">Synced</p>
               <p className="text-[22px] font-semibold tabular-nums mt-0.5 text-ink-1">
-                {fmtNumber(allTasks.filter(t => t.status === 'accepted' && t.sheets_synced).length)}
+                {fmtNumber(syncedCount)}
               </p>
             </div>
           </div>
