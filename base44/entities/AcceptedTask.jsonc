@@ -2,9 +2,14 @@
   "name": "AcceptedTask",
   "type": "object",
   "properties": {
+    "portal": {
+      "type": "string",
+      "description": "Kaynak portal (symfonie, protemos, vs.)",
+      "default": "symfonie"
+    },
     "task_id": {
       "type": "integer",
-      "description": "Symfonie Task ID"
+      "description": "Portal Task ID"
     },
     "task_name": {
       "type": "string",
@@ -65,6 +70,7 @@
   },
   "required": [
     "task_id",
-    "task_name"
+    "task_name",
+    "portal"
   ]
 }

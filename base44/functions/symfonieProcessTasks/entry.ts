@@ -1,20 +1,40 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-// Helper: get Symfonie token
+// Helper: get Symfonie token (supports Azure AD and Moravia Login)
 async function getSymfonieToken() {
   const clientId = Deno.env.get('SYMFONIE_CLIENT_ID');
   const clientSecret = Deno.env.get('SYMFONIE_CLIENT_SECRET');
-  const params = new URLSearchParams();
-  params.append('grant_type', 'client_credentials');
-  params.append('client_id', clientId);
-  params.append('client_secret', clientSecret);
-  const res = await fetch('https://projects.moravia.com/connect/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString()
-  });
-  if (!res.ok) throw new Error('Symfonie token alınamadı: ' + await res.text());
-  const d = await res.json();
+  const tenantId = Deno.env.get('SYMFONIE_TENANT_ID');
+
+  let tokenRes;
+  if (tenantId) {
+    const params = new URLSearchParams();
+    params.append('grant_type', 'client_credentials');
+    params.append('client_id', clientId);
+    params.append('client_secret', clientSecret);
+    params.append('scope', 'api://c2e8870d-faef-45ea-919c-b603f97bd0cc/.default');
+    tokenRes = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
+    });
+  } else {
+    const serviceAccount = Deno.env.get('SYMFONIE_SERVICE_ACCOUNT');
+    const params = new URLSearchParams();
+    params.append('grant_type', 'service');
+    params.append('client_id', clientId);
+    params.append('client_secret', clientSecret);
+    params.append('scope', 'symfonie2-api');
+    if (serviceAccount) params.append('service_account', serviceAccount);
+    tokenRes = await fetch('https://login.moravia.com/connect/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
+    });
+  }
+
+  if (!tokenRes.ok) throw new Error('Symfonie token alınamadı: ' + await tokenRes.text());
+  const d = await tokenRes.json();
   return d.access_token;
 }
 
@@ -55,7 +75,7 @@ function matchesRule(rule, task) {
   return rule.conditions.every(c => evaluateCondition(c, task));
 }
 
-// Helper: accept a task in Symfonie (PATCH state to Accepted)
+// Helper: accept a task in Symfonie
 async function acceptTaskInSymfonie(taskId, token) {
   const res = await fetch(`https://projects.moravia.com/api/V5/Tasks(${taskId})`, {
     method: 'PATCH',
@@ -147,7 +167,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Extract price from FinanceRows
+      // Extract word count/price from FinanceRows
       let price = 0;
       if (raw.FinanceRows && raw.FinanceRows.length > 0) {
         price = raw.FinanceRows.reduce((sum, r) => sum + (r.Quantity || 0), 0);
@@ -182,13 +202,9 @@ Deno.serve(async (req) => {
         task.matched_rule = matchedRule.name;
         task.status = 'accepted';
 
-        // Accept in Symfonie
         await acceptTaskInSymfonie(raw.Id, token);
-
-        // Save to DB
         const saved = await base44.asServiceRole.entities.AcceptedTask.create(task);
 
-        // Sync to Google Sheets
         const synced = await appendToSheets(base44, task);
         if (synced) {
           await base44.asServiceRole.entities.AcceptedTask.update(saved.id, { sheets_synced: true });
@@ -201,7 +217,6 @@ Deno.serve(async (req) => {
         await base44.asServiceRole.entities.AcceptedTask.create(task);
         results.rejected.push({ id: raw.Id, name: raw.Name, rule: matchedRule.name });
       } else {
-        // No rule matched - skip (don't touch)
         results.skipped.push(raw.Id);
       }
     }

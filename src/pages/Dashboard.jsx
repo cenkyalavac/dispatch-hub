@@ -1,13 +1,18 @@
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, XCircle, Clock, Play, RefreshCw, TrendingUp, AlertCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, Play, RefreshCw, TrendingUp, AlertCircle, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
+
+const PORTAL_FUNCTIONS = {
+  symfonie: 'symfonieProcessTasks',
+};
 
 function StatCard({ title, value, icon: Icon, color, sub }) {
   return (
@@ -31,24 +36,41 @@ function StatCard({ title, value, icon: Icon, color, sub }) {
 export default function Dashboard() {
   const [isRunning, setIsRunning] = useState(false);
   const [lastResult, setLastResult] = useState(null);
+  const [selectedPortal, setSelectedPortal] = useState('symfonie');
+
+  const { data: portals = [] } = useQuery({
+    queryKey: ['portals'],
+    queryFn: () => base44.entities.Portal.filter({ is_active: true }),
+  });
 
   const { data: tasks = [], refetch } = useQuery({
-    queryKey: ['accepted-tasks'],
-    queryFn: () => base44.entities.AcceptedTask.list('-accepted_at', 20),
+    queryKey: ['accepted-tasks', selectedPortal],
+    queryFn: () =>
+      selectedPortal === 'all'
+        ? base44.entities.AcceptedTask.list('-accepted_at', 20)
+        : base44.entities.AcceptedTask.filter({ portal: selectedPortal }, '-accepted_at', 20),
   });
 
   const { data: rules = [] } = useQuery({
-    queryKey: ['rules'],
-    queryFn: () => base44.entities.Rule.filter({ is_active: true }),
+    queryKey: ['rules', selectedPortal],
+    queryFn: () =>
+      selectedPortal === 'all'
+        ? base44.entities.Rule.filter({ is_active: true })
+        : base44.entities.Rule.filter({ is_active: true, portal: selectedPortal }),
   });
 
   const accepted = tasks.filter(t => t.status === 'accepted').length;
   const rejected = tasks.filter(t => t.status === 'rejected').length;
 
   const handleRun = async () => {
+    const fnName = PORTAL_FUNCTIONS[selectedPortal];
+    if (!fnName) {
+      toast.error(`"${selectedPortal}" portalı için henüz backend fonksiyonu yok.`);
+      return;
+    }
     setIsRunning(true);
     try {
-      const res = await base44.functions.invoke('symfonieProcessTasks', {});
+      const res = await base44.functions.invoke(fnName, {});
       const result = res.data;
       setLastResult(result);
       if (result.success) {
@@ -69,48 +91,38 @@ export default function Dashboard() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground text-sm mt-1">Symfonie task kabul sistemi durumu</p>
+          <p className="text-muted-foreground text-sm mt-1">Otomasyon hub genel durumu</p>
         </div>
-        <Button
-          onClick={handleRun}
-          disabled={isRunning}
-          className="gap-2 bg-primary hover:bg-primary/90"
-        >
-          {isRunning ? (
-            <RefreshCw className="w-4 h-4 animate-spin" />
-          ) : (
-            <Play className="w-4 h-4" />
-          )}
-          {isRunning ? 'İşleniyor...' : 'Manuel Çalıştır'}
-        </Button>
+        <div className="flex items-center gap-3">
+          <Select value={selectedPortal} onValueChange={setSelectedPortal}>
+            <SelectTrigger className="w-48">
+              <Globe className="w-4 h-4 mr-1 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tüm Portaller</SelectItem>
+              {portals.map(p => (
+                <SelectItem key={p.key} value={p.key}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            onClick={handleRun}
+            disabled={isRunning || selectedPortal === 'all'}
+            className="gap-2 bg-primary hover:bg-primary/90"
+            title={selectedPortal === 'all' ? 'Çalıştırmak için bir portal seçin' : ''}
+          >
+            {isRunning ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            {isRunning ? 'İşleniyor...' : 'Manuel Çalıştır'}
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard
-          title="Toplam İşlenen"
-          value={tasks.length}
-          icon={TrendingUp}
-          color="bg-accent text-accent-foreground"
-          sub="Bu oturumda"
-        />
-        <StatCard
-          title="Kabul Edilen"
-          value={accepted}
-          icon={CheckCircle2}
-          color="bg-green-100 text-green-600"
-        />
-        <StatCard
-          title="Reddedilen"
-          value={rejected}
-          icon={XCircle}
-          color="bg-red-100 text-red-500"
-        />
-        <StatCard
-          title="Aktif Kural"
-          value={rules.length}
-          icon={Clock}
-          color="bg-blue-100 text-blue-600"
-        />
+        <StatCard title="Toplam İşlenen" value={tasks.length} icon={TrendingUp} color="bg-accent text-accent-foreground" sub="Seçili portal" />
+        <StatCard title="Kabul Edilen" value={accepted} icon={CheckCircle2} color="bg-green-100 text-green-600" />
+        <StatCard title="Reddedilen" value={rejected} icon={XCircle} color="bg-red-100 text-red-500" />
+        <StatCard title="Aktif Kural" value={rules.length} icon={Clock} color="bg-blue-100 text-blue-600" />
       </div>
 
       {lastResult && (
@@ -137,7 +149,7 @@ export default function Dashboard() {
           {tasks.length === 0 ? (
             <div className="text-center py-10 text-muted-foreground">
               <Clock className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">Henüz işlenen task yok. "Manuel Çalıştır" butonuna basın.</p>
+              <p className="text-sm">Henüz işlenen task yok.</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -150,7 +162,12 @@ export default function Dashboard() {
                       <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
                     )}
                     <div>
-                      <p className="text-sm font-medium">{task.task_name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium">{task.task_name}</p>
+                        {selectedPortal === 'all' && (
+                          <Badge variant="outline" className="text-xs">{task.portal}</Badge>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         {task.project_name} · {task.source_language} → {task.target_language}
                       </p>

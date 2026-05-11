@@ -2,6 +2,11 @@
   "name": "Rule",
   "type": "object",
   "properties": {
+    "portal": {
+      "type": "string",
+      "description": "Hangi portala ait kural",
+      "default": "symfonie"
+    },
     "name": {
       "type": "string",
       "description": "Kural ad\u0131"
@@ -68,6 +73,7 @@
   },
   "required": [
     "name",
-    "action"
+    "action",
+    "portal"
   ]
 }

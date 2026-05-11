@@ -1,0 +1,36 @@
+{
+  "name": "Portal",
+  "type": "object",
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "Tekil tan\u0131mlay\u0131c\u0131 (\u00f6rn: symfonie, protemos)",
+      "example": "symfonie"
+    },
+    "name": {
+      "type": "string",
+      "description": "G\u00f6r\u00fcnen ad (\u00f6rn: Moravia Symfonie)"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Portal aktif mi?"
+    },
+    "description": {
+      "type": "string",
+      "description": "K\u0131sa a\u00e7\u0131klama"
+    },
+    "icon": {
+      "type": "string",
+      "description": "Lucide icon ad\u0131 (\u00f6rn: Globe, Briefcase)"
+    },
+    "color": {
+      "type": "string",
+      "description": "Badge rengi (tailwind class, \u00f6rn: blue, green)"
+    }
+  },
+  "required": [
+    "key",
+    "name"
+  ]
+}
