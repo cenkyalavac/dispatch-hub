@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const TENANT_ID = 'ead220ab-1743-4c57-83ae-e055f3401f19';
+const TENANT_ID = Deno.env.get('SYMFONIE_TENANT_ID') || 'ead220ab-1743-4c57-83ae-e055f3401f19';
 const SCOPE = 'api://c2e8870d-faef-45ea-919c-b603f97bd0cc/.default';
 const BASE_URL = 'https://projects.moravia.com/Api/V5';
 
