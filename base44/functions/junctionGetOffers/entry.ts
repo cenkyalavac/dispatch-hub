@@ -1,0 +1,83 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
+const PROD_BASE = 'https://hypnos.welocalize.tools';
+
+Deno.serve(async (req) => {
+  try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const jwt = Deno.env.get('JUNCTION_JWT');
+    const apiBase = Deno.env.get('JUNCTION_API_BASE') || PROD_BASE;
+
+    if (!jwt) {
+      return Response.json({ success: false, error: 'JUNCTION_JWT not configured', offers: [] });
+    }
+
+    // Fetch all direct offers with pagination (max limit per page is 25)
+    const offers = [];
+    let offset = 0;
+    const limit = 25;
+    while (true) {
+      const url = `${apiBase}/v2/offer/me?limit=${limit}&offset=${offset}`;
+      const r = await fetch(url, {
+        headers: { 'x-pantheon-auth': jwt, 'Accept': 'application/json' },
+      });
+      if (!r.ok) {
+        const text = await r.text();
+        return Response.json({
+          success: false,
+          error: `Junction API HTTP ${r.status}: ${text.slice(0, 200)}`,
+          offers,
+        }, { status: r.status });
+      }
+      const data = await r.json();
+      const page = Array.isArray(data) ? data : (data?.data || []);
+      offers.push(...page);
+      if (page.length < limit) break;
+      offset += limit;
+      if (offset > 500) break; // safety cap
+    }
+
+    // Normalize offers into a task-like shape for the UI
+    const tasks = offers.map(o => {
+      const td = o.taskDetail || o.task || {};
+      const project = td.project || o.project || {};
+      const wordCount = td.wordCount ?? td.words ?? td.sourceWordCount ?? null;
+      const price = o.amount ?? o.totalAmount ?? td.amount ?? null;
+      return {
+        id: o.id,
+        name: td.name || o.name || `Offer #${o.id}`,
+        project_name: project.name || td.projectName || '',
+        client_name: project.client?.name || project.clientName || '',
+        source_language: td.sourceLocale || td.sourceLanguage || '',
+        target_language: td.targetLocale || td.targetLanguage || '',
+        word_count: wordCount,
+        price_max_usd: price,
+        price_min_usd: price,
+        due_date: o.dueDate || td.dueDate || null,
+        created_at: o.createdAt || null,
+        workflow_name: td.workflow || td.workflowName || '',
+        service_tag: td.serviceTag || td.service || '',
+        task_type: td.taskType || '',
+        cat_tool: td.catTool || '',
+        assigned_to: o.offeringUser?.name || '',
+        portal: 'junction',
+        _raw: o,
+      };
+    });
+
+    return Response.json({
+      success: true,
+      tasks,
+      summary: {
+        total: tasks.length,
+        total_words: tasks.reduce((s, t) => s + (t.word_count || 0), 0),
+        total_price: tasks.reduce((s, t) => s + (t.price_max_usd || 0), 0),
+      },
+    });
+  } catch (error) {
+    return Response.json({ success: false, error: error.message, offers: [] }, { status: 500 });
+  }
+});

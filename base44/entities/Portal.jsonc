@@ -4,29 +4,94 @@
   "properties": {
     "key": {
       "type": "string",
-      "description": "Tekil tan\u0131mlay\u0131c\u0131 (\u00f6rn: symfonie, protemos)",
-      "example": "symfonie"
+      "description": "Unique identifier (e.g. symfonie, junction)"
     },
     "name": {
       "type": "string",
-      "description": "G\u00f6r\u00fcnen ad (\u00f6rn: Moravia Symfonie)"
+      "description": "Display name (e.g. Moravia Symfonie)"
+    },
+    "vendor": {
+      "type": "string",
+      "description": "Parent vendor / company (e.g. Moravia, Welocalize)"
     },
     "is_active": {
       "type": "boolean",
       "default": true,
-      "description": "Portal aktif mi?"
+      "description": "Whether the portal is enabled"
     },
     "description": {
       "type": "string",
-      "description": "K\u0131sa a\u00e7\u0131klama"
+      "description": "Short description shown on the connector card"
     },
     "icon": {
       "type": "string",
-      "description": "Lucide icon ad\u0131 (\u00f6rn: Globe, Briefcase)"
+      "description": "Lucide icon name"
     },
     "color": {
       "type": "string",
-      "description": "Badge rengi (tailwind class, \u00f6rn: blue, green)"
+      "description": "Accent color (tailwind hue, e.g. blue, purple, emerald)"
+    },
+    "auth_type": {
+      "type": "string",
+      "enum": [
+        "oauth2_client_credentials",
+        "jwt_bearer",
+        "api_key",
+        "none"
+      ],
+      "description": "How this portal authenticates"
+    },
+    "connection_status": {
+      "type": "string",
+      "enum": [
+        "connected",
+        "disconnected",
+        "error",
+        "not_configured"
+      ],
+      "default": "not_configured",
+      "description": "Latest connection check result"
+    },
+    "connection_message": {
+      "type": "string",
+      "description": "Latest connection status detail (error message etc.)"
+    },
+    "last_sync_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last successful poll/sync timestamp"
+    },
+    "last_checked_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last connection test timestamp"
+    },
+    "docs_url": {
+      "type": "string",
+      "description": "Official API documentation URL"
+    },
+    "required_secrets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Secret names required for this portal to work"
+    },
+    "process_function": {
+      "type": "string",
+      "description": "Backend function name to run rule-based automation"
+    },
+    "test_function": {
+      "type": "string",
+      "description": "Backend function name to test the connection"
+    },
+    "fetch_function": {
+      "type": "string",
+      "description": "Backend function that returns the pending tasks list"
+    },
+    "accept_function": {
+      "type": "string",
+      "description": "Backend function that accepts a single task manually"
     }
   },
   "required": [
