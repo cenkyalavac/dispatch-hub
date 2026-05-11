@@ -1,42 +1,26 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-// Helper: get Symfonie token (Moravia Login or Azure AD)
-async function getSymfonieToken() {
+const TENANT_ID = 'ead220ab-1743-4c57-83ae-e055f3401f19';
+const SCOPE = 'api://c2e8870d-faef-45ea-919c-b603f97bd0cc/.default';
+const BASE_URL = 'https://projects.moravia.com/Api/V5';
+
+async function getToken() {
   const clientId = Deno.env.get('SYMFONIE_CLIENT_ID');
   const clientSecret = Deno.env.get('SYMFONIE_CLIENT_SECRET');
-  const tenantId = Deno.env.get('SYMFONIE_TENANT_ID');
 
-  // Moravia Login (primary) — Azure AD only if explicitly set
-  const serviceAccount = Deno.env.get('SYMFONIE_SERVICE_ACCOUNT');
-  let tokenRes;
-  if (serviceAccount) {
-    const params = new URLSearchParams();
-    params.append('grant_type', 'service');
-    params.append('client_id', clientId);
-    params.append('client_secret', clientSecret);
-    params.append('scope', 'symfonie2-api');
-    params.append('service_account', serviceAccount);
-    tokenRes = await fetch('https://login.moravia.com/connect/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString()
-    });
-  } else if (tenantId) {
-    const params = new URLSearchParams();
-    params.append('grant_type', 'client_credentials');
-    params.append('client_id', clientId);
-    params.append('client_secret', clientSecret);
-    params.append('scope', 'api://c2e8870d-faef-45ea-919c-b603f97bd0cc/.default');
-    tokenRes = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString()
-    });
-  } else {
-    throw new Error('SYMFONIE_SERVICE_ACCOUNT veya SYMFONIE_TENANT_ID gerekli');
-  }
+  const params = new URLSearchParams();
+  params.append('grant_type', 'client_credentials');
+  params.append('client_id', clientId);
+  params.append('client_secret', clientSecret);
+  params.append('scope', SCOPE);
 
-  if (!tokenRes.ok) throw new Error('Symfonie token alınamadı: ' + await tokenRes.text());
+  const tokenRes = await fetch(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString()
+  });
+
+  if (!tokenRes.ok) throw new Error('Token alınamadı: ' + await tokenRes.text());
   const d = await tokenRes.json();
   return d.access_token;
 }
@@ -77,7 +61,7 @@ function matchesRule(rule, task) {
 }
 
 async function acceptTaskInSymfonie(taskId, token) {
-  const res = await fetch(`https://projects.moravia.com/api/V5/Tasks(${taskId})`, {
+  const res = await fetch(`${BASE_URL}/Tasks(${taskId})`, {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -127,8 +111,6 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // Scheduled automation'larda kullanıcı olmaz, service role ile çalışırız
-    // Manuel çağrıda kullanıcı kontrolü (opsiyonel)
     const user = await base44.auth.me().catch(() => null);
     if (user && user.role !== 'admin') {
       return Response.json({ error: 'Forbidden: Admin only' }, { status: 403 });
@@ -140,13 +122,13 @@ Deno.serve(async (req) => {
     const rules = await base44.asServiceRole.entities.Rule.filter({ is_active: true }, 'priority', 100);
     console.log(`${rules.length} aktif kural bulundu`);
 
-    // 2. Get Symfonie token
-    const token = await getSymfonieToken();
-    console.log('Symfonie token alındı');
+    // 2. Get Symfonie token (Azure AD)
+    const token = await getToken();
+    console.log('Azure AD token alındı');
 
     // 3. Fetch ToDo tasks from Symfonie
     const tasksRes = await fetch(
-      `https://projects.moravia.com/api/V5/Tasks?$filter=State eq 'ToDo'&$expand=FinanceRows,Project&$top=200`,
+      `${BASE_URL}/Tasks?$filter=State eq 'ToDo'&$expand=FinanceRows,Project&$top=200`,
       {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -188,7 +170,7 @@ Deno.serve(async (req) => {
         task_id: raw.Id,
         task_name: raw.Name || '',
         project_name: raw.Project?.Name || raw.JobName || '',
-        client_name: raw.Project?.CustomerName || '',
+        client_name: raw.Project?.Company?.Name || raw.Project?.CustomerName || '',
         source_language: raw.SourceLanguageCode || '',
         target_language: raw.TargetLanguageCode || '',
         word_count: wordCount,
