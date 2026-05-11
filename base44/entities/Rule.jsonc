@@ -1,0 +1,73 @@
+{
+  "name": "Rule",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Kural ad\u0131"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Kural aktif mi?"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "accept",
+        "reject"
+      ],
+      "default": "accept",
+      "description": "E\u015fle\u015fince ne yap\u0131lacak"
+    },
+    "conditions": {
+      "type": "array",
+      "description": "Kural ko\u015fullar\u0131 (AND mant\u0131\u011f\u0131)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "project_name",
+              "source_language",
+              "target_language",
+              "client_name",
+              "word_count",
+              "price",
+              "quantity"
+            ],
+            "description": "Kontrol edilecek alan"
+          },
+          "operator": {
+            "type": "string",
+            "enum": [
+              "contains",
+              "equals",
+              "not_contains",
+              "starts_with",
+              "greater_than",
+              "less_than",
+              "greater_equal",
+              "less_equal"
+            ],
+            "description": "Operat\u00f6r"
+          },
+          "value": {
+            "type": "string",
+            "description": "Kar\u015f\u0131la\u015ft\u0131rma de\u011feri"
+          }
+        }
+      }
+    },
+    "priority": {
+      "type": "integer",
+      "default": 1,
+      "description": "Kural \u00f6nceli\u011fi (d\u00fc\u015f\u00fck = daha \u00f6nce \u00e7al\u0131\u015f\u0131r)"
+    }
+  },
+  "required": [
+    "name",
+    "action"
+  ]
+}

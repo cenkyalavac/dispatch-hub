@@ -1,0 +1,70 @@
+{
+  "name": "AcceptedTask",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "integer",
+      "description": "Symfonie Task ID"
+    },
+    "task_name": {
+      "type": "string",
+      "description": "Task ad\u0131"
+    },
+    "project_name": {
+      "type": "string",
+      "description": "Proje ad\u0131"
+    },
+    "client_name": {
+      "type": "string",
+      "description": "M\u00fc\u015fteri / hesap ad\u0131"
+    },
+    "source_language": {
+      "type": "string",
+      "description": "Kaynak dil kodu"
+    },
+    "target_language": {
+      "type": "string",
+      "description": "Hedef dil kodu"
+    },
+    "word_count": {
+      "type": "number",
+      "description": "Kelime say\u0131s\u0131"
+    },
+    "price": {
+      "type": "number",
+      "description": "Fiyat/maliyet"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Teslim tarihi"
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Kabul tarihi ve saati"
+    },
+    "matched_rule": {
+      "type": "string",
+      "description": "Uygulanan kural ad\u0131"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "rejected",
+        "error"
+      ],
+      "default": "accepted"
+    },
+    "sheets_synced": {
+      "type": "boolean",
+      "default": false,
+      "description": "Google Sheets'e kaydedildi mi?"
+    }
+  },
+  "required": [
+    "task_id",
+    "task_name"
+  ]
+}
