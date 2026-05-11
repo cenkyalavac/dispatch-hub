@@ -11,7 +11,7 @@ import Rules from './pages/Rules';
 import Tasks from './pages/Tasks';
 import SettingsPage from './pages/SettingsPage';
 import Portals from './pages/Portals';
-import PendingTasks from './pages/PendingTasks';
+import PendingTasks from './pages/PendingTasks.jsx';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();

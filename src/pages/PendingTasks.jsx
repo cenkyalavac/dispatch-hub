@@ -1,17 +1,86 @@
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, Clock, Search, AlertCircle, Globe2, CheckCircle2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { RefreshCw, Clock, Search, AlertCircle, Globe2, Download } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { format } from 'date-fns';
 import { toast } from 'sonner';
+import TaskDetailCard from '@/components/pending/TaskDetailCard';
+
+function exportToCsv(tasks) {
+  const headers = [
+    'ID', 'Task Name', 'Project', 'Source Lang', 'Target Lang',
+    'Words', 'Min USD', 'Max USD', 'Due Date', 'Created At',
+    'Workflow', 'Service Tag', 'Task Type', 'CAT Tool', 'Assigned To',
+    'Finance Rows Count', 'Billing Units'
+  ];
+
+  const rows = tasks.map(t => [
+    t.id,
+    `"${(t.name || '').replace(/"/g, '""')}"`,
+    `"${(t.project_name || '').replace(/"/g, '""')}"`,
+    t.source_language,
+    t.target_language,
+    t.word_count || 0,
+    t.price_min_usd?.toFixed(2) || '0.00',
+    t.price_max_usd?.toFixed(2) || '0.00',
+    t.due_date ? new Date(t.due_date).toISOString() : '',
+    t.created_at ? new Date(t.created_at).toISOString() : '',
+    `"${(t.workflow_name || '').replace(/"/g, '""')}"`,
+    `"${(t.service_tag || '').replace(/"/g, '""')}"`,
+    `"${(t.task_type || '').replace(/"/g, '""')}"`,
+    `"${(t.cat_tool || '').replace(/"/g, '""')}"`,
+    `"${(t.assigned_to || '').replace(/"/g, '""')}"`,
+    t.finance_rows?.length || 0,
+    `"${(t.finance_summary?.billing_units || []).join(', ')}"`,
+  ]);
+
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `pending_tasks_${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function PendingTasks() {
   const [search, setSearch] = useState('');
   const [acceptingIds, setAcceptingIds] = useState(new Set());
+
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ['symfonie-pending-tasks'],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('symfonieGetTasks', {});
+      return res.data;
+    },
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const tasks = data?.tasks || [];
+
+  const filtered = tasks.filter(t => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      t.name?.toLowerCase().includes(q) ||
+      t.project_name?.toLowerCase().includes(q) ||
+      t.source_language?.toLowerCase().includes(q) ||
+      t.target_language?.toLowerCase().includes(q) ||
+      t.workflow_name?.toLowerCase().includes(q) ||
+      t.service_tag?.toLowerCase().includes(q) ||
+      String(t.id).includes(q)
+    );
+  });
+
+  const handleRefresh = () => {
+    refetch();
+    toast.info('Yenileniyor...');
+  };
 
   const handleManualAccept = async (task) => {
     setAcceptingIds(prev => new Set([...prev, task.id]));
@@ -23,7 +92,7 @@ export default function PendingTasks() {
         source_language: task.source_language,
         target_language: task.target_language,
         word_count: task.word_count,
-        price: task.price,
+        price: task.price_max_usd,
         due_date: task.due_date,
       });
       if (res.data?.success) {
@@ -39,57 +108,64 @@ export default function PendingTasks() {
     }
   };
 
-  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
-    queryKey: ['symfonie-pending-tasks'],
-    queryFn: async () => {
-      const res = await base44.functions.invoke('symfonieGetTasks', {});
-      return res.data;
-    },
-    staleTime: 60_000, // cache for 1 minute
-    retry: false,
-  });
-
-  const tasks = data?.tasks || [];
-
-  const filtered = tasks.filter(t => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      t.name?.toLowerCase().includes(q) ||
-      t.project_name?.toLowerCase().includes(q) ||
-      t.source_language?.toLowerCase().includes(q) ||
-      t.target_language?.toLowerCase().includes(q) ||
-      t.workflow_name?.toLowerCase().includes(q)
-    );
-  });
-
-  const handleRefresh = () => {
-    refetch();
-    toast.info('Refreshing pending tasks...');
-  };
+  const totalWords = tasks.reduce((s, t) => s + (t.word_count || 0), 0);
+  const totalMaxUsd = tasks.reduce((s, t) => s + (t.price_max_usd || 0), 0);
+  const totalMinUsd = tasks.reduce((s, t) => s + (t.price_min_usd || 0), 0);
 
   return (
-    <div className="p-8 max-w-6xl">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-6 max-w-6xl">
+      <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Pending Tasks</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Live tasks currently in <Badge variant="outline" className="text-xs mx-1">Order</Badge> state — awaiting Accept or Reject
+            <Badge variant="outline" className="text-xs mr-1">Order</Badge>
+            durumundaki görevler — kabul veya reddi bekleniyor
           </p>
         </div>
-        <Button variant="outline" onClick={handleRefresh} disabled={isFetching} className="gap-2">
-          <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => exportToCsv(filtered)}
+            disabled={filtered.length === 0}
+            className="gap-2"
+          >
+            <Download className="w-4 h-4" />
+            CSV İndir
+          </Button>
+          <Button variant="outline" onClick={handleRefresh} disabled={isFetching} className="gap-2">
+            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+            Yenile
+          </Button>
+        </div>
       </div>
 
-      {/* Search + stats */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="relative flex-1 max-w-sm">
+      {!isLoading && !isError && tasks.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <div className="bg-card rounded-xl border p-4">
+            <p className="text-xs text-muted-foreground">Toplam Görev</p>
+            <p className="text-2xl font-bold mt-1">{tasks.length}</p>
+          </div>
+          <div className="bg-card rounded-xl border p-4">
+            <p className="text-xs text-muted-foreground">Toplam Kelime</p>
+            <p className="text-2xl font-bold mt-1">{totalWords.toLocaleString()}</p>
+          </div>
+          <div className="bg-card rounded-xl border p-4">
+            <p className="text-xs text-muted-foreground">Min Gelir (USD)</p>
+            <p className="text-2xl font-bold mt-1 text-muted-foreground">${totalMinUsd.toFixed(2)}</p>
+          </div>
+          <div className="bg-card rounded-xl border p-4">
+            <p className="text-xs text-muted-foreground">Maks Gelir (USD)</p>
+            <p className="text-2xl font-bold mt-1 text-primary">${totalMaxUsd.toFixed(2)}</p>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-4 mb-4">
+        <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             className="pl-9"
-            placeholder="Search tasks..."
+            placeholder="Görev, proje, dil, ID ara..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -97,130 +173,56 @@ export default function PendingTasks() {
         {!isLoading && !isError && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Clock className="w-4 h-4" />
-            <span>{filtered.length} of {tasks.length} tasks</span>
+            <span>{filtered.length} / {tasks.length} görev</span>
           </div>
         )}
       </div>
 
-      {/* Error state */}
       {isError && (
         <Card className="border-destructive/30 bg-destructive/5">
           <CardContent className="p-6 flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
             <div>
-              <p className="font-medium text-sm text-destructive">Failed to load pending tasks</p>
-              <p className="text-xs text-muted-foreground mt-1">{error?.message || 'Unknown error'}</p>
+              <p className="font-medium text-sm text-destructive">Görevler yüklenemedi</p>
+              <p className="text-xs text-muted-foreground mt-1">{error?.message || 'Bilinmeyen hata'}</p>
               <Button variant="outline" size="sm" onClick={handleRefresh} className="mt-3 gap-2">
-                <RefreshCw className="w-3 h-3" /> Retry
+                <RefreshCw className="w-3 h-3" /> Tekrar Dene
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Loading state */}
       {isLoading && (
-        <div className="space-y-2">
-          {[1, 2, 3, 4, 5].map(i => (
-            <div key={i} className="h-16 bg-secondary rounded-xl animate-pulse" />
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="h-20 bg-secondary rounded-xl animate-pulse" />
           ))}
         </div>
       )}
 
-      {/* Empty state */}
       {!isLoading && !isError && filtered.length === 0 && (
         <Card className="border-dashed">
           <CardContent className="py-16 text-center text-muted-foreground">
             <Globe2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="text-sm font-medium">
-              {tasks.length === 0
-                ? 'No tasks currently in Order state'
-                : 'No tasks match your search'}
+              {tasks.length === 0 ? 'Order durumunda görev yok' : 'Aramanızla eşleşen görev yok'}
             </p>
-            {tasks.length === 0 && (
-              <p className="text-xs mt-1">All tasks have been processed or none are awaiting action.</p>
-            )}
           </CardContent>
         </Card>
       )}
 
-      {/* Task table */}
       {!isLoading && !isError && filtered.length > 0 && (
-        <Card className="shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-secondary/50">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Task Name</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Project</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Language Pair</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Words</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Price (max USD)</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Due Date</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Created</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Workflow</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((task, idx) => (
-                  <tr
-                    key={task.id}
-                    className={`border-b hover:bg-secondary/30 transition-colors ${idx % 2 === 1 ? 'bg-secondary/10' : ''}`}
-                  >
-                    <td className="px-4 py-3">
-                      <p className="font-medium truncate max-w-[200px]">{task.name}</p>
-                      {task.service_tag && (
-                        <p className="text-xs text-muted-foreground">{task.service_tag}</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-sm truncate max-w-[160px] text-muted-foreground">{task.project_name || '-'}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      {task.source_language || task.target_language ? (
-                        <span className="text-xs font-mono bg-secondary px-2 py-0.5 rounded">
-                          {task.source_language} → {task.target_language}
-                        </span>
-                      ) : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      {task.word_count ? task.word_count.toLocaleString() : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      {task.price > 0 ? `$${task.price.toFixed(2)}` : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {task.due_date ? format(new Date(task.due_date), 'dd MMM yyyy HH:mm') : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {task.created_at ? format(new Date(task.created_at), 'dd MMM HH:mm') : '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      {task.workflow_name ? (
-                        <Badge variant="outline" className="text-xs">{task.workflow_name}</Badge>
-                      ) : '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-green-600 border-green-300 hover:bg-green-50 gap-1"
-                        disabled={acceptingIds.has(task.id)}
-                        onClick={() => handleManualAccept(task)}
-                      >
-                        {acceptingIds.has(task.id)
-                          ? <RefreshCw className="w-3 h-3 animate-spin" />
-                          : <CheckCircle2 className="w-3 h-3" />}
-                        Kabul Et
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <div className="space-y-3">
+          {filtered.map(task => (
+            <TaskDetailCard
+              key={task.id}
+              task={task}
+              accepting={acceptingIds.has(task.id)}
+              onAccept={handleManualAccept}
+            />
+          ))}
+        </div>
       )}
     </div>
   );

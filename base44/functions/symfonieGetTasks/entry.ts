@@ -46,13 +46,31 @@ async function fetchAllPages(url, token) {
     const data = await res.json();
     const items = data.value || [];
     results.push(...items);
-
-    // OData next link for pagination
     nextUrl = data['@odata.nextLink'] || null;
   }
 
   return results;
 }
+
+// Billing unit codes from Symfonie API
+const BILLING_UNIT_NAMES = {
+  1: 'Words',
+  2: 'Characters',
+  3: 'Lines',
+  4: 'Pages',
+  5: 'Hours',
+  6: 'Minutes',
+  7: 'Segments',
+  8: 'Files',
+  'Words': 'Words',
+  'Characters': 'Characters',
+  'Lines': 'Lines',
+  'Pages': 'Pages',
+  'Hours': 'Hours',
+  'Minutes': 'Minutes',
+  'Segments': 'Segments',
+  'Files': 'Files',
+};
 
 Deno.serve(async (req) => {
   try {
@@ -62,30 +80,69 @@ Deno.serve(async (req) => {
 
     const token = await getToken();
 
-    // Filter directly via OData: State eq 'Order' = tasks awaiting acceptance
-    // Note: 'Project' is NOT a navigation property on TaskViewModel — use JobName for project name
-    // FinanceRows IS expandable for pricing/word count data
     const url = `${BASE_URL}/Tasks?$filter=State eq 'Order'&$expand=FinanceRows&$orderby=CreatedAt desc&$top=200`;
-
     const tasks = await fetchAllPages(url, token);
 
-    // Map to clean structure
-    const mapped = tasks.map(raw => ({
-      id: raw.Id,
-      name: raw.Name || '',
-      project_id: raw.ProjectId || null,
-      project_name: raw.JobName || raw.ProjectName || '',
-      source_language: raw.SourceLanguageCode || '',
-      target_language: raw.TargetLanguageCode || '',
-      word_count: raw.FinanceRows?.find(r => r.BillingUnit === 'Words')?.Quantity || 0,
-      price: raw.FinanceRows?.reduce((sum, r) => sum + (r.MaxUsd || 0), 0) || 0,
-      due_date: raw.DueDate || null,
-      created_at: raw.CreatedAt || null,
-      state: raw.State,
-      workflow_name: raw.WorkflowName || '',
-      job_name: raw.JobName || '',
-      service_tag: raw.ServiceTag || '',
-    }));
+    const mapped = tasks.map(raw => {
+      const financeRows = (raw.FinanceRows || []).map(r => ({
+        id: r.Id,
+        billing_unit: BILLING_UNIT_NAMES[r.BillingUnit] || String(r.BillingUnit),
+        billing_unit_code: r.BillingUnit,
+        quantity: r.Quantity || 0,
+        unit_price_usd: r.UnitPriceUsd || r.UnitPrice || 0,
+        min_usd: r.MinUsd || 0,
+        max_usd: r.MaxUsd || 0,
+        total_usd: r.TotalUsd || r.MaxUsd || 0,
+        name: r.Name || '',
+        description: r.Description || '',
+        is_confirmed: r.IsConfirmed || false,
+        cat_analysis: r.CatAnalysis || null,
+      }));
+
+      // Word count: find the Words billing row
+      const wordRow = financeRows.find(r => r.billing_unit === 'Words');
+      const wordCount = wordRow?.quantity || 0;
+      const totalMaxUsd = financeRows.reduce((sum, r) => sum + (r.max_usd || 0), 0);
+      const totalMinUsd = financeRows.reduce((sum, r) => sum + (r.min_usd || 0), 0);
+      const totalConfirmedUsd = financeRows
+        .filter(r => r.is_confirmed)
+        .reduce((sum, r) => sum + (r.total_usd || 0), 0);
+
+      return {
+        id: raw.Id,
+        name: raw.Name || '',
+        project_id: raw.ProjectId || null,
+        project_name: raw.JobName || raw.ProjectName || '',
+        source_language: raw.SourceLanguageCode || '',
+        target_language: raw.TargetLanguageCode || '',
+        word_count: wordCount,
+        price: totalMaxUsd,
+        price_min_usd: totalMinUsd,
+        price_max_usd: totalMaxUsd,
+        price_confirmed_usd: totalConfirmedUsd,
+        due_date: raw.DueDate || null,
+        created_at: raw.CreatedAt || null,
+        updated_at: raw.UpdatedAt || null,
+        state: raw.State,
+        workflow_name: raw.WorkflowName || '',
+        job_name: raw.JobName || '',
+        service_tag: raw.ServiceTag || '',
+        description: raw.Description || '',
+        instructions: raw.Instructions || '',
+        assigned_to: raw.AssignedToName || raw.AssignedTo || '',
+        task_type: raw.TaskType || raw.Type || '',
+        cat_tool: raw.CatTool || '',
+        finance_rows: financeRows,
+        finance_summary: {
+          total_rows: financeRows.length,
+          word_row: wordRow || null,
+          total_min_usd: totalMinUsd,
+          total_max_usd: totalMaxUsd,
+          total_confirmed_usd: totalConfirmedUsd,
+          billing_units: [...new Set(financeRows.map(r => r.billing_unit))],
+        }
+      };
+    });
 
     return Response.json({
       tasks: mapped,
