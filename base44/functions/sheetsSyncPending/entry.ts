@@ -5,9 +5,16 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
 
     const spreadsheetId = Deno.env.get('GOOGLE_SHEETS_SPREADSHEET_ID');
-    if (!spreadsheetId) return Response.json({ error: 'GOOGLE_SHEETS_SPREADSHEET_ID eksik' }, { status: 400 });
+    if (!spreadsheetId) {
+      console.error('GOOGLE_SHEETS_SPREADSHEET_ID is missing');
+      return Response.json({ error: 'GOOGLE_SHEETS_SPREADSHEET_ID is missing' }, { status: 400 });
+    }
 
     const { accessToken } = await base44.asServiceRole.connectors.getConnection('googlesheets');
+    if (!accessToken) {
+      console.error('Google Sheets access token not available');
+      return Response.json({ error: 'Google Sheets connector not authorized' }, { status: 400 });
+    }
 
     // Get all unsynced accepted tasks
     const allTasks = await base44.asServiceRole.entities.AcceptedTask.filter(
@@ -19,7 +26,7 @@ Deno.serve(async (req) => {
     console.log(`Found ${allTasks.length} unsynced tasks`);
 
     if (allTasks.length === 0) {
-      return Response.json({ success: true, synced: 0, message: 'Sync edilecek kayıt yok' });
+      return Response.json({ success: true, synced: 0, message: 'No records to sync' });
     }
 
     const rows = allTasks.map(t => [
@@ -36,21 +43,23 @@ Deno.serve(async (req) => {
       t.matched_rule || ''
     ]);
 
-    // Batch append all rows at once
-    const res = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A1:append?valueInputOption=USER_ENTERED`,
-      {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values: rows })
-      }
-    );
+    // Batch append all rows at once - use a proper range (Sheet1!A:K)
+    const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A:K:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+
+    const res = await fetch(appendUrl, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: rows })
+    });
 
     if (!res.ok) {
       const err = await res.text();
       console.error('Sheets append failed:', res.status, err);
-      return Response.json({ error: 'Sheets yazma hatası', details: err }, { status: 400 });
+      return Response.json({ error: 'Sheets write error', status: res.status, details: err }, { status: 400 });
     }
+
+    const result = await res.json();
+    console.log(`Sheets append succeeded. Updated range: ${result.updates?.updatedRange}, rows: ${result.updates?.updatedRows}`);
 
     // Mark all as synced
     await Promise.all(
@@ -58,10 +67,10 @@ Deno.serve(async (req) => {
     );
 
     console.log(`Successfully synced ${allTasks.length} tasks to Sheets`);
-    return Response.json({ success: true, synced: allTasks.length });
+    return Response.json({ success: true, synced: allTasks.length, updated_range: result.updates?.updatedRange });
 
   } catch (error) {
-    console.error('sheetsSyncPending error:', error.message);
+    console.error('sheetsSyncPending error:', error.message, error.stack);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });

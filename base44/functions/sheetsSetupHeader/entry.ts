@@ -8,13 +8,14 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const spreadsheetId = Deno.env.get('GOOGLE_SHEETS_SPREADSHEET_ID');
-    if (!spreadsheetId) return Response.json({ error: 'GOOGLE_SHEETS_SPREADSHEET_ID eksik' }, { status: 400 });
+    if (!spreadsheetId) return Response.json({ error: 'GOOGLE_SHEETS_SPREADSHEET_ID is missing' }, { status: 400 });
 
     const { accessToken } = await base44.asServiceRole.connectors.getConnection('googlesheets');
+    if (!accessToken) return Response.json({ error: 'Google Sheets connector not authorized' }, { status: 400 });
 
     const headers = [
-      'Task ID', 'Task Adı', 'Proje Adı', 'Müşteri', 'Kaynak Dil', 'Hedef Dil',
-      'Kelime Sayısı', 'Fiyat', 'Teslim Tarihi', 'Kabul Tarihi', 'Uygulanan Kural'
+      'Task ID', 'Task Name', 'Project Name', 'Client', 'Source Language', 'Target Language',
+      'Word Count', 'Price', 'Due Date', 'Accepted At', 'Matched Rule'
     ];
 
     const res = await fetch(
@@ -31,11 +32,13 @@ Deno.serve(async (req) => {
 
     if (!res.ok) {
       const err = await res.text();
-      return Response.json({ error: 'Header yazılamadı', details: err }, { status: 400 });
+      console.error('Header write failed:', res.status, err);
+      return Response.json({ error: 'Failed to write header', status: res.status, details: err }, { status: 400 });
     }
 
-    return Response.json({ success: true, message: 'Google Sheets başlık satırı oluşturuldu' });
+    return Response.json({ success: true, message: 'Google Sheets header row created' });
   } catch (error) {
+    console.error('sheetsSetupHeader error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
