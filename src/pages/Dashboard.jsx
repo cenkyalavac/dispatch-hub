@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, XCircle, Clock, Play, RefreshCw, TrendingUp, AlertCircle, Globe } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, Play, RefreshCw, TrendingUp, AlertCircle, Globe, ThumbsUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +37,7 @@ export default function Dashboard() {
   const [isRunning, setIsRunning] = useState(false);
   const [lastResult, setLastResult] = useState(null);
   const [selectedPortal, setSelectedPortal] = useState('symfonie');
+  const [acceptingIds, setAcceptingIds] = useState(new Set());
 
   const { data: portals = [] } = useQuery({
     queryKey: ['portals'],
@@ -61,6 +62,42 @@ export default function Dashboard() {
 
   const accepted = tasks.filter(t => t.status === 'accepted').length;
   const rejected = tasks.filter(t => t.status === 'rejected').length;
+
+  const handleManualAccept = async (task) => {
+    setAcceptingIds(prev => new Set([...prev, task.id]));
+    try {
+      const res = await base44.functions.invoke('symfonieAcceptTask', {
+        task_id: task.id,
+        task_name: task.name,
+        project_name: task.project_name,
+        source_language: task.source_language,
+        target_language: task.target_language,
+      });
+      if (res.data?.success) {
+        toast.success(`"${task.name}" kabul edildi`);
+        // Remove from skipped list
+        setLastResult(prev => ({
+          ...prev,
+          details: {
+            ...prev.details,
+            skipped: prev.details.skipped.filter(s => s.id !== task.id)
+          },
+          summary: {
+            ...prev.summary,
+            skipped: (prev.summary?.skipped || 1) - 1,
+            accepted: (prev.summary?.accepted || 0) + 1,
+          }
+        }));
+        refetch();
+      } else {
+        toast.error(res.data?.error || 'Kabul başarısız');
+      }
+    } catch (err) {
+      toast.error('Hata: ' + err.message);
+    } finally {
+      setAcceptingIds(prev => { const s = new Set(prev); s.delete(task.id); return s; });
+    }
+  };
 
   const handleRun = async () => {
     const fnName = PORTAL_FUNCTIONS[selectedPortal];
@@ -145,10 +182,22 @@ export default function Dashboard() {
                 <p className="text-xs text-muted-foreground font-medium mb-1">Skipped (no matching rule):</p>
                 <div className="space-y-1 max-h-40 overflow-y-auto">
                   {lastResult.details.skipped.filter(s => typeof s === 'object').map((s, i) => (
-                    <div key={i} className="text-xs bg-background/60 rounded px-2 py-1">
-                      <span className="font-medium">{s.name}</span>
-                      {s.source_language && <span className="text-muted-foreground ml-2">{s.source_language} → {s.target_language}</span>}
-                      {s.project_name && <span className="text-muted-foreground ml-2">· {s.project_name}</span>}
+                    <div key={i} className="text-xs bg-background/60 rounded px-2 py-1 flex items-center justify-between gap-2">
+                      <div>
+                        <span className="font-medium">{s.name}</span>
+                        {s.source_language && <span className="text-muted-foreground ml-2">{s.source_language} → {s.target_language}</span>}
+                        {s.project_name && <span className="text-muted-foreground ml-2">· {s.project_name}</span>}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-xs text-green-600 border-green-300 hover:bg-green-50 flex-shrink-0"
+                        disabled={acceptingIds.has(s.id)}
+                        onClick={() => handleManualAccept(s)}
+                      >
+                        {acceptingIds.has(s.id) ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ThumbsUp className="w-3 h-3 mr-1" />}
+                        {acceptingIds.has(s.id) ? '' : 'Kabul Et'}
+                      </Button>
                     </div>
                   ))}
                 </div>
