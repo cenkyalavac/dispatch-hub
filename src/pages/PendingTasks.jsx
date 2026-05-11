@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, Clock, Search, AlertCircle, Globe2 } from 'lucide-react';
+import { RefreshCw, Clock, Search, AlertCircle, Globe2, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,33 @@ import { toast } from 'sonner';
 
 export default function PendingTasks() {
   const [search, setSearch] = useState('');
+  const [acceptingIds, setAcceptingIds] = useState(new Set());
+
+  const handleManualAccept = async (task) => {
+    setAcceptingIds(prev => new Set([...prev, task.id]));
+    try {
+      const res = await base44.functions.invoke('symfonieAcceptTask', {
+        task_id: task.id,
+        task_name: task.name,
+        project_name: task.project_name,
+        source_language: task.source_language,
+        target_language: task.target_language,
+        word_count: task.word_count,
+        price: task.price,
+        due_date: task.due_date,
+      });
+      if (res.data?.success) {
+        toast.success(`"${task.name}" kabul edildi`);
+        refetch();
+      } else {
+        toast.error(res.data?.error || 'Kabul başarısız');
+      }
+    } catch (err) {
+      toast.error('Hata: ' + err.message);
+    } finally {
+      setAcceptingIds(prev => { const s = new Set(prev); s.delete(task.id); return s; });
+    }
+  };
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['symfonie-pending-tasks'],
@@ -132,6 +159,7 @@ export default function PendingTasks() {
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Due Date</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Created</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Workflow</th>
+                  <th className="px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody>
@@ -172,6 +200,20 @@ export default function PendingTasks() {
                       {task.workflow_name ? (
                         <Badge variant="outline" className="text-xs">{task.workflow_name}</Badge>
                       ) : '-'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-green-600 border-green-300 hover:bg-green-50 gap-1"
+                        disabled={acceptingIds.has(task.id)}
+                        onClick={() => handleManualAccept(task)}
+                      >
+                        {acceptingIds.has(task.id)
+                          ? <RefreshCw className="w-3 h-3 animate-spin" />
+                          : <CheckCircle2 className="w-3 h-3" />}
+                        Kabul Et
+                      </Button>
                     </td>
                   </tr>
                 ))}
