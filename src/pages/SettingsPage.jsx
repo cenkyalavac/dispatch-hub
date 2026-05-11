@@ -14,9 +14,9 @@ export default function SettingsPage() {
     try {
       const res = await base44.functions.invoke('sheetsSetupHeader', {});
       if (res.data.success) {
-        toast.success('Google Sheets başlık satırı oluşturuldu!');
+        toast.success('Google Sheets header row created!');
       } else {
-        toast.error(res.data.error || 'Hata oluştu');
+        toast.error(res.data.error || 'An error occurred');
       }
     } catch (err) {
       toast.error('Hata: ' + err.message);
@@ -30,9 +30,9 @@ export default function SettingsPage() {
     try {
       const res = await base44.functions.invoke('symfonieAuth', {});
       if (res.data.access_token) {
-        toast.success('Symfonie API bağlantısı başarılı! Token alındı.');
+        toast.success('Symfonie API connection successful! Token received.');
       } else {
-        toast.error(res.data.error || 'Token alınamadı');
+        toast.error(res.data.error || 'Could not retrieve token');
       }
     } catch (err) {
       toast.error('Hata: ' + err.message);
@@ -44,8 +44,8 @@ export default function SettingsPage() {
   return (
     <div className="p-8 max-w-2xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">Ayarlar</h1>
-        <p className="text-muted-foreground text-sm mt-1">Bağlantı testleri ve kurulum araçları</p>
+        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+        <p className="text-muted-foreground text-sm mt-1">Connection tests and setup tools</p>
       </div>
 
       <div className="space-y-4">
@@ -53,14 +53,14 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <RefreshCw className="w-4 h-4" />
-              Symfonie API Bağlantı Testi
+              Symfonie API Connection Test
             </CardTitle>
-            <CardDescription>Client ID ve Client Secret kullanarak Symfonie'den token alır.</CardDescription>
+            <CardDescription>Fetches a token from Symfonie using the Client ID and Client Secret.</CardDescription>
           </CardHeader>
           <CardContent>
             <Button onClick={handleTestAuth} disabled={testLoading} variant="outline" className="gap-2">
               {testLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              {testLoading ? 'Test ediliyor...' : 'Bağlantıyı Test Et'}
+              {testLoading ? 'Testing...' : 'Test Connection'}
             </Button>
           </CardContent>
         </Card>
@@ -72,20 +72,20 @@ export default function SettingsPage() {
               Google Sheets Kurulumu
             </CardTitle>
             <CardDescription>
-              İlk kullanımda Google Sheets'e başlık satırını ekler. Bir kez çalıştırın.
+              Adds the header row to Google Sheets on first use. Run once.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button onClick={handleSheetsSetup} disabled={setupLoading} variant="outline" className="gap-2">
               {setupLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sheet className="w-4 h-4" />}
-              {setupLoading ? 'Oluşturuluyor...' : 'Başlık Satırı Oluştur'}
+              {setupLoading ? 'Creating...' : 'Create Header Row'}
             </Button>
           </CardContent>
         </Card>
 
         <Card className="bg-secondary/50 border-dashed">
           <CardContent className="p-6">
-            <h3 className="font-medium text-sm mb-3">Gerekli Secrets</h3>
+            <h3 className="font-medium text-sm mb-3">Required Secrets</h3>
             <div className="space-y-2 text-xs text-muted-foreground font-mono">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-3 h-3 text-green-500" />

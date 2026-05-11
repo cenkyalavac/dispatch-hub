@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { tr } from 'date-fns/locale';
+
 
 export default function Tasks() {
   const [search, setSearch] = useState('');
@@ -39,8 +39,8 @@ export default function Tasks() {
   return (
     <div className="p-8 max-w-6xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">İşlenen Tasklar</h1>
-        <p className="text-muted-foreground text-sm mt-1">Kabul ve reddedilen tüm taskların kaydı</p>
+        <h1 className="text-2xl font-bold text-foreground">Processed Tasks</h1>
+        <p className="text-muted-foreground text-sm mt-1">Log of all accepted and rejected tasks</p>
       </div>
 
       <div className="flex gap-3 mb-6">
@@ -48,7 +48,7 @@ export default function Tasks() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             className="pl-9"
-            placeholder="Task adı, proje veya müşteri ara..."
+            placeholder="Search by task name, project or client..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -59,7 +59,7 @@ export default function Tasks() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tüm Portaller</SelectItem>
+            <SelectItem value="all">All Portals</SelectItem>
             {portals.map(p => (
               <SelectItem key={p.key} value={p.key}>{p.name}</SelectItem>
             ))}
@@ -70,9 +70,9 @@ export default function Tasks() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tüm Durumlar</SelectItem>
-            <SelectItem value="accepted">Kabul Edildi</SelectItem>
-            <SelectItem value="rejected">Reddedildi</SelectItem>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="accepted">Accepted</SelectItem>
+            <SelectItem value="rejected">Rejected</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -84,7 +84,7 @@ export default function Tasks() {
       ) : filtered.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="py-16 text-center text-muted-foreground">
-            <p className="text-sm">Kayıt bulunamadı.</p>
+            <p className="text-sm">No records found.</p>
           </CardContent>
         </Card>
       ) : (
@@ -93,15 +93,15 @@ export default function Tasks() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-secondary/50">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Durum</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Task</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Portal</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Müşteri</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Dil Çifti</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Kelime</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Teslim</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Kural</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Kabul Tarihi</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Client</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Language Pair</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Words</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Due Date</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Rule</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Accepted At</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Sheets</th>
                 </tr>
               </thead>
@@ -130,7 +130,7 @@ export default function Tasks() {
                     </td>
                     <td className="px-4 py-3 text-sm">{task.word_count || '-'}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {task.due_date ? format(new Date(task.due_date), 'dd MMM yy', { locale: tr }) : '-'}
+                      {task.due_date ? format(new Date(task.due_date), 'dd MMM yy') : '-'}
                     </td>
                     <td className="px-4 py-3">
                       {task.matched_rule ? (
@@ -138,7 +138,7 @@ export default function Tasks() {
                       ) : '-'}
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {task.accepted_at ? format(new Date(task.accepted_at), 'dd MMM HH:mm', { locale: tr }) : '-'}
+                      {task.accepted_at ? format(new Date(task.accepted_at), 'dd MMM HH:mm') : '-'}
                     </td>
                     <td className="px-4 py-3">
                       {task.sheets_synced ? (

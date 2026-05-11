@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { tr } from 'date-fns/locale';
+
 
 const PORTAL_FUNCTIONS = {
   symfonie: 'symfonieProcessTasks',
@@ -65,7 +65,7 @@ export default function Dashboard() {
   const handleRun = async () => {
     const fnName = PORTAL_FUNCTIONS[selectedPortal];
     if (!fnName) {
-      toast.error(`"${selectedPortal}" portalı için henüz backend fonksiyonu yok.`);
+      toast.error(`No backend function configured for portal "${selectedPortal}".`);
       return;
     }
     setIsRunning(true);
@@ -74,10 +74,10 @@ export default function Dashboard() {
       const result = res.data;
       setLastResult(result);
       if (result.success) {
-        toast.success(`İşlem tamamlandı: ${result.summary.accepted} kabul, ${result.summary.rejected} red`);
+        toast.success(`Done: ${result.summary.accepted} accepted, ${result.summary.rejected} rejected`);
         refetch();
       } else {
-        toast.error(result.error || 'İşlem başarısız');
+        toast.error(result.error || 'Operation failed');
       }
     } catch (err) {
       toast.error('Hata: ' + err.message);
@@ -91,7 +91,7 @@ export default function Dashboard() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground text-sm mt-1">Otomasyon hub genel durumu</p>
+          <p className="text-muted-foreground text-sm mt-1">Automation hub overview</p>
         </div>
         <div className="flex items-center gap-3">
           <Select value={selectedPortal} onValueChange={setSelectedPortal}>
@@ -100,7 +100,7 @@ export default function Dashboard() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tüm Portaller</SelectItem>
+              <SelectItem value="all">All Portals</SelectItem>
               {portals.map(p => (
                 <SelectItem key={p.key} value={p.key}>{p.name}</SelectItem>
               ))}
@@ -110,19 +110,19 @@ export default function Dashboard() {
             onClick={handleRun}
             disabled={isRunning || selectedPortal === 'all'}
             className="gap-2 bg-primary hover:bg-primary/90"
-            title={selectedPortal === 'all' ? 'Çalıştırmak için bir portal seçin' : ''}
+            title={selectedPortal === 'all' ? 'Select a portal to run' : ''}
           >
             {isRunning ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            {isRunning ? 'İşleniyor...' : 'Manuel Çalıştır'}
+            {isRunning ? 'Processing...' : 'Run Manually'}
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard title="Toplam İşlenen" value={tasks.length} icon={TrendingUp} color="bg-accent text-accent-foreground" sub="Seçili portal" />
-        <StatCard title="Kabul Edilen" value={accepted} icon={CheckCircle2} color="bg-green-100 text-green-600" />
-        <StatCard title="Reddedilen" value={rejected} icon={XCircle} color="bg-red-100 text-red-500" />
-        <StatCard title="Aktif Kural" value={rules.length} icon={Clock} color="bg-blue-100 text-blue-600" />
+        <StatCard title="Total Processed" value={tasks.length} icon={TrendingUp} color="bg-accent text-accent-foreground" sub="Selected portal" />
+        <StatCard title="Accepted" value={accepted} icon={CheckCircle2} color="bg-green-100 text-green-600" />
+        <StatCard title="Rejected" value={rejected} icon={XCircle} color="bg-red-100 text-red-500" />
+        <StatCard title="Active Rules" value={rules.length} icon={Clock} color="bg-blue-100 text-blue-600" />
       </div>
 
       {lastResult && (
@@ -130,12 +130,12 @@ export default function Dashboard() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-2">
               <AlertCircle className="w-4 h-4 text-primary" />
-              <span className="font-medium text-sm">Son Çalışma Sonucu</span>
+              <span className="font-medium text-sm">Last Run Result</span>
             </div>
             <div className="flex gap-4 text-sm">
-              <span className="text-green-600 font-medium">✓ {lastResult.summary?.accepted || 0} Kabul</span>
-              <span className="text-red-500 font-medium">✗ {lastResult.summary?.rejected || 0} Red</span>
-              <span className="text-muted-foreground">⊘ {lastResult.summary?.skipped || 0} Atlandı</span>
+              <span className="text-green-600 font-medium">✓ {lastResult.summary?.accepted || 0} Accepted</span>
+              <span className="text-red-500 font-medium">✗ {lastResult.summary?.rejected || 0} Rejected</span>
+              <span className="text-muted-foreground">⊘ {lastResult.summary?.skipped || 0} Skipped</span>
             </div>
           </CardContent>
         </Card>
@@ -143,13 +143,13 @@ export default function Dashboard() {
 
       <Card className="shadow-sm">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Son İşlenen Tasklar</CardTitle>
+          <CardTitle className="text-base">Recently Processed Tasks</CardTitle>
         </CardHeader>
         <CardContent>
           {tasks.length === 0 ? (
             <div className="text-center py-10 text-muted-foreground">
               <Clock className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">Henüz işlenen task yok.</p>
+              <p className="text-sm">No processed tasks yet.</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -178,7 +178,7 @@ export default function Dashboard() {
                       <Badge variant="outline" className="text-xs hidden sm:flex">{task.matched_rule}</Badge>
                     )}
                     <span className="text-xs text-muted-foreground">
-                      {task.accepted_at ? format(new Date(task.accepted_at), 'dd MMM HH:mm', { locale: tr }) : ''}
+                      {task.accepted_at ? format(new Date(task.accepted_at), 'dd MMM HH:mm') : ''}
                     </span>
                   </div>
                 </div>

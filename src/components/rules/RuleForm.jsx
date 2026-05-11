@@ -10,19 +10,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 
 const FIELDS = [
-  { value: 'project_name', label: 'Proje Adı' },
-  { value: 'client_name', label: 'Müşteri Adı' },
-  { value: 'source_language', label: 'Kaynak Dil' },
-  { value: 'target_language', label: 'Hedef Dil' },
-  { value: 'word_count', label: 'Kelime Sayısı' },
-  { value: 'price', label: 'Fiyat' },
+  { value: 'project_name', label: 'Project Name' },
+  { value: 'client_name', label: 'Client Name' },
+  { value: 'source_language', label: 'Source Language' },
+  { value: 'target_language', label: 'Target Language' },
+  { value: 'word_count', label: 'Word Count' },
+  { value: 'price', label: 'Price' },
 ];
 
 const TEXT_OPS = [
-  { value: 'contains', label: 'İçerir' },
-  { value: 'not_contains', label: 'İçermez' },
-  { value: 'equals', label: 'Eşittir' },
-  { value: 'starts_with', label: 'Başlar' },
+  { value: 'contains', label: 'Contains' },
+  { value: 'not_contains', label: 'Does not contain' },
+  { value: 'equals', label: 'Equals' },
+  { value: 'starts_with', label: 'Starts with' },
 ];
 
 const NUM_OPS = [
@@ -48,10 +48,10 @@ export default function RuleForm({ rule, portals = [], onClose }) {
       return base44.entities.Rule.create(data);
     },
     onSuccess: () => {
-      toast.success(rule?.id ? 'Kural güncellendi' : 'Kural oluşturuldu');
+      toast.success(rule?.id ? 'Rule updated' : 'Rule created');
       onClose();
     },
-    onError: (err) => toast.error('Hata: ' + err.message),
+    onError: (err) => toast.error('Error: ' + err.message),
   });
 
   const addCondition = () => {
@@ -75,7 +75,7 @@ export default function RuleForm({ rule, portals = [], onClose }) {
   };
 
   const handleSave = () => {
-    if (!name.trim()) { toast.error('Kural adı gerekli'); return; }
+    if (!name.trim()) { toast.error('Rule name is required'); return; }
     saveMutation.mutate({ name, portal, action, priority: Number(priority), conditions, is_active: true });
   };
 
@@ -83,7 +83,7 @@ export default function RuleForm({ rule, portals = [], onClose }) {
     <Card className="border-primary/30 shadow-md">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base">{rule?.id ? 'Kuralı Düzenle' : 'Yeni Kural'}</CardTitle>
+          <CardTitle className="text-base">{rule?.id ? 'Edit Rule' : 'New Rule'}</CardTitle>
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
             <X className="w-4 h-4" />
           </Button>
@@ -92,11 +92,11 @@ export default function RuleForm({ rule, portals = [], onClose }) {
       <CardContent className="space-y-4">
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-2 space-y-1">
-            <Label className="text-xs">Kural Adı</Label>
-            <Input value={name} onChange={e => setName(e.target.value)} placeholder="örn: Amazon projeleri kabul et" />
+            <Label className="text-xs">Rule Name</Label>
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Accept Amazon projects" />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Öncelik</Label>
+            <Label className="text-xs">Priority</Label>
             <Input type="number" value={priority} onChange={e => setPriority(e.target.value)} min={1} />
           </div>
         </div>
@@ -117,14 +117,14 @@ export default function RuleForm({ rule, portals = [], onClose }) {
             </Select>
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Aksiyon</Label>
+            <Label className="text-xs">Action</Label>
             <Select value={action} onValueChange={setAction}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="accept">✓ Kabul Et</SelectItem>
-                <SelectItem value="reject">✗ Reddet</SelectItem>
+                <SelectItem value="accept">✓ Accept</SelectItem>
+                <SelectItem value="reject">✗ Reject</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -132,14 +132,14 @@ export default function RuleForm({ rule, portals = [], onClose }) {
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <Label className="text-xs">Koşullar (AND mantığı — tümü sağlanmalı)</Label>
+            <Label className="text-xs">Conditions (AND logic — all must match)</Label>
             <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={addCondition}>
-              <Plus className="w-3 h-3" /> Koşul Ekle
+              <Plus className="w-3 h-3" /> Add Condition
             </Button>
           </div>
 
           {conditions.length === 0 && (
-            <p className="text-xs text-muted-foreground italic">Koşul yoksa kural tüm tasklara uygulanır.</p>
+            <p className="text-xs text-muted-foreground italic">If no conditions, the rule applies to all tasks.</p>
           )}
 
           {conditions.map((cond, idx) => {
@@ -169,7 +169,7 @@ export default function RuleForm({ rule, portals = [], onClose }) {
                   className="h-8 text-xs flex-1"
                   value={cond.value}
                   onChange={e => updateCondition(idx, 'value', e.target.value)}
-                  placeholder={isNum ? '1000' : 'değer...'}
+                  placeholder={isNum ? '1000' : 'value...'}
                 />
 
                 <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeCondition(idx)}>
@@ -182,9 +182,9 @@ export default function RuleForm({ rule, portals = [], onClose }) {
 
         <div className="flex gap-2 pt-1">
           <Button onClick={handleSave} disabled={saveMutation.isPending} className="flex-1">
-            {saveMutation.isPending ? 'Kaydediliyor...' : 'Kaydet'}
+            {saveMutation.isPending ? 'Saving...' : 'Save'}
           </Button>
-          <Button variant="outline" onClick={onClose}>İptal</Button>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
         </div>
       </CardContent>
     </Card>

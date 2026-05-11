@@ -37,7 +37,7 @@ export default function Rules() {
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.Rule.delete(id),
     onSuccess: () => {
-      toast.success('Kural silindi');
+      toast.success('Rule deleted');
       qc.invalidateQueries({ queryKey: ['rules-all'] });
     },
   });
@@ -58,14 +58,14 @@ export default function Rules() {
   };
 
   const actionColor = { accept: 'bg-green-100 text-green-700', reject: 'bg-red-100 text-red-600' };
-  const actionLabel = { accept: 'Kabul Et', reject: 'Reddet' };
+  const actionLabel = { accept: 'Accept', reject: 'Reject' };
 
   return (
     <div className="p-8 max-w-4xl">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Kurallar</h1>
-          <p className="text-muted-foreground text-sm mt-1">Task kabul/red kurallarını yönetin</p>
+          <h1 className="text-2xl font-bold text-foreground">Rules</h1>
+          <p className="text-muted-foreground text-sm mt-1">Manage task accept/reject rules</p>
         </div>
         <div className="flex items-center gap-3">
           <Select value={portalFilter} onValueChange={setPortalFilter}>
@@ -74,14 +74,14 @@ export default function Rules() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tüm Portaller</SelectItem>
+              <SelectItem value="all">All Portals</SelectItem>
               {portals.map(p => (
                 <SelectItem key={p.key} value={p.key}>{p.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Button onClick={() => { setEditingRule(null); setShowForm(true); }} className="gap-2">
-            <Plus className="w-4 h-4" /> Yeni Kural
+            <Plus className="w-4 h-4" /> New Rule
           </Button>
         </div>
       </div>
@@ -99,7 +99,7 @@ export default function Rules() {
       ) : rules.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="py-16 text-center text-muted-foreground">
-            <p className="text-sm">Henüz kural yok. İlk kuralınızı oluşturun.</p>
+            <p className="text-sm">No rules yet. Create your first rule.</p>
           </CardContent>
         </Card>
       ) : (
@@ -115,7 +115,7 @@ export default function Rules() {
                         <span className="font-medium text-sm">{rule.name}</span>
                         <Badge className={actionColor[rule.action]}>{actionLabel[rule.action]}</Badge>
                         <Badge variant="outline" className="text-xs">{rule.portal || 'symfonie'}</Badge>
-                        <span className="text-xs text-muted-foreground">Öncelik: {rule.priority}</span>
+                        <span className="text-xs text-muted-foreground">Priority: {rule.priority}</span>
                       </div>
                       {rule.conditions && rule.conditions.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-2">

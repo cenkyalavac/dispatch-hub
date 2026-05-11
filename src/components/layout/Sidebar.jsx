@@ -4,10 +4,10 @@ import { cn } from '@/lib/utils';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/portals', label: 'Portaller', icon: Globe },
-  { path: '/rules', label: 'Kurallar', icon: ListChecks },
-  { path: '/tasks', label: 'İşlenen Tasklar', icon: CheckCircle2 },
-  { path: '/settings', label: 'Ayarlar', icon: Settings },
+  { path: '/portals', label: 'Portals', icon: Globe },
+  { path: '/rules', label: 'Rules', icon: ListChecks },
+  { path: '/tasks', label: 'Processed Tasks', icon: CheckCircle2 },
+  { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function Sidebar() {

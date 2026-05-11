@@ -29,14 +29,14 @@ export default function Portals() {
         ? base44.entities.Portal.update(editingId, data)
         : base44.entities.Portal.create(data),
     onSuccess: () => {
-      toast.success(editingId ? 'Portal güncellendi' : 'Portal eklendi');
+      toast.success(editingId ? 'Portal updated' : 'Portal added');
       qc.invalidateQueries({ queryKey: ['portals-all'] });
       qc.invalidateQueries({ queryKey: ['portals'] });
       setShowForm(false);
       setForm(emptyForm);
       setEditingId(null);
     },
-    onError: (err) => toast.error('Hata: ' + err.message),
+    onError: (err) => toast.error('Error: ' + err.message),
   });
 
   const toggleMutation = useMutation({
@@ -47,7 +47,7 @@ export default function Portals() {
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.Portal.delete(id),
     onSuccess: () => {
-      toast.success('Portal silindi');
+      toast.success('Portal deleted');
       qc.invalidateQueries({ queryKey: ['portals-all'] });
       qc.invalidateQueries({ queryKey: ['portals'] });
     },
@@ -60,7 +60,7 @@ export default function Portals() {
   };
 
   const handleSave = () => {
-    if (!form.key.trim() || !form.name.trim()) { toast.error('Key ve Ad gerekli'); return; }
+    if (!form.key.trim() || !form.name.trim()) { toast.error('Key and Name are required'); return; }
     saveMutation.mutate(form);
   };
 
@@ -68,45 +68,45 @@ export default function Portals() {
     <div className="p-8 max-w-3xl">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Portaller</h1>
-          <p className="text-muted-foreground text-sm mt-1">Bağlı translation portallarını yönetin</p>
+          <h1 className="text-2xl font-bold text-foreground">Portals</h1>
+          <p className="text-muted-foreground text-sm mt-1">Manage connected translation portals</p>
         </div>
         <Button onClick={() => { setForm(emptyForm); setEditingId(null); setShowForm(true); }} className="gap-2">
-          <Plus className="w-4 h-4" /> Yeni Portal
+          <Plus className="w-4 h-4" /> New Portal
         </Button>
       </div>
 
       {showForm && (
         <Card className="mb-6 border-primary/30 shadow-md">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">{editingId ? 'Portal Düzenle' : 'Yeni Portal'}</CardTitle>
-            <CardDescription className="text-xs">Portal ekledikten sonra ilgili backend fonksiyonunu oluşturmanız gerekir.</CardDescription>
+            <CardTitle className="text-base">{editingId ? 'Edit Portal' : 'New Portal'}</CardTitle>
+            <CardDescription className="text-xs">After adding a portal, you need to create the corresponding backend function.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs">Key (tekil, değiştirilemez)</Label>
+                <Label className="text-xs">Key (unique, cannot be changed)</Label>
                 <Input
                   value={form.key}
                   onChange={e => setForm(f => ({ ...f, key: e.target.value.toLowerCase().replace(/\s/g, '_') }))}
-                  placeholder="örn: protemos"
+                  placeholder="e.g. protemos"
                   disabled={!!editingId}
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Görünen Ad</Label>
-                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="örn: Protemos" />
+                <Label className="text-xs">Display Name</Label>
+                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Protemos" />
               </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Açıklama</Label>
-              <Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Kısa açıklama..." />
+              <Label className="text-xs">Description</Label>
+              <Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Short description..." />
             </div>
             <div className="flex gap-2 pt-1">
               <Button onClick={handleSave} disabled={saveMutation.isPending} className="flex-1">
-                {saveMutation.isPending ? 'Kaydediliyor...' : 'Kaydet'}
+                {saveMutation.isPending ? 'Saving...' : 'Save'}
               </Button>
-              <Button variant="outline" onClick={() => { setShowForm(false); setForm(emptyForm); setEditingId(null); }}>İptal</Button>
+              <Button variant="outline" onClick={() => { setShowForm(false); setForm(emptyForm); setEditingId(null); }}>Cancel</Button>
             </div>
           </CardContent>
         </Card>
@@ -120,7 +120,7 @@ export default function Portals() {
         <Card className="border-dashed">
           <CardContent className="py-16 text-center text-muted-foreground">
             <Globe className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">Henüz portal yok.</p>
+            <p className="text-sm">No portals yet.</p>
           </CardContent>
         </Card>
       ) : (
@@ -138,9 +138,9 @@ export default function Portals() {
                         <span className="font-semibold text-sm">{portal.name}</span>
                         <Badge variant="outline" className="text-xs font-mono">{portal.key}</Badge>
                         {portal.is_active ? (
-                          <Badge className="bg-green-100 text-green-700 text-xs">Aktif</Badge>
+                          <Badge className="bg-green-100 text-green-700 text-xs">Active</Badge>
                         ) : (
-                          <Badge variant="secondary" className="text-xs">Pasif</Badge>
+                          <Badge variant="secondary" className="text-xs">Inactive</Badge>
                         )}
                       </div>
                       {portal.description && (
