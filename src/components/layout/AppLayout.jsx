@@ -2,22 +2,15 @@ import { Outlet, useLocation } from 'react-router-dom';
 import TopBar from './TopBar';
 import SubNav from './SubNav';
 
-// Sub-nav configurations per primary tab
-const SUB_NAVS = {
-  '/': [],
-  '/portals': [
-    { to: '/portals',  label: 'All connectors', end: true },
-    { to: '/rules',    label: 'Rules' },
-    { to: '/settings', label: 'Diagnostics' },
-  ],
-  '/tasks': [],
-  '/pending': [],
-};
+const SUB_NAVS_CONNECTORS = [
+  { to: '/portals',  label: 'All connectors', end: true },
+  { to: '/rules',    label: 'Rules' },
+  { to: '/settings', label: 'Diagnostics' },
+];
 
 function resolveSubNav(pathname) {
-  // Rules + Settings ride under "Connectors" tab
   if (pathname.startsWith('/rules') || pathname.startsWith('/settings') || pathname.startsWith('/portals')) {
-    return SUB_NAVS['/portals'];
+    return SUB_NAVS_CONNECTORS;
   }
   return [];
 }

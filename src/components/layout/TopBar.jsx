@@ -3,7 +3,6 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { Command, Hexagon } from 'lucide-react';
 import CommandPalette from './CommandPalette';
 
-// 52px topbar · 4 primary tabs · ⌘K palette · no sidebar
 const TABS = [
   { to: '/',          label: 'Overview',   matches: ['/'] },
   { to: '/pending',   label: 'Pending',    matches: ['/pending'] },
@@ -37,7 +36,6 @@ export default function TopBar() {
         style={{ height: 52 }}
         className="sticky top-0 z-40 bg-surface-1/95 backdrop-blur border-b border-line-1 flex items-center px-5"
       >
-        {/* Mark */}
         <div className="flex items-center gap-2 mr-7">
           <span className="w-6 h-6 rounded-md bg-accent flex items-center justify-center">
             <Hexagon className="w-3.5 h-3.5 text-white" />
@@ -47,7 +45,6 @@ export default function TopBar() {
           </span>
         </div>
 
-        {/* 4-tab nav */}
         <nav className="flex items-center gap-1">
           {TABS.map(t => {
             const active = isActive(t);
@@ -67,7 +64,6 @@ export default function TopBar() {
           })}
         </nav>
 
-        {/* ⌘K trigger */}
         <button
           onClick={() => setPaletteOpen(true)}
           className="ml-auto inline-flex items-center gap-2 h-8 px-3 rounded-md border border-line-1 bg-surface-1 hover:bg-surface-2 transition-colors duration-tab text-xs text-ink-3"
