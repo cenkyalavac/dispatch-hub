@@ -41,7 +41,7 @@ export default function TopBar() {
             <Hexagon className="w-3.5 h-3.5 text-white" />
           </span>
           <span className="text-[13px] font-semibold tracking-tight text-ink-1">
-            Junction <span className="italic-editorial text-ink-3 ml-0.5">hub</span>
+            Dispatch <span className="italic-editorial text-ink-3 ml-0.5">hub</span>
           </span>
         </div>
 
