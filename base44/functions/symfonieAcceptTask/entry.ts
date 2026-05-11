@@ -72,11 +72,12 @@ Deno.serve(async (req) => {
     const { task_id, task_name, project_name, source_language, target_language, word_count, price, due_date } = body;
 
     if (!task_id) return Response.json({ error: 'task_id is required' }, { status: 400 });
+    const taskIdNum = Number(task_id);
 
     const token = await getToken();
 
     // Execute Accept command on Symfonie
-    const res = await fetch(`${BASE_URL}/Tasks(${task_id})/Default.ExecuteTaskCommand`, {
+    const res = await fetch(`${BASE_URL}/Tasks(${taskIdNum})/Default.ExecuteTaskCommand`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -88,14 +89,14 @@ Deno.serve(async (req) => {
 
     const responseText = await res.text();
     if (!res.ok) {
-      console.error(`Manual Accept for task ${task_id} failed [${res.status}]:`, responseText.substring(0, 300));
+      console.error(`Manual Accept for task ${taskIdNum} failed [${res.status}]:`, responseText.substring(0, 300));
       return Response.json({ error: `Accept failed: ${responseText.substring(0, 200)}` }, { status: 400 });
     }
 
     // Save to AcceptedTask
     const taskRecord = {
       portal: 'symfonie',
-      task_id: Number(task_id),
+      task_id: taskIdNum,
       task_name: task_name || '',
       project_name: project_name || '',
       source_language: source_language || '',
@@ -110,7 +111,7 @@ Deno.serve(async (req) => {
     };
 
     const saved = await base44.asServiceRole.entities.AcceptedTask.create(taskRecord);
-    console.log(`Task ${task_id} manually accepted by ${user?.email || 'user'}`);
+    console.log(`Task ${taskIdNum} manually accepted by ${user?.email || 'user'}`);
 
     const synced = await appendToSheets(base44, taskRecord);
     if (synced) {

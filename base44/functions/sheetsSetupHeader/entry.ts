@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
     ];
 
     const res = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A1:update?valueInputOption=USER_ENTERED`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A1:K1?valueInputOption=USER_ENTERED`,
       {
         method: 'PUT',
         headers: {

@@ -69,10 +69,13 @@ export default function Dashboard() {
     try {
       const res = await base44.functions.invoke('symfonieAcceptTask', {
         task_id: task.id,
-        task_name: task.name,
+        task_name: task.name || task.task_name,
         project_name: task.project_name,
         source_language: task.source_language,
         target_language: task.target_language,
+        word_count: task.word_count,
+        price: task.price,
+        due_date: task.due_date,
       });
       if (res.data?.success) {
         toast.success(`"${task.name}" kabul edildi`);
@@ -209,10 +212,10 @@ export default function Dashboard() {
               <div className="mt-2">
                 <p className="text-xs text-muted-foreground font-medium mb-1">Skipped (no matching rule):</p>
                 <div className="space-y-1 max-h-40 overflow-y-auto">
-                  {lastResult.details.skipped.filter(s => typeof s === 'object').map((s, i) => (
-                    <div key={i} className="text-xs bg-background/60 rounded px-2 py-1 flex items-center justify-between gap-2">
+                  {lastResult.details.skipped.filter(s => typeof s === 'object').map((s) => (
+                    <div key={s.id} className="text-xs bg-background/60 rounded px-2 py-1 flex items-center justify-between gap-2">
                       <div>
-                        <span className="font-medium">{s.name}</span>
+                        <span className="font-medium">{s.name || s.task_name}</span>
                         {s.source_language && <span className="text-muted-foreground ml-2">{s.source_language} → {s.target_language}</span>}
                         {s.project_name && <span className="text-muted-foreground ml-2">· {s.project_name}</span>}
                       </div>
