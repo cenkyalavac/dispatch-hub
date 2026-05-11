@@ -5,10 +5,20 @@ import { RefreshCw, Search, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
 import TaskDetailCard from '@/components/pending/TaskDetailCard';
+import PendingFilters from '@/components/pending/PendingFilters';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import ErrorState from '@/components/ui/ErrorState';
 import { fmtNumber, EM } from '@/lib/format';
+
+const DEFAULT_FILTERS = {
+  account: 'all',
+  langPair: 'all',
+  workflow: 'all',
+  dueWindow: 'all',
+  hasPrice: 'all',
+  sortBy: 'due_asc',
+};
 
 // Quote every cell so commas/quotes/newlines inside values can't break the columns.
 const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -45,6 +55,7 @@ export default function PendingTasks() {
   const [search, setSearch] = useState('');
   const [selectedPortal, setSelectedPortal] = useState('symfonie');
   const [acceptingIds, setAcceptingIds] = useState(new Set());
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
 
   const { data: portals = [] } = useQuery({
     queryKey: ['portals-all'],
@@ -66,17 +77,63 @@ export default function PendingTasks() {
   const tasks = data?.tasks || [];
 
   const filtered = useMemo(() => {
-    if (!search) return tasks;
-    const q = search.toLowerCase();
-    return tasks.filter(t =>
-      t.name?.toLowerCase().includes(q) ||
-      t.project_name?.toLowerCase().includes(q) ||
-      t.account_name?.toLowerCase().includes(q) ||
-      t.source_language?.toLowerCase().includes(q) ||
-      t.target_language?.toLowerCase().includes(q) ||
-      String(t.id).includes(q)
-    );
-  }, [tasks, search]);
+    const q = search.trim().toLowerCase();
+    const now = Date.now();
+    const dayMs = 86400000;
+    const endOfToday = (() => { const d = new Date(); d.setHours(23, 59, 59, 999); return d.getTime(); })();
+
+    const out = tasks.filter(t => {
+      // Text search
+      if (q) {
+        const hit =
+          t.name?.toLowerCase().includes(q) ||
+          t.project_name?.toLowerCase().includes(q) ||
+          t.account_name?.toLowerCase().includes(q) ||
+          t.source_language?.toLowerCase().includes(q) ||
+          t.target_language?.toLowerCase().includes(q) ||
+          String(t.id).includes(q);
+        if (!hit) return false;
+      }
+      // Account
+      if (filters.account !== 'all' && t.account_name !== filters.account) return false;
+      // Language pair
+      if (filters.langPair !== 'all') {
+        if (`${t.source_language}→${t.target_language}` !== filters.langPair) return false;
+      }
+      // Workflow
+      if (filters.workflow !== 'all' && t.workflow_name !== filters.workflow) return false;
+      // Due window
+      if (filters.dueWindow !== 'all') {
+        if (!t.due_date) return false;
+        const due = new Date(t.due_date).getTime();
+        if (filters.dueWindow === 'overdue' && due >= now) return false;
+        if (filters.dueWindow === 'today' && (due < now || due > endOfToday)) return false;
+        if (filters.dueWindow === '3d' && (due < now || due > now + 3 * dayMs)) return false;
+        if (filters.dueWindow === '7d' && (due < now || due > now + 7 * dayMs)) return false;
+      }
+      // Price
+      if (filters.hasPrice === 'priced' && !(t.price_max_usd > 0)) return false;
+      if (filters.hasPrice === 'zero' && t.price_max_usd > 0) return false;
+      return true;
+    });
+
+    // Sort
+    const cmp = {
+      due_asc:      (a, b) => (a.due_date ? new Date(a.due_date).getTime() : Infinity) - (b.due_date ? new Date(b.due_date).getTime() : Infinity),
+      due_desc:     (a, b) => (b.due_date ? new Date(b.due_date).getTime() : -Infinity) - (a.due_date ? new Date(a.due_date).getTime() : -Infinity),
+      price_desc:   (a, b) => (b.price_max_usd || 0) - (a.price_max_usd || 0),
+      words_desc:   (a, b) => (b.word_count || 0) - (a.word_count || 0),
+      created_desc: (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime(),
+    }[filters.sortBy];
+    if (cmp) out.sort(cmp);
+    return out;
+  }, [tasks, search, filters]);
+
+  const activeFilterCount = useMemo(() =>
+    ['account', 'langPair', 'workflow', 'dueWindow', 'hasPrice']
+      .filter(k => filters[k] !== 'all').length,
+    [filters]
+  );
 
   const handleManualAccept = async (task) => {
     setAcceptingIds(prev => new Set([...prev, task.id]));
@@ -120,7 +177,7 @@ export default function PendingTasks() {
         <div className="flex items-center gap-2">
           <select
             value={selectedPortal}
-            onChange={(e) => setSelectedPortal(e.target.value)}
+            onChange={(e) => { setSelectedPortal(e.target.value); setFilters(DEFAULT_FILTERS); }}
             className="h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
           >
             {portalOptions.length === 0 && <option value="symfonie">Symfonie</option>}
@@ -164,13 +221,13 @@ export default function PendingTasks() {
         </div>
       )}
 
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-3 mb-3">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-3" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search task, project, language, ID"
+            placeholder="Search task, project, account, language, ID"
             className="w-full h-9 pl-9 pr-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4"
           />
         </div>
@@ -180,6 +237,16 @@ export default function PendingTasks() {
           </span>
         )}
       </div>
+
+      {!isLoading && !isError && tasks.length > 0 && (
+        <PendingFilters
+          tasks={tasks}
+          value={filters}
+          onChange={setFilters}
+          onReset={() => setFilters(DEFAULT_FILTERS)}
+          activeCount={activeFilterCount}
+        />
+      )}
 
       {isError ? (
         <ErrorState error={error} onRetry={refetch} />
