@@ -33,8 +33,9 @@ Deno.serve(async (req) => {
 
     const access_token = await getToken();
 
+    // Fetch all tasks ordered by newest first, filter InOrder client-side
     const tasksRes = await fetch(
-      `${BASE_URL}/Tasks?$filter=State eq 'ToDo'&$expand=FinanceRows,Project&$top=100`,
+      `${BASE_URL}/Tasks?$top=200&$orderby=CreatedAt desc`,
       {
         headers: {
           'Authorization': `Bearer ${access_token}`,
@@ -49,9 +50,12 @@ Deno.serve(async (req) => {
     }
 
     const data = await tasksRes.json();
-    const tasks = data.value || [];
+    const allTasks = data.value || [];
 
-    return Response.json({ tasks, total: tasks.length });
+    // Filter only InOrder tasks (awaiting acceptance)
+    const tasks = allTasks.filter(t => t.State === 'InOrder');
+
+    return Response.json({ tasks, total: tasks.length, all_total: allTasks.length });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

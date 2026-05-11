@@ -61,15 +61,19 @@ function matchesRule(rule, task) {
 }
 
 async function acceptTaskInSymfonie(taskId, token) {
-  const res = await fetch(`${BASE_URL}/Tasks(${taskId})`, {
-    method: 'PATCH',
+  const res = await fetch(`${BASE_URL}/Tasks(${taskId})/Default.ExecuteTaskCommand`, {
+    method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     },
-    body: JSON.stringify({ AcceptedDate: new Date().toISOString() })
+    body: JSON.stringify({ taskCommand: 'Accept' })
   });
+  if (!res.ok) {
+    const err = await res.text();
+    console.error(`Task ${taskId} kabul hatası:`, err);
+  }
   return res.ok;
 }
 
@@ -126,9 +130,9 @@ Deno.serve(async (req) => {
     const token = await getToken();
     console.log('Azure AD token alındı');
 
-    // 3. Fetch ToDo tasks from Symfonie
+    // 3. Fetch all recent tasks, filter InOrder client-side
     const tasksRes = await fetch(
-      `${BASE_URL}/Tasks?$filter=State eq 'ToDo'&$expand=FinanceRows,Project&$top=200`,
+      `${BASE_URL}/Tasks?$top=200&$orderby=CreatedAt desc`,
       {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -144,8 +148,9 @@ Deno.serve(async (req) => {
     }
 
     const data = await tasksRes.json();
-    const rawTasks = data.value || [];
-    console.log(`${rawTasks.length} ToDo task bulundu`);
+    const allTasks = data.value || [];
+    const rawTasks = allTasks.filter(t => t.State === 'InOrder');
+    console.log(`${allTasks.length} toplam task, ${rawTasks.length} InOrder task bulundu`);
 
     // 4. Get already processed task IDs to avoid duplicates
     const existing = await base44.asServiceRole.entities.AcceptedTask.filter({}, '-created_date', 1000);
@@ -159,22 +164,15 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      let wordCount = 0;
-      let price = 0;
-      if (raw.FinanceRows && raw.FinanceRows.length > 0) {
-        wordCount = raw.FinanceRows.reduce((sum, r) => sum + (r.Quantity || 0), 0);
-        price = raw.FinanceRows.reduce((sum, r) => sum + (r.TotalPrice || 0), 0);
-      }
-
       const task = {
         task_id: raw.Id,
         task_name: raw.Name || '',
         project_name: raw.Project?.Name || raw.JobName || '',
-        client_name: raw.Project?.Company?.Name || raw.Project?.CustomerName || '',
+        client_name: raw.Project?.CustomerName || '',
         source_language: raw.SourceLanguageCode || '',
         target_language: raw.TargetLanguageCode || '',
-        word_count: wordCount,
-        price: price,
+        word_count: raw.WordCount || 0,
+        price: 0,
         due_date: raw.DueDate || null,
         accepted_at: new Date().toISOString(),
         matched_rule: null,
