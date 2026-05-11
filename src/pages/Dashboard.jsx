@@ -63,6 +63,8 @@ export default function Dashboard() {
 
   const accepted = tasks.filter(t => t.status === 'accepted').length;
   const rejected = tasks.filter(t => t.status === 'rejected').length;
+  const unsyncedCount = tasks.filter(t => t.status === 'accepted' && !t.sheets_synced).length;
+  const syncedCount = tasks.filter(t => t.status === 'accepted' && t.sheets_synced).length;
 
   const handleManualAccept = async (task) => {
     setAcceptingIds(prev => new Set([...prev, task.id]));
@@ -186,12 +188,50 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <StatCard title="Total Processed" value={tasks.length} icon={TrendingUp} color="bg-accent text-accent-foreground" sub="Selected portal" />
         <StatCard title="Accepted" value={accepted} icon={CheckCircle2} color="bg-green-100 text-green-600" />
         <StatCard title="Rejected" value={rejected} icon={XCircle} color="bg-red-100 text-red-500" />
         <StatCard title="Active Rules" value={rules.length} icon={Clock} color="bg-blue-100 text-blue-600" />
       </div>
+
+      <Card className="mb-6 border-border shadow-sm">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-green-100">
+                <TableProperties className="w-4 h-4 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Google Sheets Sync Status</p>
+                <p className="text-xs text-muted-foreground">
+                  Auto-syncs every 5 minutes and immediately when a new task is accepted.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Synced</p>
+                <p className="text-lg font-bold text-green-600">{syncedCount}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Pending</p>
+                <p className={`text-lg font-bold ${unsyncedCount > 0 ? 'text-orange-500' : 'text-muted-foreground'}`}>{unsyncedCount}</p>
+              </div>
+              {unsyncedCount > 0 && (
+                <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                  {unsyncedCount} not synced
+                </Badge>
+              )}
+              {unsyncedCount === 0 && syncedCount > 0 && (
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  All synced ✓
+                </Badge>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {lastResult && (
         <Card className="mb-6 border-primary/20 bg-accent/30">
