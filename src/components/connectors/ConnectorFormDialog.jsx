@@ -1,9 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { X } from 'lucide-react';
+import FormField from '@/components/ui/FormField';
 
 const empty = {
   key: '', name: '', vendor: '', description: '',
@@ -11,7 +8,6 @@ const empty = {
   auth_type: 'oauth2_client_credentials', docs_url: '',
 };
 
-const COLORS = ['blue', 'purple', 'emerald', 'amber', 'rose'];
 const ICONS = ['Globe', 'Building2', 'Network', 'Plug', 'Boxes', 'Briefcase', 'Cloud'];
 const AUTH_TYPES = [
   { value: 'oauth2_client_credentials', label: 'OAuth 2.0 — Client Credentials' },
@@ -20,97 +16,98 @@ const AUTH_TYPES = [
   { value: 'none', label: 'No authentication' },
 ];
 
+const fieldCls = 'w-full h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4';
+
 export default function ConnectorFormDialog({ open, onClose, onSave, initial, isPending }) {
   const [form, setForm] = useState(empty);
   const isEdit = !!initial?.id;
 
-  useEffect(() => {
-    if (open) setForm(initial ? { ...empty, ...initial } : empty);
-  }, [open, initial]);
+  useEffect(() => { if (open) setForm(initial ? { ...empty, ...initial } : empty); }, [open, initial]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
   const update = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit Connector' : 'New Connector'}</DialogTitle>
-          <DialogDescription>
-            Configure the portal metadata. Backend functions and secrets are wired separately.
-          </DialogDescription>
-        </DialogHeader>
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] px-4"
+      style={{ background: 'oklch(0.18 0.02 260 / 0.35)', backdropFilter: 'blur(6px)' }}
+      onClick={onClose}
+    >
+      <div
+        // Modal 480px width — doctrine: small/medium/large 480/640/800
+        className="w-full max-w-[480px] bg-surface-1 border border-line-1 rounded-lg shadow-xl animate-slide-down"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="flex items-center justify-between px-5 h-12 border-b border-line-1">
+          <h2 className="text-[14px] font-semibold text-ink-1">{isEdit ? 'Edit connector' : 'New connector'}</h2>
+          <button onClick={onClose} className="inline-flex items-center justify-center h-7 w-7 rounded text-ink-3 hover:bg-surface-2 transition-colors duration-tab">
+            <X className="w-4 h-4" />
+          </button>
+        </header>
 
-        <div className="space-y-3 py-2">
+        <div className="px-5 py-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Key</Label>
-              <Input value={form.key} disabled={isEdit}
+            <FormField label="Key" required helper={isEdit ? 'Immutable once created' : 'lowercase, no spaces'}>
+              <input
+                className={fieldCls}
+                value={form.key}
+                disabled={isEdit}
                 onChange={e => update('key', e.target.value.toLowerCase().replace(/\s/g, '_'))}
-                placeholder="e.g. junction" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Display name</Label>
-              <Input value={form.name} onChange={e => update('name', e.target.value)} placeholder="Welocalize Junction" />
-            </div>
+                placeholder="junction"
+              />
+            </FormField>
+            <FormField label="Display name" required>
+              <input className={fieldCls} value={form.name} onChange={e => update('name', e.target.value)} placeholder="Welocalize Junction" />
+            </FormField>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Vendor</Label>
-              <Input value={form.vendor || ''} onChange={e => update('vendor', e.target.value)} placeholder="Welocalize" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Docs URL</Label>
-              <Input value={form.docs_url || ''} onChange={e => update('docs_url', e.target.value)} placeholder="https://..." />
-            </div>
+            <FormField label="Vendor">
+              <input className={fieldCls} value={form.vendor || ''} onChange={e => update('vendor', e.target.value)} placeholder="Welocalize" />
+            </FormField>
+            <FormField label="Docs URL">
+              <input className={fieldCls} value={form.docs_url || ''} onChange={e => update('docs_url', e.target.value)} placeholder="https://…" />
+            </FormField>
           </div>
 
-          <div className="space-y-1">
-            <Label className="text-xs">Description</Label>
-            <Input value={form.description || ''} onChange={e => update('description', e.target.value)} placeholder="What this connector does..." />
-          </div>
+          <FormField label="Description" helper="One short line, shown on the card.">
+            <input className={fieldCls} value={form.description || ''} onChange={e => update('description', e.target.value)} placeholder="What this connector does" />
+          </FormField>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Color</Label>
-              <Select value={form.color} onValueChange={v => update('color', v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {COLORS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Icon</Label>
-              <Select value={form.icon} onValueChange={v => update('icon', v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ICONS.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Auth type</Label>
-              <Select value={form.auth_type} onValueChange={v => update('auth_type', v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {AUTH_TYPES.map(a => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Icon">
+              <select className={fieldCls} value={form.icon} onChange={e => update('icon', e.target.value)}>
+                {ICONS.map(i => <option key={i} value={i}>{i}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Auth type">
+              <select className={fieldCls} value={form.auth_type} onChange={e => update('auth_type', e.target.value)}>
+                {AUTH_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+              </select>
+            </FormField>
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button
+        <footer className="px-5 py-4 border-t border-line-1 flex items-center justify-end gap-2">
+          <button onClick={onClose} className="h-9 px-4 rounded-md border border-line-1 text-[13px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab">
+            Cancel
+          </button>
+          <button
             onClick={() => onSave(form)}
             disabled={isPending || !form.key || !form.name}
+            className="h-9 px-4 rounded-md bg-accent text-white text-[13px] font-medium hover:bg-[var(--accent-hover)] transition-colors duration-tab disabled:opacity-40"
           >
-            {isPending ? 'Saving...' : 'Save'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            {isPending ? 'Saving…' : 'Save'}
+          </button>
+        </footer>
+      </div>
+    </div>
   );
 }

@@ -1,25 +1,30 @@
-import { Toaster } from "@/components/ui/toaster"
+import { Toaster } from 'sonner';
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
-import AppLayout from '@/components/layout/AppLayout';
-import Dashboard from './pages/Dashboard';
+import AppLayout from '@/components/layout/AppLayout.jsx';
+import Dashboard from './pages/Dashboard.jsx';
 import Rules from './pages/Rules';
 import Tasks from './pages/Tasks';
 import SettingsPage from './pages/SettingsPage';
-import Connectors from './pages/Connectors';
-import PendingTasks from './pages/PendingTasks';
+import Connectors from './pages/Connectors.jsx';
+import PendingTasks from './pages/PendingTasks.jsx';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
 
   if (isLoadingPublicSettings || isLoadingAuth) {
+    // Doctrine: Skeleton primitive, never spinner.
     return (
-      <div className="fixed inset-0 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
+      <div className="fixed inset-0 flex items-start justify-center pt-[20vh] px-6">
+        <div className="w-full max-w-md space-y-3">
+          <div className="skel h-4 w-1/3" />
+          <div className="skel h-3 w-2/3" />
+          <div className="skel h-3 w-1/2" />
+        </div>
       </div>
     );
   }
@@ -55,7 +60,7 @@ function App() {
         <Router>
           <AuthenticatedApp />
         </Router>
-        <Toaster />
+        <Toaster position="top-right" duration={2200} />
       </QueryClientProvider>
     </AuthProvider>
   )

@@ -1,29 +1,22 @@
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, Clock, Search, AlertCircle, Globe2, Download } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
+import { RefreshCw, Search, Download } from 'lucide-react';
 import { toast } from 'sonner';
+
 import TaskDetailCard from '@/components/pending/TaskDetailCard';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import EmptyState from '@/components/ui/EmptyState';
+import ErrorState from '@/components/ui/ErrorState';
+import { fmtNumber, EM } from '@/lib/format';
 
 function exportToCsv(tasks) {
-  const headers = [
-    'ID', 'Task Name', 'Project', 'Source Lang', 'Target Lang',
-    'Words', 'Min USD', 'Max USD', 'Due Date', 'Created At',
-    'Workflow', 'Service Tag', 'Task Type', 'CAT Tool', 'Assigned To',
-    'Finance Rows Count', 'Billing Units'
-  ];
-
+  const headers = ['ID','Task','Project','Source','Target','Words','Min USD','Max USD','Due','Created','Workflow','Service','Type','CAT','Assigned'];
   const rows = tasks.map(t => [
     t.id,
     `"${(t.name || '').replace(/"/g, '""')}"`,
     `"${(t.project_name || '').replace(/"/g, '""')}"`,
-    t.source_language,
-    t.target_language,
+    t.source_language || '', t.target_language || '',
     t.word_count || 0,
     t.price_min_usd?.toFixed(2) || '0.00',
     t.price_max_usd?.toFixed(2) || '0.00',
@@ -34,17 +27,12 @@ function exportToCsv(tasks) {
     `"${(t.task_type || '').replace(/"/g, '""')}"`,
     `"${(t.cat_tool || '').replace(/"/g, '""')}"`,
     `"${(t.assigned_to || '').replace(/"/g, '""')}"`,
-    t.finance_rows?.length || 0,
-    `"${(t.finance_summary?.billing_units || []).join(', ')}"`,
   ]);
-
   const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `pending_tasks_${new Date().toISOString().slice(0, 10)}.csv`;
-  link.click();
+  const a = document.createElement('a');
+  a.href = url; a.download = `pending_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
   URL.revokeObjectURL(url);
 }
 
@@ -64,10 +52,7 @@ export default function PendingTasks() {
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['pending-tasks', selectedPortal, fetchFn],
-    queryFn: async () => {
-      const res = await base44.functions.invoke(fetchFn, {});
-      return res.data;
-    },
+    queryFn: async () => (await base44.functions.invoke(fetchFn, {})).data,
     staleTime: 60_000,
     retry: false,
     enabled: !!activePortal,
@@ -83,158 +68,117 @@ export default function PendingTasks() {
       t.project_name?.toLowerCase().includes(q) ||
       t.source_language?.toLowerCase().includes(q) ||
       t.target_language?.toLowerCase().includes(q) ||
-      t.workflow_name?.toLowerCase().includes(q) ||
-      t.service_tag?.toLowerCase().includes(q) ||
       String(t.id).includes(q)
     );
   });
-
-  const handleRefresh = () => {
-    refetch();
-    toast.info('Refreshing...');
-  };
 
   const handleManualAccept = async (task) => {
     setAcceptingIds(prev => new Set([...prev, task.id]));
     try {
       const res = await base44.functions.invoke(acceptFn, {
-        task_id: task.id,
-        task_name: task.name,
-        project_name: task.project_name,
-        source_language: task.source_language,
-        target_language: task.target_language,
-        word_count: task.word_count,
-        price: task.price_max_usd,
-        due_date: task.due_date,
+        task_id: task.id, task_name: task.name, project_name: task.project_name,
+        source_language: task.source_language, target_language: task.target_language,
+        word_count: task.word_count, price: task.price_max_usd, due_date: task.due_date,
       });
-      if (res.data?.success) {
-        toast.success(`"${task.name}" accepted`);
-        refetch();
-      } else {
-        toast.error(res.data?.error || 'Acceptance failed');
-      }
-    } catch (err) {
-      toast.error('Error: ' + err.message);
-    } finally {
-      setAcceptingIds(prev => { const s = new Set(prev); s.delete(task.id); return s; });
-    }
-    };
+      if (res.data?.success) { toast.success(`"${task.name}" accepted`); refetch(); }
+      else toast.error(res.data?.error || 'Accept failed');
+    } catch (err) { toast.error(err.message); }
+    finally { setAcceptingIds(prev => { const s = new Set(prev); s.delete(task.id); return s; }); }
+  };
 
   const totalWords = tasks.reduce((s, t) => s + (t.word_count || 0), 0);
   const totalMaxUsd = tasks.reduce((s, t) => s + (t.price_max_usd || 0), 0);
   const totalMinUsd = tasks.reduce((s, t) => s + (t.price_min_usd || 0), 0);
 
+  const portalOptions = portals.filter(p => p.is_active && p.fetch_function);
+
   return (
-    <div className="p-6 max-w-6xl">
-      <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
+    <div className="px-8 py-7 max-w-6xl">
+      <header className="flex items-end justify-between mb-7 flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground tracking-tight">Pending Tasks</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Live tasks awaiting acceptance or rejection across all connected portals.
+          <h1 className="text-[22px] font-semibold tracking-tight text-ink-1">Pending</h1>
+          <p className="text-[13px] text-ink-3 mt-1 italic-editorial">
+            Tasks waiting for acceptance, fresh from the source.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={selectedPortal} onValueChange={setSelectedPortal}>
-            <SelectTrigger className="w-48">
-              <Globe2 className="w-4 h-4 mr-1 text-muted-foreground" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {portals.filter(p => p.is_active && p.fetch_function).map(p => (
-                <SelectItem key={p.key} value={p.key}>{p.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
+          <select
+            value={selectedPortal}
+            onChange={(e) => setSelectedPortal(e.target.value)}
+            className="h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
+          >
+            {portalOptions.length === 0 && <option value="symfonie">Symfonie</option>}
+            {portalOptions.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
+          </select>
+          <button
             onClick={() => exportToCsv(filtered)}
             disabled={filtered.length === 0}
-            className="gap-2"
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab disabled:opacity-40"
           >
-            <Download className="w-4 h-4" />
-             Export CSV
-            </Button>
-            <Button variant="outline" onClick={handleRefresh} disabled={isFetching} className="gap-2">
-             <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-             Refresh
-            </Button>
+            <Download className="w-3.5 h-3.5" /> CSV
+          </button>
+          <button
+            onClick={() => { refetch(); }}
+            disabled={isFetching}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab disabled:opacity-40"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
+          </button>
         </div>
-      </div>
+      </header>
 
       {!isLoading && !isError && tasks.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <div className="bg-card rounded-xl border p-4">
-            <p className="text-xs text-muted-foreground">Total Tasks</p>
-            <p className="text-2xl font-bold mt-1">{tasks.length}</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <div className="bg-surface-1 border border-line-1 rounded-md p-3.5">
+            <p className="text-[10px] uppercase tracking-wider text-ink-3">Tasks</p>
+            <p className="text-[22px] font-semibold tabular-nums mt-0.5 text-ink-1">{fmtNumber(tasks.length)}</p>
           </div>
-          <div className="bg-card rounded-xl border p-4">
-            <p className="text-xs text-muted-foreground">Total Words</p>
-            <p className="text-2xl font-bold mt-1">{totalWords.toLocaleString()}</p>
+          <div className="bg-surface-1 border border-line-1 rounded-md p-3.5">
+            <p className="text-[10px] uppercase tracking-wider text-ink-3">Words</p>
+            <p className="text-[22px] font-semibold tabular-nums mt-0.5 text-ink-1">{fmtNumber(totalWords)}</p>
           </div>
-          <div className="bg-card rounded-xl border p-4">
-            <p className="text-xs text-muted-foreground">Min Revenue (USD)</p>
-            <p className="text-2xl font-bold mt-1 text-muted-foreground">${totalMinUsd.toFixed(2)}</p>
+          <div className="bg-surface-1 border border-line-1 rounded-md p-3.5">
+            <p className="text-[10px] uppercase tracking-wider text-ink-3">Min USD</p>
+            <p className="text-[22px] font-semibold tabular-nums mt-0.5 text-ink-2">${totalMinUsd.toFixed(0)}</p>
           </div>
-          <div className="bg-card rounded-xl border p-4">
-            <p className="text-xs text-muted-foreground">Max Revenue (USD)</p>
-            <p className="text-2xl font-bold mt-1 text-primary">${totalMaxUsd.toFixed(2)}</p>
+          <div className="bg-surface-1 border border-line-1 rounded-md p-3.5">
+            <p className="text-[10px] uppercase tracking-wider text-ink-3">Max USD</p>
+            <p className="text-[22px] font-semibold tabular-nums mt-0.5 text-accent">${totalMaxUsd.toFixed(0)}</p>
           </div>
         </div>
       )}
 
-      <div className="flex items-center gap-4 mb-4">
+      <div className="flex items-center gap-3 mb-4">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder="Search by task, project, language, ID..."
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-3" />
+          <input
             value={search}
             onChange={e => setSearch(e.target.value)}
+            placeholder="Search task, project, language, ID"
+            className="w-full h-9 pl-9 pr-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4"
           />
         </div>
         {!isLoading && !isError && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Clock className="w-4 h-4" />
-            <span>{filtered.length} / {tasks.length} tasks</span>
-          </div>
+          <span className="text-[12px] text-ink-3 tabular-nums">
+            {fmtNumber(filtered.length)} / {fmtNumber(tasks.length)}
+          </span>
         )}
       </div>
 
-      {isError && (
-        <Card className="border-destructive/30 bg-destructive/5">
-          <CardContent className="p-6 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-medium text-sm text-destructive">Failed to load tasks</p>
-              <p className="text-xs text-muted-foreground mt-1">{error?.message || 'Unknown error'}</p>
-              <Button variant="outline" size="sm" onClick={handleRefresh} className="mt-3 gap-2">
-                <RefreshCw className="w-3 h-3" /> Try Again
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {isLoading && (
-        <div className="space-y-3">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-20 bg-secondary rounded-xl animate-pulse" />
-          ))}
+      {isError ? (
+        <ErrorState error={error} onRetry={refetch} />
+      ) : isLoading ? (
+        <div className="space-y-2.5">
+          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
         </div>
-      )}
-
-      {!isLoading && !isError && filtered.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="py-16 text-center text-muted-foreground">
-            <Globe2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p className="text-sm font-medium">
-              {tasks.length === 0 ? 'No tasks in Order status' : 'No tasks match your search'}
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {!isLoading && !isError && filtered.length > 0 && (
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title={tasks.length === 0 ? 'Nothing pending' : 'No matches'}
+          body={tasks.length === 0
+            ? `${activePortal?.name || 'This portal'} has no tasks in “Order” state right now — a quiet moment.`
+            : 'Refine your search or clear the filter.'}
+        />
+      ) : (
         <div className="space-y-3">
           {filtered.map(task => (
             <TaskDetailCard

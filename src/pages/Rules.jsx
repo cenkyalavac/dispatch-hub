@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, GripVertical, Globe } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+
 import RuleForm from '@/components/rules/RuleForm';
+import { Skeleton } from '@/components/ui/skeleton';
+import EmptyState from '@/components/ui/EmptyState';
+import { EM } from '@/lib/format';
 
 export default function Rules() {
   const [showForm, setShowForm] = useState(false);
@@ -20,7 +20,6 @@ export default function Rules() {
     queryKey: ['portals'],
     queryFn: () => base44.entities.Portal.list(),
   });
-
   const { data: rules = [], isLoading } = useQuery({
     queryKey: ['rules-all', portalFilter],
     queryFn: () =>
@@ -33,58 +32,42 @@ export default function Rules() {
     mutationFn: ({ id, data }) => base44.entities.Rule.update(id, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['rules-all'] }),
   });
-
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.Rule.delete(id),
-    onSuccess: () => {
-      toast.success('Rule deleted');
-      qc.invalidateQueries({ queryKey: ['rules-all'] });
-    },
+    onSuccess: () => { toast.success('Rule deleted'); qc.invalidateQueries({ queryKey: ['rules-all'] }); },
   });
 
-  const handleToggle = (rule) => {
-    updateMutation.mutate({ id: rule.id, data: { is_active: !rule.is_active } });
-  };
-
-  const handleEdit = (rule) => {
-    setEditingRule(rule);
-    setShowForm(true);
-  };
-
   const handleClose = () => {
-    setShowForm(false);
-    setEditingRule(null);
+    setShowForm(false); setEditingRule(null);
     qc.invalidateQueries({ queryKey: ['rules-all'] });
   };
 
-  const actionColor = { accept: 'bg-green-100 text-green-700', reject: 'bg-red-100 text-red-600' };
-  const actionLabel = { accept: 'Accept', reject: 'Reject' };
-
   return (
-    <div className="p-8 max-w-4xl">
-      <div className="flex items-center justify-between mb-8">
+    <div className="px-8 py-7 max-w-4xl">
+      <header className="flex items-end justify-between mb-7">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Rules</h1>
-          <p className="text-muted-foreground text-sm mt-1">Manage task accept/reject rules</p>
+          <h1 className="text-[22px] font-semibold tracking-tight text-ink-1">Rules</h1>
+          <p className="text-[13px] text-ink-3 mt-1 italic-editorial">
+            What to accept, what to reject — declared once, applied always.
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Select value={portalFilter} onValueChange={setPortalFilter}>
-            <SelectTrigger className="w-44">
-              <Globe className="w-4 h-4 mr-1 text-muted-foreground" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Portals</SelectItem>
-              {portals.map(p => (
-                <SelectItem key={p.key} value={p.key}>{p.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button onClick={() => { setEditingRule(null); setShowForm(true); }} className="gap-2">
-            <Plus className="w-4 h-4" /> New Rule
-          </Button>
+        <div className="flex items-center gap-2">
+          <select
+            value={portalFilter}
+            onChange={(e) => setPortalFilter(e.target.value)}
+            className="h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
+          >
+            <option value="all">All portals</option>
+            {portals.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
+          </select>
+          <button
+            onClick={() => { setEditingRule(null); setShowForm(true); }}
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-accent text-white text-[13px] font-medium hover:bg-[var(--accent-hover)] transition-colors duration-tab"
+          >
+            <Plus className="w-4 h-4" /> New rule
+          </button>
         </div>
-      </div>
+      </header>
 
       {showForm && (
         <div className="mb-6">
@@ -93,60 +76,69 @@ export default function Rules() {
       )}
 
       {isLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => <div key={i} className="h-20 bg-secondary rounded-xl animate-pulse" />)}
+        <div className="space-y-2">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-16" />)}
         </div>
       ) : rules.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="py-16 text-center text-muted-foreground">
-            <p className="text-sm">No rules yet. Create your first rule.</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          title="No rules defined"
+          body="A rule listens for a pattern and decides — accept this, reject that. Create one to put your hub on autopilot."
+          cta={() => <><Plus className="w-4 h-4" /> New rule</>}
+          action={() => { setEditingRule(null); setShowForm(true); }}
+        />
       ) : (
-        <div className="space-y-3">
-          {rules.map((rule) => (
-            <Card key={rule.id} className={`shadow-sm transition-all ${!rule.is_active ? 'opacity-50' : ''}`}>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <GripVertical className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm">{rule.name}</span>
-                        <Badge className={actionColor[rule.action]}>{actionLabel[rule.action]}</Badge>
-                        <Badge variant="outline" className="text-xs">{rule.portal || 'symfonie'}</Badge>
-                        <span className="text-xs text-muted-foreground">Priority: {rule.priority}</span>
-                      </div>
-                      {rule.conditions && rule.conditions.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {rule.conditions.map((c, i) => (
-                            <span key={i} className="inline-flex items-center gap-1 text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground">
-                              <span className="font-medium">{c.field}</span>
-                              <span>{c.operator}</span>
-                              <span className="font-medium">"{c.value}"</span>
-                            </span>
-                          ))}
-                        </div>
-                      )}
+        <div className="space-y-2">
+          {rules.map(rule => (
+            <div
+              key={rule.id}
+              className={`bg-surface-1 border border-line-1 rounded-md p-4 hover-surface transition-opacity ${!rule.is_active ? 'opacity-50' : ''}`}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-[14px] text-ink-1">{rule.name}</span>
+                    <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${
+                      rule.action === 'accept' ? 'text-success bg-success-soft' : 'text-danger bg-danger-soft'
+                    }`}>
+                      {rule.action === 'accept' ? 'Accept' : 'Reject'}
+                    </span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-ink-4">{rule.portal || 'symfonie'}</span>
+                    <span className="text-[11px] text-ink-3">priority {rule.priority ?? EM}</span>
+                  </div>
+                  {rule.conditions && rule.conditions.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {rule.conditions.map((c, i) => (
+                        <span key={i} className="text-[11px] text-ink-2 bg-surface-2 px-2 py-0.5 rounded">
+                          <span className="font-mono text-ink-3">{c.field}</span>
+                          <span className="mx-1 text-ink-4">{c.operator}</span>
+                          <span className="font-medium">{c.value || EM}</span>
+                        </span>
+                      ))}
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Switch checked={rule.is_active} onCheckedChange={() => handleToggle(rule)} />
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(rule)}>
-                      <Pencil className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive"
-                      onClick={() => deleteMutation.mutate(rule.id)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
+                  ) : (
+                    <p className="text-[12px] text-ink-3 italic-editorial mt-1">No conditions — applies to every task.</p>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Switch
+                    checked={rule.is_active}
+                    onCheckedChange={() => updateMutation.mutate({ id: rule.id, data: { is_active: !rule.is_active } })}
+                  />
+                  <button
+                    onClick={() => { setEditingRule(rule); setShowForm(true); }}
+                    className="inline-flex items-center justify-center h-8 w-8 rounded text-ink-3 hover:bg-surface-2 hover:text-ink-1 transition-colors duration-tab"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => { if (confirm(`Delete "${rule.name}"?`)) deleteMutation.mutate(rule.id); }}
+                    className="inline-flex items-center justify-center h-8 w-8 rounded text-ink-3 hover:bg-danger-soft hover:text-danger transition-colors duration-tab"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
           ))}
         </div>
       )}

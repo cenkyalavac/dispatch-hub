@@ -1,83 +1,117 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Newsreader:ital,wght@1,400;1,500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
+/* ─────────────────────────────────────────────────────────────
+   OKLCH design tokens — no namespacing, design-system doctrine
+   ───────────────────────────────────────────────────────────── */
 @layer base {
   :root {
-    --background: 220 25% 97%;
-    --foreground: 222 47% 11%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 221 83% 53%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 93%;
-    --secondary-foreground: 222 47% 25%;
-    --muted: 220 14% 93%;
-    --muted-foreground: 220 9% 46%;
-    --accent: 221 83% 95%;
-    --accent-foreground: 221 83% 30%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --success: 142 71% 45%;
-    --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
-    --border: 220 13% 88%;
-    --input: 220 13% 88%;
-    --ring: 221 83% 53%;
-    --radius: 0.75rem;
-    --font-inter: 'Inter', sans-serif;
-    --sidebar-background: 222 47% 11%;
-    --sidebar-foreground: 220 14% 85%;
-    --sidebar-primary: 221 83% 60%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 222 47% 18%;
-    --sidebar-accent-foreground: 220 14% 90%;
-    --sidebar-border: 222 47% 18%;
-    --sidebar-ring: 221 83% 53%;
-  }
+    /* Surfaces — quiet, layered */
+    --bg:         oklch(0.985 0.002 247);
+    --surface-1: oklch(1 0 0);
+    --surface-2: oklch(0.970 0.004 247);
+    --surface-3: oklch(0.945 0.006 247);
 
-  .dark {
-    --background: 222 47% 8%;
-    --foreground: 210 40% 96%;
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 96%;
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 40% 96%;
-    --primary: 221 83% 60%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 222 47% 18%;
-    --secondary-foreground: 210 40% 90%;
-    --muted: 222 47% 15%;
-    --muted-foreground: 215 20% 60%;
-    --accent: 221 83% 20%;
-    --accent-foreground: 221 83% 80%;
-    --destructive: 0 62% 40%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 222 47% 20%;
-    --input: 222 47% 20%;
-    --ring: 221 83% 60%;
-    --sidebar-background: 222 47% 6%;
-    --sidebar-foreground: 220 14% 80%;
-    --sidebar-primary: 221 83% 60%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 222 47% 12%;
-    --sidebar-accent-foreground: 220 14% 85%;
-    --sidebar-border: 222 47% 14%;
-    --sidebar-ring: 221 83% 53%;
+    /* Ink */
+    --ink-1: oklch(0.18 0.02 260);
+    --ink-2: oklch(0.42 0.015 260);
+    --ink-3: oklch(0.60 0.012 260);
+    --ink-4: oklch(0.78 0.008 260);
+
+    /* Lines */
+    --line-1: oklch(0.92 0.005 260);
+    --line-2: oklch(0.88 0.006 260);
+
+    /* Accent — single spot color, used sparingly (5-10/page) */
+    --accent:        oklch(0.55 0.20 265);
+    --accent-hover:  oklch(0.50 0.21 265);
+    --accent-soft:   oklch(0.96 0.04 265);
+    --accent-ink:    oklch(0.30 0.18 265);
+
+    /* Tones */
+    --success:      oklch(0.65 0.16 155);
+    --success-soft: oklch(0.96 0.04 155);
+    --warning:      oklch(0.75 0.16 75);
+    --warning-soft: oklch(0.97 0.05 75);
+    --danger:       oklch(0.60 0.22 25);
+    --danger-soft:  oklch(0.96 0.04 25);
+
+    /* Radius */
+    --r-sm: 6px;
+    --r-md: 10px;
+    --r-lg: 14px;
+
+    /* shadcn bridge — map their HSL names to our OKLCH */
+    --background: var(--bg);
+    --foreground: var(--ink-1);
+    --card: var(--surface-1);
+    --card-foreground: var(--ink-1);
+    --popover: var(--surface-1);
+    --popover-foreground: var(--ink-1);
+    --primary: var(--accent);
+    --primary-foreground: oklch(1 0 0);
+    --secondary: var(--surface-2);
+    --secondary-foreground: var(--ink-1);
+    --muted: var(--surface-2);
+    --muted-foreground: var(--ink-3);
+    --accent-foreground: var(--accent-ink);
+    --destructive: var(--danger);
+    --destructive-foreground: oklch(1 0 0);
+    --border: var(--line-1);
+    --input: var(--line-2);
+    --ring: var(--accent);
+    --radius: 10px;
+
+    /* Type */
+    --font-sans: 'Inter Tight', system-ui, -apple-system, sans-serif;
+    --font-italic: 'Newsreader', Georgia, serif;
   }
 }
 
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
+  *:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-radius: 4px;
   }
 
+  html, body { background: var(--bg); }
   body {
-    @apply bg-background text-foreground font-inter;
+    color: var(--ink-1);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
   }
+
+  /* Editorial italic — Newsreader, used for empty-state copy and accents only */
+  .italic-editorial {
+    font-family: var(--font-italic);
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: -0.005em;
+  }
+}
+
+@keyframes skel {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@layer components {
+  .hover-surface { transition: background-color 120ms ease; }
+  .hover-surface:hover { background: var(--surface-2); }
+
+  .skel {
+    background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 50%, var(--surface-2) 100%);
+    background-size: 200% 100%;
+    animation: skel 1500ms ease-in-out infinite;
+    border-radius: 6px;
+  }
+
+  .toast-success { border-left: 3px solid var(--success); }
+  .toast-warning { border-left: 3px solid var(--warning); }
+  .toast-danger  { border-left: 3px solid var(--danger); }
+  .toast-info    { border-left: 3px solid var(--accent); }
 }

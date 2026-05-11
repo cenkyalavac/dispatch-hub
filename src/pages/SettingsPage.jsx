@@ -1,10 +1,15 @@
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { CheckCircle2, Sheet, RefreshCw, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle2, AlertCircle, ChevronDown, ChevronUp, RefreshCw, Sheet } from 'lucide-react';
+
+const secretGroups = [
+  { title: 'Moravia Symfonie', items: ['SYMFONIE_CLIENT_ID', 'SYMFONIE_CLIENT_SECRET', 'SYMFONIE_TENANT_ID', 'SYMFONIE_SERVICE_ACCOUNT'] },
+  { title: 'Welocalize Junction', items: ['JUNCTION_JWT (renews ~30 days)', 'JUNCTION_API_BASE (optional)'] },
+  { title: 'Google Sheets', items: ['GOOGLE_SHEETS_SPREADSHEET_ID'] },
+];
+
+const btn = 'inline-flex items-center gap-2 h-9 px-4 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab disabled:opacity-40';
 
 export default function SettingsPage() {
   const [setupLoading, setSetupLoading] = useState(false);
@@ -16,16 +21,10 @@ export default function SettingsPage() {
     setSetupLoading(true);
     try {
       const res = await base44.functions.invoke('sheetsSetupHeader', {});
-      if (res.data.success) {
-        toast.success('Google Sheets header row created!');
-      } else {
-        toast.error(res.data.error || 'An error occurred');
-      }
-    } catch (err) {
-      toast.error('Error: ' + err.message);
-    } finally {
-      setSetupLoading(false);
-    }
+      if (res.data.success) toast.success('Header row created');
+      else toast.error(res.data.error || 'Setup failed');
+    } catch (err) { toast.error(err.message); }
+    finally { setSetupLoading(false); }
   };
 
   const handleTestAuth = async () => {
@@ -35,175 +34,96 @@ export default function SettingsPage() {
       const res = await base44.functions.invoke('symfonieAuth', {});
       const data = res.data;
       setTestResult(data);
-
-      if (data.success) {
-        const tasksCount = data.tasks_sample?.value?.length ?? 0;
-        toast.success(`Connection OK — WhoAmI: ${data.whoami?.Login || 'unknown'}, Tasks in Order: ${tasksCount > 0 ? tasksCount + '+' : 'none found (good or no tasks pending)'}`);
-      } else {
-        toast.error(data.error || 'Connection failed');
-      }
-    } catch (err) {
-      toast.error('Error: ' + err.message);
-    } finally {
-      setTestLoading(false);
-    }
+      if (data.success) toast.success(`Authenticated as ${data.whoami?.Login || 'unknown'}`);
+      else toast.error(data.error || 'Connection failed');
+    } catch (err) { toast.error(err.message); }
+    finally { setTestLoading(false); }
   };
 
   return (
-    <div className="p-8 max-w-3xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground tracking-tight">Settings</h1>
-        <p className="text-muted-foreground text-sm mt-1">Connection tests, integration tooling and required secrets reference.</p>
-      </div>
+    <div className="px-8 py-7 max-w-3xl">
+      <header className="mb-7">
+        <h1 className="text-[22px] font-semibold tracking-tight text-ink-1">Diagnostics</h1>
+        <p className="text-[13px] text-ink-3 mt-1 italic-editorial">
+          Connection probes, one-time setup, and a quick map of the secrets you’ll need.
+        </p>
+      </header>
 
       <div className="space-y-4">
-        {/* Auth test card */}
-        <Card className="shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <RefreshCw className="w-4 h-4" />
-              Symfonie API Connection Test
-            </CardTitle>
-            <CardDescription>
-              Acquires an Azure AD token and validates access to the Symfonie V5 API.
-              Also runs a live check against <code className="text-xs bg-secondary px-1 rounded">GET /Tasks?$filter=State eq 'Order'</code>
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Button onClick={handleTestAuth} disabled={testLoading} variant="outline" className="gap-2">
-              {testLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              {testLoading ? 'Testing...' : 'Test Connection'}
-            </Button>
+        {/* Symfonie test */}
+        <section className="bg-surface-1 border border-line-1 rounded-md p-5">
+          <h2 className="text-[14px] font-semibold text-ink-1">Symfonie connection</h2>
+          <p className="text-[12px] text-ink-3 mt-1">
+            Acquires an Azure AD token and probes <code className="font-mono text-[11px] bg-surface-2 px-1 rounded">/Tasks?$filter=State eq 'Order'</code>.
+          </p>
+          <button onClick={handleTestAuth} disabled={testLoading} className={`${btn} mt-3`}>
+            {testLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+            {testLoading ? 'Testing…' : 'Run test'}
+          </button>
 
-            {testResult && (
-              <div className="space-y-3">
-                {/* Status grid */}
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-secondary/50">
-                    {testResult.success
-                      ? <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                      : <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />}
-                    <div>
-                      <p className="text-xs text-muted-foreground">Token</p>
-                      <p className="font-medium text-xs">{testResult.success ? `OK (expires in ${testResult.token_expires_in}s)` : 'FAILED'}</p>
+          {testResult && (
+            <div className="mt-4 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  ['Token', testResult.success ? `OK · ${testResult.token_expires_in}s` : 'failed', testResult.success],
+                  ['WhoAmI', testResult.whoami_status === 200 ? (testResult.whoami?.Login || 'OK') : `HTTP ${testResult.whoami_status}`, testResult.whoami_status === 200],
+                  ['Tasks API', testResult.tasks_api_status === 200 ? `${testResult.tasks_sample?.value?.length ?? 0} task(s)` : `HTTP ${testResult.tasks_api_status}`, testResult.tasks_api_status === 200],
+                  ['Sample', testResult.tasks_sample?.value?.[0]?.Name || '—', !!testResult.tasks_sample?.value?.[0]],
+                ].map(([k, v, ok]) => (
+                  <div key={k} className="flex items-center gap-2 p-2.5 rounded-md bg-surface-2 border border-line-1">
+                    {ok ? <CheckCircle2 className="w-3.5 h-3.5 text-success flex-shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 text-warning flex-shrink-0" />}
+                    <div className="min-w-0">
+                      <p className="text-[10px] uppercase tracking-wider text-ink-3">{k}</p>
+                      <p className="text-[12px] font-medium truncate text-ink-1">{v}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-secondary/50">
-                    {testResult.whoami_status === 200
-                      ? <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                      : <AlertCircle className="w-4 h-4 text-yellow-500 flex-shrink-0" />}
-                    <div>
-                      <p className="text-xs text-muted-foreground">WhoAmI</p>
-                      <p className="font-medium text-xs">{testResult.whoami_status === 200 ? (testResult.whoami?.Login || testResult.whoami?.Email || 'OK') : `HTTP ${testResult.whoami_status}`}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-secondary/50">
-                    {testResult.tasks_api_status === 200
-                      ? <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                      : <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />}
-                    <div>
-                      <p className="text-xs text-muted-foreground">Tasks API (Order state)</p>
-                      <p className="font-medium text-xs">
-                        {testResult.tasks_api_status === 200
-                          ? `HTTP 200 — ${testResult.tasks_sample?.value?.length ?? 0} task(s) found`
-                          : `HTTP ${testResult.tasks_api_status}`}
-                      </p>
-                    </div>
-                  </div>
-                  {testResult.tasks_sample?.value?.[0] && (
-                    <div className="flex items-center gap-2 p-2 rounded-lg bg-secondary/50">
-                      <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">Sample Task</p>
-                        <p className="font-medium text-xs truncate max-w-[140px]">{testResult.tasks_sample.value[0].Name}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Raw response toggle */}
-                <button
-                  onClick={() => setShowRaw(v => !v)}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  {showRaw ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                  {showRaw ? 'Hide' : 'Show'} raw response
-                </button>
-                {showRaw && (
-                  <pre className="bg-secondary p-3 rounded-lg text-xs overflow-auto max-h-64">
-                    {JSON.stringify(testResult, null, 2)}
-                  </pre>
-                )}
+                ))}
               </div>
-            )}
-          </CardContent>
-        </Card>
+              <button
+                onClick={() => setShowRaw(v => !v)}
+                className="inline-flex items-center gap-1 text-[11px] text-ink-3 hover:text-ink-1 transition-colors duration-tab"
+              >
+                {showRaw ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                {showRaw ? 'Hide' : 'Show'} raw response
+              </button>
+              {showRaw && (
+                <pre className="bg-surface-2 border border-line-1 p-3 rounded-md text-[11px] overflow-auto max-h-64 font-mono">
+                  {JSON.stringify(testResult, null, 2)}
+                </pre>
+              )}
+            </div>
+          )}
+        </section>
 
-        {/* Sheets setup card */}
-        <Card className="shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Sheet className="w-4 h-4" />
-              Google Sheets Setup
-            </CardTitle>
-            <CardDescription>
-              Writes the header row to the target spreadsheet. Run once on first setup.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={handleSheetsSetup} disabled={setupLoading} variant="outline" className="gap-2">
-              {setupLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sheet className="w-4 h-4" />}
-              {setupLoading ? 'Creating...' : 'Create Header Row'}
-            </Button>
-          </CardContent>
-        </Card>
+        {/* Sheets setup */}
+        <section className="bg-surface-1 border border-line-1 rounded-md p-5">
+          <h2 className="text-[14px] font-semibold text-ink-1">Google Sheets header</h2>
+          <p className="text-[12px] text-ink-3 mt-1 italic-editorial">Run once on first install.</p>
+          <button onClick={handleSheetsSetup} disabled={setupLoading} className={`${btn} mt-3`}>
+            {setupLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sheet className="w-3.5 h-3.5" />}
+            {setupLoading ? 'Creating…' : 'Create header row'}
+          </button>
+        </section>
 
         {/* Secrets reference */}
-        <Card className="bg-secondary/50 border-dashed">
-          <CardContent className="p-6">
-            <h3 className="font-medium text-sm mb-3">Required Secrets</h3>
-            <div className="space-y-3 text-xs">
-              <div>
-                <p className="font-semibold text-foreground mb-1.5 uppercase tracking-wide text-[10px]">Moravia Symfonie</p>
-                <div className="space-y-1 font-mono text-muted-foreground">
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> SYMFONIE_CLIENT_ID</div>
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> SYMFONIE_CLIENT_SECRET</div>
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> SYMFONIE_TENANT_ID</div>
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> SYMFONIE_SERVICE_ACCOUNT</div>
-                </div>
+        <section className="bg-surface-1 border border-line-1 rounded-md p-5">
+          <h2 className="text-[14px] font-semibold text-ink-1">Required secrets</h2>
+          <p className="text-[12px] text-ink-3 italic-editorial mt-1">Set via Dashboard → Code → Secrets.</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            {secretGroups.map(g => (
+              <div key={g.title}>
+                <p className="text-[10px] uppercase tracking-wider text-ink-3 mb-2">{g.title}</p>
+                <ul className="space-y-1">
+                  {g.items.map(s => (
+                    <li key={s} className="text-[12px] font-mono text-ink-2 flex items-center gap-2">
+                      <span className="w-1 h-1 rounded-full bg-ink-4" /> {s}
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <div>
-                <p className="font-semibold text-foreground mb-1.5 uppercase tracking-wide text-[10px]">Welocalize Junction</p>
-                <div className="space-y-1 font-mono text-muted-foreground">
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-purple-400 inline-block" /> JUNCTION_JWT <span className="text-[10px] text-muted-foreground/70">(JWT from Chrome DevTools, expires every 30 days)</span></div>
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-purple-400 inline-block" /> JUNCTION_API_BASE <span className="text-[10px] text-muted-foreground/70">(optional, defaults to production)</span></div>
-                </div>
-              </div>
-              <div>
-                <p className="font-semibold text-foreground mb-1.5 uppercase tracking-wide text-[10px]">Google Sheets</p>
-                <div className="space-y-1 font-mono text-muted-foreground">
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" /> GOOGLE_SHEETS_SPREADSHEET_ID</div>
-                </div>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-3">Set via Dashboard → Code → Secrets</p>
-          </CardContent>
-        </Card>
-
-        {/* API notes */}
-        <Card className="bg-secondary/30 border-dashed">
-          <CardContent className="p-6">
-            <h3 className="font-medium text-sm mb-3">Symfonie V5 API Notes</h3>
-            <div className="space-y-1 text-xs text-muted-foreground">
-              <p>• Task states: <Badge variant="outline" className="text-xs ml-1">Order (3)</Badge> = awaiting acceptance</p>
-              <p>• Accept command: <code className="bg-secondary px-1 rounded">taskCommand: "Accept"</code></p>
-              <p>• Reject command: <code className="bg-secondary px-1 rounded">taskCommand: "Reject"</code></p>
-              <p>• Endpoint: <code className="bg-secondary px-1 rounded">POST /Tasks(id)/Default.ExecuteTaskCommand</code></p>
-              <p>• Price from: <code className="bg-secondary px-1 rounded">FinanceRows[].MaxUsd</code> (expanded)</p>
-              <p>• Word count from: <code className="bg-secondary px-1 rounded">FinanceRows[BillingUnit=Words].Quantity</code></p>
-            </div>
-          </CardContent>
-        </Card>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   );
