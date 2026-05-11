@@ -35,8 +35,9 @@ const NUM_OPS = [
 
 const numericFields = ['word_count', 'price', 'quantity'];
 
-export default function RuleForm({ rule, onClose }) {
+export default function RuleForm({ rule, portals = [], onClose }) {
   const [name, setName] = useState(rule?.name || '');
+  const [portal, setPortal] = useState(rule?.portal || (portals[0]?.key || 'symfonie'));
   const [action, setAction] = useState(rule?.action || 'accept');
   const [priority, setPriority] = useState(rule?.priority || 1);
   const [conditions, setConditions] = useState(rule?.conditions || []);
@@ -75,7 +76,7 @@ export default function RuleForm({ rule, onClose }) {
 
   const handleSave = () => {
     if (!name.trim()) { toast.error('Kural adı gerekli'); return; }
-    saveMutation.mutate({ name, action, priority: Number(priority), conditions, is_active: true });
+    saveMutation.mutate({ name, portal, action, priority: Number(priority), conditions, is_active: true });
   };
 
   return (
@@ -100,17 +101,33 @@ export default function RuleForm({ rule, onClose }) {
           </div>
         </div>
 
-        <div className="space-y-1">
-          <Label className="text-xs">Aksiyon</Label>
-          <Select value={action} onValueChange={setAction}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="accept">✓ Kabul Et</SelectItem>
-              <SelectItem value="reject">✗ Reddet</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Portal</Label>
+            <Select value={portal} onValueChange={setPortal}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {portals.length > 0
+                  ? portals.map(p => <SelectItem key={p.key} value={p.key}>{p.name}</SelectItem>)
+                  : <SelectItem value="symfonie">Moravia Symfonie</SelectItem>
+                }
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Aksiyon</Label>
+            <Select value={action} onValueChange={setAction}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="accept">✓ Kabul Et</SelectItem>
+                <SelectItem value="reject">✗ Reddet</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <div className="space-y-2">

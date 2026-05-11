@@ -1,11 +1,12 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ListChecks, Settings, CheckCircle2, Zap } from 'lucide-react';
+import { LayoutDashboard, ListChecks, Settings, CheckCircle2, Zap, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/portals', label: 'Portaller', icon: Globe },
   { path: '/rules', label: 'Kurallar', icon: ListChecks },
-  { path: '/tasks', label: 'Kabul Edilenler', icon: CheckCircle2 },
+  { path: '/tasks', label: 'İşlenen Tasklar', icon: CheckCircle2 },
   { path: '/settings', label: 'Ayarlar', icon: Settings },
 ];
 

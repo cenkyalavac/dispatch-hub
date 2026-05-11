@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, XCircle, ExternalLink, Search, Filter } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CheckCircle2, XCircle, Search, Globe } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -12,14 +12,23 @@ import { tr } from 'date-fns/locale';
 export default function Tasks() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [portalFilter, setPortalFilter] = useState('all');
+
+  const { data: portals = [] } = useQuery({
+    queryKey: ['portals'],
+    queryFn: () => base44.entities.Portal.list(),
+  });
 
   const { data: tasks = [], isLoading } = useQuery({
-    queryKey: ['accepted-tasks-all'],
-    queryFn: () => base44.entities.AcceptedTask.list('-accepted_at', 500),
+    queryKey: ['accepted-tasks-all', portalFilter],
+    queryFn: () =>
+      portalFilter === 'all'
+        ? base44.entities.AcceptedTask.list('-accepted_at', 500)
+        : base44.entities.AcceptedTask.filter({ portal: portalFilter }, '-accepted_at', 500),
   });
 
   const filtered = tasks.filter(t => {
-    const matchSearch = !search || 
+    const matchSearch = !search ||
       t.task_name?.toLowerCase().includes(search.toLowerCase()) ||
       t.project_name?.toLowerCase().includes(search.toLowerCase()) ||
       t.client_name?.toLowerCase().includes(search.toLowerCase());
@@ -44,12 +53,24 @@ export default function Tasks() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
+        <Select value={portalFilter} onValueChange={setPortalFilter}>
+          <SelectTrigger className="w-44">
+            <Globe className="w-4 h-4 mr-1 text-muted-foreground" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tüm Portaller</SelectItem>
+            {portals.map(p => (
+              <SelectItem key={p.key} value={p.key}>{p.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tümü</SelectItem>
+            <SelectItem value="all">Tüm Durumlar</SelectItem>
             <SelectItem value="accepted">Kabul Edildi</SelectItem>
             <SelectItem value="rejected">Reddedildi</SelectItem>
           </SelectContent>
@@ -74,6 +95,7 @@ export default function Tasks() {
                 <tr className="border-b bg-secondary/50">
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Durum</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Task</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Portal</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Müşteri</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Dil Çifti</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Kelime</th>
@@ -96,6 +118,9 @@ export default function Tasks() {
                     <td className="px-4 py-3">
                       <p className="font-medium truncate max-w-[180px]">{task.task_name}</p>
                       <p className="text-xs text-muted-foreground truncate max-w-[180px]">{task.project_name}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant="outline" className="text-xs">{task.portal || 'symfonie'}</Badge>
                     </td>
                     <td className="px-4 py-3 text-sm text-muted-foreground">{task.client_name || '-'}</td>
                     <td className="px-4 py-3">
