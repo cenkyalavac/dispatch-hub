@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { CheckCircle2, AlertCircle, ChevronDown, ChevronUp, RefreshCw, Sheet } from 'lucide-react';
+import HandoffPathSection from '@/components/settings/HandoffPathSection';
 
 const secretGroups = [
   { title: 'Moravia Symfonie', items: ['SYMFONIE_CLIENT_ID', 'SYMFONIE_CLIENT_SECRET', 'SYMFONIE_TENANT_ID', 'SYMFONIE_SERVICE_ACCOUNT'] },
@@ -94,6 +95,9 @@ export default function SettingsPage() {
             </div>
           )}
         </section>
+
+        {/* Dropbox handoff path */}
+        <HandoffPathSection />
 
         {/* Sheets setup */}
         <section className="bg-surface-1 border border-line-1 rounded-md p-5">

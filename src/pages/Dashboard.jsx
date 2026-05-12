@@ -8,6 +8,10 @@ import { toast } from 'sonner';
 import Metric from '@/components/dashboard/Metric';
 import ConnectorRow from '@/components/dashboard/ConnectorRow';
 import ActivityRow from '@/components/dashboard/ActivityRow';
+import TrendChart from '@/components/dashboard/TrendChart';
+import PortalShareChart from '@/components/dashboard/PortalShareChart';
+import LangPairChart from '@/components/dashboard/LangPairChart';
+import RulePerformance from '@/components/dashboard/RulePerformance';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import { fmtNumber, EM } from '@/lib/format';
@@ -210,6 +214,37 @@ export default function Dashboard() {
           </div>
         </section>
       </div>
+
+      {/* Analytics — 4 panels: trend / portal share / lang pairs / rule perf */}
+      {!loading && allTasks.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-7">
+          <section className="bg-surface-1 border border-line-1 rounded-md p-5 lg:col-span-2">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-[14px] font-semibold text-ink-1">Last 14 days</h2>
+              <div className="flex items-center gap-3 text-[11px] text-ink-3">
+                <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-accent" /> Accepted</span>
+                <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-danger" /> Rejected</span>
+              </div>
+            </div>
+            <TrendChart tasks={tasks} days={14} />
+          </section>
+
+          <section className="bg-surface-1 border border-line-1 rounded-md p-5">
+            <h2 className="text-[14px] font-semibold text-ink-1 mb-3">Portal share</h2>
+            <PortalShareChart tasks={tasks} portals={portals} />
+          </section>
+
+          <section className="bg-surface-1 border border-line-1 rounded-md p-5">
+            <h2 className="text-[14px] font-semibold text-ink-1 mb-3">Top language pairs</h2>
+            <LangPairChart tasks={tasks} />
+          </section>
+
+          <section className="bg-surface-1 border border-line-1 rounded-md p-5 lg:col-span-2">
+            <h2 className="text-[14px] font-semibold text-ink-1 mb-3">Rule performance</h2>
+            <RulePerformance tasks={tasks} rules={rules} />
+          </section>
+        </div>
+      )}
 
       {/* Last run result */}
       {lastResult && (

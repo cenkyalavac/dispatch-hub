@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import TaskDetailCard from '@/components/pending/TaskDetailCard';
 import PendingFilters from '@/components/pending/PendingFilters';
+import BulkActionBar from '@/components/pending/BulkActionBar';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import ErrorState from '@/components/ui/ErrorState';
@@ -56,6 +57,8 @@ export default function PendingTasks() {
   const [selectedPortal, setSelectedPortal] = useState('symfonie');
   const [acceptingIds, setAcceptingIds] = useState(new Set());
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const { data: portals = [] } = useQuery({
     queryKey: ['portals-all'],
@@ -65,6 +68,7 @@ export default function PendingTasks() {
   const activePortal = portals.find(p => p.key === selectedPortal);
   const fetchFn = activePortal?.fetch_function || 'symfonieGetTasks';
   const acceptFn = activePortal?.accept_function || 'symfonieAcceptTask';
+  const rejectFn = activePortal?.reject_function || null;
 
   // Rate-limit dostu: 5 dk cache, otomatik refetch yok, 503 olunca cache'i koru.
   // Symfonie "no available server" verince sessizce eski veriyi göster.
@@ -145,17 +149,46 @@ export default function PendingTasks() {
     [filters]
   );
 
+  // Build the payload once — used by both single and bulk paths so they stay in sync.
+  const buildPayload = (task) => ({
+    task_id: task.id, task_name: task.name, project_name: task.project_name,
+    account_name: task.account_name || task.client_name || '',
+    client_name: task.client_name || task.account_name || '',
+    source_language: task.source_language, target_language: task.target_language,
+    word_count: task.word_count, price: task.price_max_usd, due_date: task.due_date,
+  });
+
+  const toggleSelect = (task) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(task.id)) next.delete(task.id); else next.add(task.id);
+      return next;
+    });
+  };
+
+  const runBulk = async (fnName, label) => {
+    if (!fnName) return;
+    const targets = filtered.filter(t => selectedIds.has(t.id));
+    if (targets.length === 0) return;
+    setBulkBusy(true);
+    // Sequential — Symfonie throttles concurrent command calls. Slow but reliable.
+    let ok = 0, fail = 0;
+    for (const t of targets) {
+      try {
+        const res = await base44.functions.invoke(fnName, buildPayload(t));
+        if (res.data?.success) ok++; else fail++;
+      } catch { fail++; }
+    }
+    toast[fail === 0 ? 'success' : 'warning'](`${label}: ${ok} ok${fail ? `, ${fail} failed` : ''}`);
+    setSelectedIds(new Set());
+    setBulkBusy(false);
+    refetch();
+  };
+
   const handleManualAccept = async (task) => {
     setAcceptingIds(prev => new Set([...prev, task.id]));
     try {
-      const res = await base44.functions.invoke(acceptFn, {
-        task_id: task.id, task_name: task.name, project_name: task.project_name,
-        // Symfonie uses 'account_name' (Customer), Junction uses 'client_name' (project.client.name) — send both.
-        account_name: task.account_name || task.client_name || '',
-        client_name: task.client_name || task.account_name || '',
-        source_language: task.source_language, target_language: task.target_language,
-        word_count: task.word_count, price: task.price_max_usd, due_date: task.due_date,
-      });
+      const res = await base44.functions.invoke(acceptFn, buildPayload(task));
       if (res.data?.success) { toast.success(`"${task.name}" accepted`); refetch(); }
       else toast.error(res.data?.error || 'Accept failed');
     } catch (err) { toast.error(err.message); }
@@ -261,6 +294,15 @@ export default function PendingTasks() {
         />
       )}
 
+      <BulkActionBar
+        count={selectedIds.size}
+        busy={bulkBusy}
+        onAccept={() => runBulk(acceptFn, 'Accepted')}
+        onReject={() => runBulk(rejectFn, 'Rejected')}
+        onClear={() => setSelectedIds(new Set())}
+        canReject={!!rejectFn}
+      />
+
       {isError ? (
         <ErrorState error={error} onRetry={refetch} />
       ) : isLoading ? (
@@ -282,6 +324,8 @@ export default function PendingTasks() {
               task={task}
               accepting={acceptingIds.has(task.id)}
               onAccept={handleManualAccept}
+              selected={selectedIds.has(task.id)}
+              onToggleSelect={toggleSelect}
             />
           ))}
         </div>
