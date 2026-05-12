@@ -118,7 +118,22 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.AcceptedTask.update(saved.id, { sheets_synced: true });
     }
 
-    return Response.json({ success: true, sheets_synced: synced });
+    // Handoff: Symfonie attachment'larini Dropbox'a indir (fire-and-log; basarisiz olursa accept iptal olmaz)
+    let handoff = null;
+    try {
+      const hoRes = await base44.asServiceRole.functions.invoke('symfonieDownloadAttachments', {
+        task_id: taskIdNum,
+        task_name: task_name || '',
+        project_name: project_name || '',
+        account_name: 'Symfonie',
+      });
+      handoff = hoRes.data;
+    } catch (e) {
+      console.error('Handoff failed:', e.message);
+      handoff = { error: e.message };
+    }
+
+    return Response.json({ success: true, sheets_synced: synced, handoff });
   } catch (error) {
     console.error('symfonieAcceptTask error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });

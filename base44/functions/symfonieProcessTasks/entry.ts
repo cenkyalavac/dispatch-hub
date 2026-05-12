@@ -261,6 +261,18 @@ Deno.serve(async (req) => {
           await base44.asServiceRole.entities.AcceptedTask.update(saved.id, { sheets_synced: true });
         }
 
+        // Handoff: Dropbox'a indir (basarisiz olsa bile accept bozulmasin)
+        try {
+          await base44.asServiceRole.functions.invoke('symfonieDownloadAttachments', {
+            task_id: taskId,
+            task_name: raw.Name || '',
+            project_name: task.project_name || '',
+            account_name: 'Symfonie',
+          });
+        } catch (e) {
+          console.error(`Handoff failed for task ${taskId}:`, e.message);
+        }
+
         results.accepted.push({ id: taskId, name: raw.Name, rule: matchedRule.name });
 
       } else if (matchedRule.action === 'reject') {
