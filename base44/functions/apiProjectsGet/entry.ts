@@ -38,7 +38,29 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    // Faz 1: destination == origin pass-through. Faz 2'de mapping katmanı eklenecek.
+    // Faz 2: apply FieldMapping rules. Match is case-insensitive on source_value.
+    // Mapping scope: tenant_id matches; portal == project.portal OR portal == '*'.
+    const allMappings = await base44.asServiceRole.entities.FieldMapping.filter({
+      tenant_id: auth.key.tenant_id, is_active: true,
+    });
+    const portalMaps = allMappings.filter(m => m.portal === project.portal || m.portal === '*');
+    const applied = [];
+    const translate = (field, value) => {
+      if (!value) return value;
+      const hit = portalMaps.find(m => m.field === field && String(m.source_value).toLowerCase() === String(value).toLowerCase());
+      if (hit) {
+        applied.push({ field, from: value, to: hit.destination_value });
+        return hit.destination_value;
+      }
+      return value; // passthrough
+    };
+
+    // Attachments count (catalog only — full list via apiAttachmentsList).
+    const attCount = await base44.asServiceRole.entities.ProjectAttachment
+      .filter({ tenant_id: auth.key.tenant_id, project_id: project.id })
+      .then(r => r.length)
+      .catch(() => 0);
+
     return Response.json({
       project: {
         id: project.id,
@@ -59,11 +81,12 @@ Deno.serve(async (req) => {
         delivered_at: project.delivered_at,
         origin: project.origin,
         destination: {
-          // identity mapping until Faz 2
-          source_language: project.source_language,
-          target_language: project.target_language,
-          client: project.client_name,
+          source_language: translate('source_language', project.source_language),
+          target_language: translate('target_language', project.target_language),
+          client_name:     translate('client_name',     project.client_name),
         },
+        mapping_applied: applied,
+        attachments_count: attCount,
       },
     });
   } catch (error) {

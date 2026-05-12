@@ -8,9 +8,17 @@ const SUB_NAVS_CONNECTORS = [
   { to: '/settings', label: 'Diagnostics' },
 ];
 
+const SUB_NAVS_API = [
+  { to: '/api',      label: 'Keys & webhooks', end: true },
+  { to: '/mappings', label: 'Field mappings' },
+];
+
 function resolveSubNav(pathname) {
   if (pathname.startsWith('/rules') || pathname.startsWith('/settings') || pathname.startsWith('/portals')) {
     return SUB_NAVS_CONNECTORS;
+  }
+  if (pathname.startsWith('/api') || pathname.startsWith('/mappings')) {
+    return SUB_NAVS_API;
   }
   return [];
 }

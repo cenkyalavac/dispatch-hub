@@ -126,9 +126,12 @@ export default function ApiAccess() {
         </p>
         <ul className="text-[12px] font-mono text-ink-2 space-y-1.5">
           <li><span className="text-accent">apiProjectsList</span> — list projects (default state=accepted)</li>
-          <li><span className="text-accent">apiProjectsGet</span> — get one project incl. origin + destination</li>
+          <li><span className="text-accent">apiProjectsGet</span> — origin + mapped destination + attachments_count</li>
           <li><span className="text-accent">apiProjectsAcknowledge</span> — accepted → synchronized</li>
           <li><span className="text-accent">apiProjectsDeliver</span> — synchronized → delivered</li>
+          <li><span className="text-accent">apiMappingsList</span> — list field mappings (Faz 2)</li>
+          <li><span className="text-accent">apiAttachmentsList</span> — list a project's attachments (Faz 2)</li>
+          <li><span className="text-accent">apiAttachmentsDownload</span> — short-lived Dropbox URL (Faz 2)</li>
           <li><span className="text-accent">apiSpec</span> — public JSON spec (no auth)</li>
         </ul>
       </section>

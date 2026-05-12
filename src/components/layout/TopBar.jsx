@@ -9,7 +9,7 @@ const TABS = [
   { to: '/history',   label: 'History',    matches: ['/history'] },
   { to: '/tasks',     label: 'Activity',   matches: ['/tasks'] },
   { to: '/portals',   label: 'Connectors', matches: ['/portals', '/rules', '/settings'] },
-  { to: '/api',       label: 'API',        matches: ['/api'] },
+  { to: '/api',       label: 'API',        matches: ['/api', '/mappings'] },
 ];
 
 export default function TopBar() {

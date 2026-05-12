@@ -77,7 +77,7 @@ async function dropboxUploadStream(accessToken, path, body, contentLength) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const { task_id, task_name, project_name, account_name } = await req.json();
+    const { task_id, task_name, project_name, account_name, project_id } = await req.json();
 
     if (!task_id) {
       return Response.json({ error: 'task_id required' }, { status: 400 });
@@ -136,6 +136,21 @@ Deno.serve(async (req) => {
         const contentLength = fileRes.headers.get('content-length');
         const result = await dropboxUploadStream(dropboxToken, dropboxPath, fileRes.body, contentLength);
         uploaded.push({ id: att.Id, name: att.Name, path: result.path_display, size: result.size });
+
+        // Faz 2: catalog the attachment for BMS retrieval. Best-effort — never block upload.
+        if (project_id) {
+          base44.asServiceRole.entities.ProjectAttachment.create({
+            tenant_id: 'default',
+            project_id,
+            external_id: String(att.Id),
+            name: att.Name,
+            size: result.size || 0,
+            storage: 'dropbox',
+            storage_path: result.path_display,
+            kind: 'handoff',
+            uploaded_at: new Date().toISOString(),
+          }).catch((e) => console.error('ProjectAttachment create failed:', e.message));
+        }
         await sleep(300);
       } catch (err) {
         failed.push({ id: att.Id, name: att.Name, error: err.message });

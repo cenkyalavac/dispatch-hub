@@ -154,6 +154,7 @@ Deno.serve(async (req) => {
         task_name: task_name || '',
         project_name: project_name || '',
         account_name: 'Symfonie',
+        project_id: project?.id || null,
       });
       handoff = hoRes.data;
     } catch (e) {

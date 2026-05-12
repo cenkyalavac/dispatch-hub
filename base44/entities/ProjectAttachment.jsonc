@@ -1,0 +1,59 @@
+{
+  "name": "ProjectAttachment",
+  "type": "object",
+  "description": "File attached to a project (handoff materials, references). Stored on Dropbox; this entity is the catalog.",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "default": "default"
+    },
+    "project_id": {
+      "type": "string",
+      "description": "Project.id this attachment belongs to."
+    },
+    "external_id": {
+      "type": "string",
+      "description": "Source portal attachment id (e.g. Symfonie attachment ID)."
+    },
+    "name": {
+      "type": "string",
+      "description": "Original filename."
+    },
+    "size": {
+      "type": "integer",
+      "description": "File size in bytes."
+    },
+    "storage": {
+      "type": "string",
+      "enum": [
+        "dropbox",
+        "symfonie",
+        "url"
+      ],
+      "default": "dropbox"
+    },
+    "storage_path": {
+      "type": "string",
+      "description": "Dropbox path (or upstream URL when storage=url/symfonie)."
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "handoff",
+        "reference",
+        "delivery",
+        "other"
+      ],
+      "default": "handoff"
+    },
+    "uploaded_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "project_id",
+    "name"
+  ]
+}

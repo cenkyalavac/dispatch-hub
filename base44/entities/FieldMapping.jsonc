@@ -1,0 +1,48 @@
+{
+  "name": "FieldMapping",
+  "type": "object",
+  "description": "Per-tenant translation table from source-portal values to destination-BMS values.",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "default": "default"
+    },
+    "portal": {
+      "type": "string",
+      "description": "Source portal key (symfonie, junction). '*' for any."
+    },
+    "field": {
+      "type": "string",
+      "enum": [
+        "source_language",
+        "target_language",
+        "client_name",
+        "workflow_name",
+        "service_tag"
+      ],
+      "description": "Which field this mapping applies to."
+    },
+    "source_value": {
+      "type": "string",
+      "description": "Value as it arrives from the source portal (case-insensitive match)."
+    },
+    "destination_value": {
+      "type": "string",
+      "description": "Value to expose to the downstream BMS."
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "portal",
+    "field",
+    "source_value",
+    "destination_value"
+  ]
+}
