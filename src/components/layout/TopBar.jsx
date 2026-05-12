@@ -6,6 +6,7 @@ import CommandPalette from './CommandPalette';
 const TABS = [
   { to: '/',          label: 'Overview',   matches: ['/'] },
   { to: '/pending',   label: 'Pending',    matches: ['/pending'] },
+  { to: '/issues',    label: 'Issues',     matches: ['/issues'] },
   { to: '/history',   label: 'History',    matches: ['/history'] },
   { to: '/tasks',     label: 'Activity',   matches: ['/tasks'] },
   { to: '/portals',   label: 'Connectors', matches: ['/portals', '/rules', '/settings'] },

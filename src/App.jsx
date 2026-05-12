@@ -15,6 +15,7 @@ import PendingTasks from './pages/PendingTasks.jsx';
 import History from './pages/History.jsx';
 import ApiAccess from './pages/ApiAccess.jsx';
 import Mappings from './pages/Mappings.jsx';
+import Issues from './pages/Issues.jsx';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -52,6 +53,7 @@ const AuthenticatedApp = () => {
         <Route path="/history" element={<History />} />
         <Route path="/api" element={<ApiAccess />} />
         <Route path="/mappings" element={<Mappings />} />
+        <Route path="/issues" element={<Issues />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />

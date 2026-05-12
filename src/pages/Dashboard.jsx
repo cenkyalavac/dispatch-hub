@@ -9,6 +9,7 @@ import Metric from '@/components/dashboard/Metric';
 import ConnectorRow from '@/components/dashboard/ConnectorRow';
 import ActivityRow from '@/components/dashboard/ActivityRow';
 import TrendChart from '@/components/dashboard/TrendChart';
+import LifecycleBar from '@/components/dashboard/LifecycleBar';
 import PortalShareChart from '@/components/dashboard/PortalShareChart';
 import LangPairChart from '@/components/dashboard/LangPairChart';
 import RulePerformance from '@/components/dashboard/RulePerformance';
@@ -35,6 +36,20 @@ export default function Dashboard() {
     queryKey: ['rules-active'],
     queryFn: () => base44.entities.Rule.filter({ is_active: true }),
   });
+  // Lifecycle counts come from Project entity (BMS pipeline), separate from AcceptedTask.
+  const { data: allProjects = [] } = useQuery({
+    queryKey: ['projects-all'],
+    queryFn: () => base44.entities.Project.list('-accepted_at', 1000),
+    staleTime: 30_000,
+  });
+
+  const lifecycleCounts = useMemo(() => {
+    const c = { accepted: 0, synchronized: 0, delivered: 0, failed_to_sync: 0 };
+    for (const p of allProjects) {
+      if (c[p.state] !== undefined) c[p.state]++;
+    }
+    return c;
+  }, [allProjects]);
 
   const loading = portalsLoading || tasksLoading;
 
@@ -214,6 +229,19 @@ export default function Dashboard() {
           </div>
         </section>
       </div>
+
+      {/* BMS pipeline lifecycle — accept → sync → deliver, with failures called out. */}
+      <section className="bg-surface-1 border border-line-1 rounded-md p-5 mb-7">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-[14px] font-semibold text-ink-1">BMS pipeline</h2>
+            <p className="text-[12px] text-ink-3 italic-editorial mt-0.5">
+              Where every accepted project sits in the handoff to your downstream system.
+            </p>
+          </div>
+        </div>
+        {loading ? <Skeleton className="h-24" /> : <LifecycleBar counts={lifecycleCounts} />}
+      </section>
 
       {/* Analytics — 4 panels: trend / portal share / lang pairs / rule perf */}
       {!loading && allTasks.length > 0 && (
