@@ -92,6 +92,14 @@
     "accept_function": {
       "type": "string",
       "description": "Backend function that accepts a single task manually"
+    },
+    "reject_function": {
+      "type": "string",
+      "description": "Backend function that rejects a single task manually (optional)"
+    },
+    "history_function": {
+      "type": "string",
+      "description": "Backend function that returns completed/approved task history (optional)"
     }
   },
   "required": [

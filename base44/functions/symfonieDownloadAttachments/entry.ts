@@ -74,6 +74,27 @@ async function dropboxUploadStream(accessToken, path, body, contentLength) {
   return await r.json();
 }
 
+// Reads dropbox_base_path + dropbox_folder_template from AppSetting on every invocation.
+// Falls back to BeLazy-style defaults if not set. Template tokens: {account} {project} {task_id} {task_name}.
+async function resolveHandoffDir(base44, { account, project, task_id, task_name }) {
+  const settings = await base44.asServiceRole.entities.AppSetting.filter({}).catch(() => []);
+  const get = (k, dflt) => settings.find(s => s.key === k)?.value || dflt;
+  const basePath = get('dropbox_base_path', 'Symfonie').replace(/^\/+|\/+$/g, '');
+  const template = get('dropbox_folder_template', '{account}/{project}/{task_id}_{task_name}/HO');
+
+  const tokens = {
+    account:   sanitizePathSegment(account   || 'Unknown Account'),
+    project:   sanitizePathSegment(project   || 'Unknown Project'),
+    task_id:   sanitizePathSegment(String(task_id)),
+    task_name: sanitizePathSegment(task_name || 'Task'),
+  };
+  // Replace tokens, then sanitize each resulting path segment so user-supplied template
+  // text can't introduce illegal characters or empty segments.
+  const filled = template.replace(/\{(\w+)\}/g, (_, k) => tokens[k] ?? `{${k}}`);
+  const segments = filled.split('/').map(s => sanitizePathSegment(s)).filter(Boolean);
+  return `/${basePath}/${segments.join('/')}`;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -101,11 +122,10 @@ Deno.serve(async (req) => {
     const listData = await listRes.json();
     const attachments = listData.value || [];
 
-    // 2) Hedef klasor yolu
-    const acc = sanitizePathSegment(account_name || 'Unknown Account');
-    const proj = sanitizePathSegment(project_name || 'Unknown Project');
-    const taskFolder = sanitizePathSegment(`${task_id}_${task_name || 'Task'}`);
-    const handoffDir = `/${acc}/${proj}/${taskFolder}/HO`;
+    // 2) Hedef klasor yolu — Settings'ten okunan template ile
+    const handoffDir = await resolveHandoffDir(base44, {
+      account: account_name, project: project_name, task_id, task_name,
+    });
 
     if (attachments.length === 0) {
       return Response.json({
