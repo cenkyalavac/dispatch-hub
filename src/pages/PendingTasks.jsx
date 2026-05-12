@@ -66,10 +66,20 @@ export default function PendingTasks() {
   const fetchFn = activePortal?.fetch_function || 'symfonieGetTasks';
   const acceptFn = activePortal?.accept_function || 'symfonieAcceptTask';
 
+  // Rate-limit dostu: 5 dk cache, otomatik refetch yok, 503 olunca cache'i koru.
+  // Symfonie "no available server" verince sessizce eski veriyi göster.
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['pending-tasks', selectedPortal, fetchFn],
-    queryFn: async () => (await base44.functions.invoke(fetchFn, {})).data,
-    staleTime: 60_000,
+    queryFn: async () => {
+      const res = await base44.functions.invoke(fetchFn, {});
+      if (res.data?.error) throw new Error(res.data.error);
+      return res.data;
+    },
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     retry: false,
     enabled: !!activePortal,
   });

@@ -24,29 +24,40 @@ async function getToken() {
   return d.access_token;
 }
 
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Symfonie sıkça 503 "no available server" verir. Üstel backoff ile retry yap,
+// böylece sunucu kısa süreli darboğazda kapanmasın ve bizi de blacklist'e itmesin.
+async function fetchWithRetry(url, token, maxRetries = 4) {
+  let lastErr = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
+    });
+    if (res.ok) return await res.json();
+
+    // 503/502/429 → retry with backoff; diğer hatalar fail-fast
+    if ([429, 502, 503, 504].includes(res.status) && attempt < maxRetries) {
+      const wait = Math.min(1000 * 2 ** attempt, 8000);
+      console.warn(`API ${res.status} → wait ${wait}ms (attempt ${attempt + 1}/${maxRetries})`);
+      await sleep(wait);
+      continue;
+    }
+    const err = await res.text();
+    lastErr = `API error ${res.status}: ${err}`;
+    throw new Error(lastErr);
+  }
+  throw new Error(lastErr || 'fetch failed after retries');
+}
+
 async function fetchAllPages(url, token) {
   const results = [];
   let nextUrl = url;
-
   while (nextUrl) {
-    const res = await fetch(nextUrl, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/json'
-      }
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`API error ${res.status}: ${err}`);
-    }
-
-    const data = await res.json();
-    const items = data.value || [];
-    results.push(...items);
+    const data = await fetchWithRetry(nextUrl, token);
+    results.push(...(data.value || []));
     nextUrl = data['@odata.nextLink'] || null;
   }
-
   return results;
 }
 
