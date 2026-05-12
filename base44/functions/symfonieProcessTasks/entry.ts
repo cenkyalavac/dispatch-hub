@@ -26,28 +26,34 @@ async function getToken() {
   return d.access_token;
 }
 
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// 503/502/429 sıkça oluyor — backoff ile retry yap, schedule'ı bozma.
+async function fetchWithRetry(url, token, maxRetries = 4) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
+    });
+    if (res.ok) return await res.json();
+    if ([429, 502, 503, 504].includes(res.status) && attempt < maxRetries) {
+      const wait = Math.min(1000 * 2 ** attempt, 8000);
+      console.warn(`Symfonie API ${res.status} → wait ${wait}ms (attempt ${attempt + 1}/${maxRetries})`);
+      await sleep(wait);
+      continue;
+    }
+    const err = await res.text();
+    throw new Error(`Symfonie API error ${res.status}: ${err.substring(0, 500)}`);
+  }
+}
+
 async function fetchAllPages(url, token) {
   const results = [];
   let nextUrl = url;
-
   while (nextUrl) {
-    const res = await fetch(nextUrl, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/json'
-      }
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Symfonie API error ${res.status}: ${err.substring(0, 500)}`);
-    }
-
-    const data = await res.json();
+    const data = await fetchWithRetry(nextUrl, token);
     results.push(...(data.value || []));
     nextUrl = data['@odata.nextLink'] || null;
   }
-
   return results;
 }
 

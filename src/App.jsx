@@ -12,6 +12,7 @@ import Tasks from './pages/Tasks';
 import SettingsPage from './pages/SettingsPage';
 import Connectors from './pages/Connectors.jsx';
 import PendingTasks from './pages/PendingTasks.jsx';
+import History from './pages/History.jsx';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -46,6 +47,7 @@ const AuthenticatedApp = () => {
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/portals" element={<Connectors />} />
         <Route path="/pending" element={<PendingTasks />} />
+        <Route path="/history" element={<History />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
