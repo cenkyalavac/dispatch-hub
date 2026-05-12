@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import FormField from '@/components/ui/FormField';
+import PortalDropboxFields from './PortalDropboxFields';
+import PortalSheetsFields from './PortalSheetsFields';
 
 const empty = {
   key: '', name: '', vendor: '', description: '',
   icon: 'Globe', color: 'blue', is_active: true,
   auth_type: 'oauth2_client_credentials', docs_url: '',
+  dropbox_base_path: '', dropbox_folder_template: '',
+  sheets_spreadsheet_id: '', sheets_tab_name: '',
 };
 
 const ICONS = ['Globe', 'Building2', 'Network', 'Plug', 'Boxes', 'Briefcase', 'Cloud'];
@@ -41,8 +45,8 @@ export default function ConnectorFormDialog({ open, onClose, onSave, initial, is
       onClick={onClose}
     >
       <div
-        // Modal 480px width — doctrine: small/medium/large 480/640/800
-        className="w-full max-w-[480px] bg-surface-1 border border-line-1 rounded-lg shadow-xl animate-slide-down"
+        // Modal 640px width — doctrine medium, fits the new Dropbox/Sheets sections cleanly.
+        className="w-full max-w-[640px] max-h-[85vh] overflow-y-auto bg-surface-1 border border-line-1 rounded-lg shadow-xl animate-slide-down"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between px-5 h-12 border-b border-line-1">
@@ -93,6 +97,19 @@ export default function ConnectorFormDialog({ open, onClose, onSave, initial, is
               </select>
             </FormField>
           </div>
+
+          <PortalDropboxFields
+            basePath={form.dropbox_base_path}
+            template={form.dropbox_folder_template}
+            onChange={update}
+          />
+
+          <PortalSheetsFields
+            portalKey={isEdit ? form.key : null}
+            spreadsheetId={form.sheets_spreadsheet_id}
+            tabName={form.sheets_tab_name}
+            onChange={update}
+          />
         </div>
 
         <footer className="px-5 py-4 border-t border-line-1 flex items-center justify-end gap-2">

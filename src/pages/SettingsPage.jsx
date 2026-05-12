@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { CheckCircle2, AlertCircle, ChevronDown, ChevronUp, RefreshCw, Sheet } from 'lucide-react';
+import { CheckCircle2, AlertCircle, ChevronDown, ChevronUp, RefreshCw, ArrowRight } from 'lucide-react';
 import HandoffPathSection from '@/components/settings/HandoffPathSection';
 
 const secretGroups = [
@@ -13,20 +14,9 @@ const secretGroups = [
 const btn = 'inline-flex items-center gap-2 h-9 px-4 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab disabled:opacity-40';
 
 export default function SettingsPage() {
-  const [setupLoading, setSetupLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [showRaw, setShowRaw] = useState(false);
-
-  const handleSheetsSetup = async () => {
-    setSetupLoading(true);
-    try {
-      const res = await base44.functions.invoke('sheetsSetupHeader', {});
-      if (res.data.success) toast.success('Header row created');
-      else toast.error(res.data.error || 'Setup failed');
-    } catch (err) { toast.error(err.message); }
-    finally { setSetupLoading(false); }
-  };
 
   const handleTestAuth = async () => {
     setTestLoading(true);
@@ -99,14 +89,15 @@ export default function SettingsPage() {
         {/* Dropbox handoff path */}
         <HandoffPathSection />
 
-        {/* Sheets setup */}
+        {/* Sheets setup — now per-portal, lives inside each connector's settings */}
         <section className="bg-surface-1 border border-line-1 rounded-md p-5">
           <h2 className="text-[14px] font-semibold text-ink-1">Google Sheets header</h2>
-          <p className="text-[12px] text-ink-3 mt-1 italic-editorial">Run once on first install.</p>
-          <button onClick={handleSheetsSetup} disabled={setupLoading} className={`${btn} mt-3`}>
-            {setupLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sheet className="w-3.5 h-3.5" />}
-            {setupLoading ? 'Creating…' : 'Create header row'}
-          </button>
+          <p className="text-[12px] text-ink-3 mt-1 italic-editorial">
+            Header rows are now created per connector. Each portal can log to its own spreadsheet and tab.
+          </p>
+          <Link to="/portals" className={`${btn} mt-3`}>
+            Configure on connectors <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
         </section>
 
         {/* Secrets reference */}

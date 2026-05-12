@@ -72,10 +72,10 @@ export default function HandoffPathSection() {
     <section className="bg-surface-1 border border-line-1 rounded-md p-5">
       <div className="flex items-center gap-2">
         <FolderTree className="w-4 h-4 text-ink-3" />
-        <h2 className="text-[14px] font-semibold text-ink-1">Dropbox handoff path</h2>
+        <h2 className="text-[14px] font-semibold text-ink-1">Dropbox handoff path — global default</h2>
       </div>
       <p className="text-[12px] text-ink-3 italic-editorial mt-1">
-        Where accepted task attachments land — applies to every portal that hands off files (Symfonie, Junction, …). Tokens: <code className="font-mono not-italic">{'{account}'}</code>, <code className="font-mono not-italic">{'{project}'}</code>, <code className="font-mono not-italic">{'{task_id}'}</code>, <code className="font-mono not-italic">{'{task_name}'}</code>.
+        Used when a connector has no path of its own. Per-portal overrides live on each connector. Tokens: <code className="font-mono not-italic">{'{account}'}</code>, <code className="font-mono not-italic">{'{project}'}</code>, <code className="font-mono not-italic">{'{task_id}'}</code>, <code className="font-mono not-italic">{'{task_name}'}</code>.
       </p>
 
       {isLoading ? (
