@@ -10,7 +10,7 @@ Deno.serve(async (req) => {
 
     const jwt = Deno.env.get('JUNCTION_JWT');
     const apiKey = Deno.env.get('JUNCTION_API_KEY');
-    const apiBase = Deno.env.get('JUNCTION_API_BASE') || PROD_BASE;
+    const apiBase = PROD_BASE;
 
     if (!jwt) {
       return Response.json({ success: false, error: 'JUNCTION_JWT not configured', offers: [] });
@@ -20,28 +20,18 @@ Deno.serve(async (req) => {
     const authHeaders = { 'x-pantheon-auth': jwt, 'Accept': 'application/json' };
     if (apiKey) authHeaders['x-api-key'] = apiKey;
 
-    // Fetch all direct offers with pagination (max limit per page is 25)
-    const offers = [];
-    let offset = 0;
-    const limit = 25;
-    while (true) {
-      const url = `${apiBase}/v2/offer/me?limit=${limit}&offset=${offset}`;
-      const r = await fetch(url, { headers: authHeaders });
-      if (!r.ok) {
-        const text = await r.text();
-        return Response.json({
-          success: false,
-          error: `Junction API HTTP ${r.status}: ${text.slice(0, 200)}`,
-          offers,
-        }, { status: r.status });
-      }
-      const data = await r.json();
-      const page = Array.isArray(data) ? data : (data?.data || []);
-      offers.push(...page);
-      if (page.length < limit) break;
-      offset += limit;
-      if (offset > 500) break; // safety cap
+    // Endpoint returns the full list — query params (limit/offset) are rejected.
+    const r = await fetch(`${apiBase}/v2/offer/me`, { headers: authHeaders });
+    if (!r.ok) {
+      const text = await r.text();
+      return Response.json({
+        success: false,
+        error: `Junction API HTTP ${r.status}: ${text.slice(0, 200)}`,
+        offers: [],
+      }, { status: r.status });
     }
+    const data = await r.json();
+    const offers = Array.isArray(data) ? data : (data?.data || []);
 
     // Normalize offers into a task-like shape for the UI
     const tasks = offers.map(o => {

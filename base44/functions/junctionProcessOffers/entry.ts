@@ -58,24 +58,19 @@ Deno.serve(async (req) => {
 
     const jwt = Deno.env.get('JUNCTION_JWT');
     const apiKey = Deno.env.get('JUNCTION_API_KEY');
-    const apiBase = Deno.env.get('JUNCTION_API_BASE') || PROD_BASE;
+    const apiBase = PROD_BASE;
     if (!jwt) return Response.json({ success: false, error: 'JUNCTION_JWT not configured' });
 
-    // 1. Fetch offers (paginated)
-    const offers = [];
-    let offset = 0;
-    while (true) {
-      const r = await fetch(`${apiBase}/v2/offer/me?limit=25&offset=${offset}`, {
-        headers: authHeaders(jwt, apiKey),
-      });
-      if (!r.ok) return Response.json({ success: false, error: `Junction HTTP ${r.status}` });
-      const page = await r.json();
-      const arr = Array.isArray(page) ? page : (page?.data || []);
-      offers.push(...arr);
-      if (arr.length < 25) break;
-      offset += 25;
-      if (offset > 500) break;
+    // 1. Fetch offers — endpoint returns the full list; query params are rejected.
+    const offersRes = await fetch(`${apiBase}/v2/offer/me`, {
+      headers: authHeaders(jwt, apiKey),
+    });
+    if (!offersRes.ok) {
+      const text = await offersRes.text();
+      return Response.json({ success: false, error: `Junction HTTP ${offersRes.status}: ${text.slice(0, 200)}` });
     }
+    const offersData = await offersRes.json();
+    const offers = Array.isArray(offersData) ? offersData : (offersData?.data || []);
 
     // 2. Get active rules for junction
     const rules = (await base44.asServiceRole.entities.Rule.filter({ is_active: true, portal: 'junction' }))

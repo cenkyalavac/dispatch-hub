@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
 
     const jwt = Deno.env.get('JUNCTION_JWT');
     const apiKey = Deno.env.get('JUNCTION_API_KEY');
-    const apiBase = Deno.env.get('JUNCTION_API_BASE') || PROD_BASE;
+    const apiBase = PROD_BASE;
     if (!jwt) return Response.json({ success: false, error: 'JUNCTION_JWT not configured' });
 
     // Defensive: send x-api-key when configured (Welocalize UI sends it; not yet enforced).
