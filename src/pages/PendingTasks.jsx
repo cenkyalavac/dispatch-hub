@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Search, Download } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 
 import TaskDetailCard from '@/components/pending/TaskDetailCard';
@@ -59,6 +60,8 @@ export default function PendingTasks() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: portals = [] } = useQuery({
     queryKey: ['portals-all'],
@@ -68,26 +71,36 @@ export default function PendingTasks() {
   const activePortal = portals.find(p => p.key === selectedPortal);
   const fetchFn = activePortal?.fetch_function || 'symfonieGetTasks';
   const acceptFn = activePortal?.accept_function || 'symfonieAcceptTask';
+  const cacheKey = `pending_${selectedPortal}`;
 
-  // Rate-limit dostu: 5 dk cache, otomatik refetch yok, 503 olunca cache'i koru.
-  // Symfonie "no available server" verince sessizce eski veriyi göster.
-  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
-    queryKey: ['pending-tasks', selectedPortal, fetchFn],
+  // Cache-first: DB'deki snapshot'tan oku. Refresh butonu kaynak fonksiyonu
+  // tetikler — o da snapshot'ı günceller, sonra burayı invalidate ederiz.
+  const { data: snapshot, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['snapshot', cacheKey],
     queryFn: async () => {
-      const res = await base44.functions.invoke(fetchFn, {});
-      if (res.data?.error) throw new Error(res.data.error);
-      return res.data;
+      const records = await base44.entities.CachedSnapshot.filter({ key: cacheKey });
+      return records[0] || null;
     },
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    retry: false,
-    enabled: !!activePortal,
+    staleTime: 60_000,
   });
 
-  const tasks = data?.tasks || [];
+  const tasks = snapshot?.data?.tasks || [];
+  const fetchedAt = snapshot?.fetched_at;
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const res = await base44.functions.invoke(fetchFn, {});
+      if (res.data?.error) throw new Error(res.data.error);
+      await queryClient.invalidateQueries({ queryKey: ['snapshot', cacheKey] });
+      await refetch();
+      toast.success(`Refreshed: ${res.data?.total || 0} tasks`);
+    } catch (err) {
+      toast.error(err.message || 'Refresh failed');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -217,7 +230,12 @@ export default function PendingTasks() {
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight text-ink-1">Pending</h1>
           <p className="text-[13px] text-ink-3 mt-1 italic-editorial">
-            Tasks waiting for acceptance, fresh from the source.
+            Tasks waiting for acceptance.
+            {fetchedAt && (
+              <span className="ml-2 text-ink-4">
+                Updated {formatDistanceToNow(new Date(fetchedAt), { addSuffix: true })}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -237,11 +255,11 @@ export default function PendingTasks() {
             <Download className="w-3.5 h-3.5" /> CSV
           </button>
           <button
-            onClick={() => { refetch(); }}
-            disabled={isFetching}
+            onClick={handleRefresh}
+            disabled={refreshing}
             className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab disabled:opacity-40"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} /> Refresh
           </button>
         </div>
       </header>
@@ -302,10 +320,14 @@ export default function PendingTasks() {
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState
-          title={tasks.length === 0 ? 'Nothing pending' : 'No matches'}
-          body={tasks.length === 0
-            ? `${activePortal?.name || 'This portal'} has no tasks in “Order” state right now — a quiet moment.`
-            : 'Refine your search or clear the filter.'}
+          title={!snapshot ? 'No cached data yet' : tasks.length === 0 ? 'Nothing pending' : 'No matches'}
+          body={!snapshot
+            ? `Hit Refresh to fetch the latest from ${activePortal?.name || 'the portal'}. After that, snapshots refresh automatically in the background.`
+            : tasks.length === 0
+              ? `${activePortal?.name || 'This portal'} has no tasks in "Order" state right now — a quiet moment.`
+              : 'Refine your search or clear the filter.'}
+          cta={!snapshot ? (() => <>Refresh now</>) : undefined}
+          action={!snapshot ? handleRefresh : undefined}
         />
       ) : (
         <>
