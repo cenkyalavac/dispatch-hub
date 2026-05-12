@@ -1,0 +1,54 @@
+{
+  "name": "ApiKey",
+  "type": "object",
+  "description": "API tokens used by external BMS clients (e.g. Dispatch) to authenticate against the integration API.",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human-readable label (e.g. 'Dispatch production')"
+    },
+    "token": {
+      "type": "string",
+      "description": "The opaque bearer token. Stored as plaintext for now (multi-tenant ready)."
+    },
+    "token_prefix": {
+      "type": "string",
+      "description": "First 8 chars of the token, shown in the UI after creation."
+    },
+    "tenant_id": {
+      "type": "string",
+      "description": "Tenant identifier. Single-tenant deployments use 'default'.",
+      "default": "default"
+    },
+    "scopes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Permitted scopes (read:projects, write:projects, etc.)",
+      "default": [
+        "read:projects",
+        "write:projects"
+      ]
+    },
+    "revoked_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the key was revoked. Null while active."
+    },
+    "last_used_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last time the key authenticated a request."
+    },
+    "last_used_ip": {
+      "type": "string",
+      "description": "Last seen client IP / forwarded-for."
+    }
+  },
+  "required": [
+    "name",
+    "token",
+    "tenant_id"
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "name": "WebhookSubscription",
+  "type": "object",
+  "description": "Outbound webhook target registered by a BMS to receive project lifecycle events.",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "default": "default"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human label."
+    },
+    "url": {
+      "type": "string",
+      "description": "Target URL the webhook posts to."
+    },
+    "secret": {
+      "type": "string",
+      "description": "Shared secret. Used to HMAC-sign the payload (X-Dispatch-Signature)."
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "project.accepted",
+          "project.synchronized",
+          "project.delivered",
+          "project.failed_to_sync"
+        ]
+      },
+      "default": [
+        "project.accepted"
+      ]
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "last_delivered_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "url"
+  ]
+}

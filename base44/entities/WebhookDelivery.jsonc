@@ -1,0 +1,56 @@
+{
+  "name": "WebhookDelivery",
+  "type": "object",
+  "description": "Log of every webhook delivery attempt \u2014 for observability and retry.",
+  "properties": {
+    "subscription_id": {
+      "type": "string"
+    },
+    "tenant_id": {
+      "type": "string",
+      "default": "default"
+    },
+    "event": {
+      "type": "string"
+    },
+    "project_id": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "success",
+        "failed",
+        "pending"
+      ],
+      "default": "pending"
+    },
+    "http_status": {
+      "type": "integer"
+    },
+    "response_excerpt": {
+      "type": "string"
+    },
+    "error": {
+      "type": "string"
+    },
+    "attempt": {
+      "type": "integer",
+      "default": 1
+    },
+    "delivered_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "event"
+  ]
+}

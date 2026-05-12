@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
 
     const acceptedAt = new Date().toISOString();
 
-    await base44.entities.AcceptedTask.create({
+    const savedTask = await base44.entities.AcceptedTask.create({
       portal: 'junction',
       task_id: Number(task_id),
       task_name: task_name || `Offer #${task_id}`,
@@ -60,6 +60,33 @@ Deno.serve(async (req) => {
       sheets_synced: false,
     });
 
+    // BMS Integration: project record for downstream BMS consumption.
+    let project = null;
+    try {
+      project = await base44.asServiceRole.entities.Project.create({
+        tenant_id: 'default',
+        accepted_task_id: savedTask.id,
+        portal: 'junction',
+        external_id: `junction:${task_id}`,
+        state: 'accepted',
+        name: task_name || `Offer #${task_id}`,
+        project_name: project_name || '',
+        source_language: source_language || '',
+        target_language: target_language || '',
+        word_count: word_count || 0,
+        price: price || 0,
+        currency: 'USD',
+        due_date: due_date || null,
+        accepted_at: acceptedAt,
+        origin: { task_id, task_name, project_name, source_language, target_language, word_count, price, due_date },
+      });
+      base44.asServiceRole.functions.invoke('dispatchWebhook', {
+        tenant_id: 'default', event: 'project.accepted', project_id: project.id,
+      }).catch((e) => console.error('webhook dispatch failed:', e.message));
+    } catch (e) {
+      console.error('Project create failed:', e.message);
+    }
+
     await appendToSheets(base44, [
       acceptedAt,
       'junction',
@@ -74,7 +101,7 @@ Deno.serve(async (req) => {
       'Manual',
     ]);
 
-    return Response.json({ success: true, accepted_at: acceptedAt });
+    return Response.json({ success: true, accepted_at: acceptedAt, project_id: project?.id || null });
   } catch (error) {
     return Response.json({ success: false, error: error.message }, { status: 500 });
   }

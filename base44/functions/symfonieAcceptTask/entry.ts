@@ -118,6 +118,34 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.AcceptedTask.update(saved.id, { sheets_synced: true });
     }
 
+    // BMS Integration: project = downstream-facing record of this accepted task.
+    // Failures here MUST NOT roll back the Symfonie accept — log and continue.
+    let project = null;
+    try {
+      project = await base44.asServiceRole.entities.Project.create({
+        tenant_id: 'default',
+        accepted_task_id: saved.id,
+        portal: 'symfonie',
+        external_id: `symfonie:${taskIdNum}`,
+        state: 'accepted',
+        name: task_name || '',
+        project_name: project_name || '',
+        source_language: source_language || '',
+        target_language: target_language || '',
+        word_count: word_count || 0,
+        price: price || 0,
+        currency: 'USD',
+        due_date: due_date || null,
+        accepted_at: taskRecord.accepted_at,
+        origin: body,
+      });
+      base44.asServiceRole.functions.invoke('dispatchWebhook', {
+        tenant_id: 'default', event: 'project.accepted', project_id: project.id,
+      }).catch((e) => console.error('webhook dispatch failed:', e.message));
+    } catch (e) {
+      console.error('Project create failed:', e.message);
+    }
+
     // Handoff: Symfonie attachment'larini Dropbox'a indir (fire-and-log; basarisiz olursa accept iptal olmaz)
     let handoff = null;
     try {
@@ -133,7 +161,7 @@ Deno.serve(async (req) => {
       handoff = { error: e.message };
     }
 
-    return Response.json({ success: true, sheets_synced: synced, handoff });
+    return Response.json({ success: true, sheets_synced: synced, handoff, project_id: project?.id || null });
   } catch (error) {
     console.error('symfonieAcceptTask error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });

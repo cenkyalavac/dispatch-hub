@@ -1,0 +1,96 @@
+{
+  "name": "Project",
+  "type": "object",
+  "description": "BeLazy-style project record exposed to downstream BMS systems. One project per accepted task.",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "Owning tenant. Defaults to 'default' until multi-tenant is enabled.",
+      "default": "default"
+    },
+    "accepted_task_id": {
+      "type": "string",
+      "description": "Source AcceptedTask record id (1:1)."
+    },
+    "portal": {
+      "type": "string",
+      "description": "Origin portal key (symfonie, junction, ...)"
+    },
+    "external_id": {
+      "type": "string",
+      "description": "Stable cross-system project id (e.g. 'symfonie:12345')."
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "synchronized",
+        "delivered",
+        "failed_to_sync"
+      ],
+      "default": "accepted",
+      "description": "BeLazy-style lifecycle state."
+    },
+    "name": {
+      "type": "string"
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "project_name": {
+      "type": "string"
+    },
+    "source_language": {
+      "type": "string"
+    },
+    "target_language": {
+      "type": "string"
+    },
+    "word_count": {
+      "type": "number"
+    },
+    "price": {
+      "type": "number"
+    },
+    "currency": {
+      "type": "string",
+      "default": "USD"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "acknowledged_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the downstream BMS acknowledged receipt (state -> synchronized)."
+    },
+    "acknowledged_by": {
+      "type": "string",
+      "description": "API key id that acknowledged the project."
+    },
+    "delivered_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sync_error": {
+      "type": "string",
+      "description": "Last sync error message, when state is failed_to_sync."
+    },
+    "origin": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Raw representation as it arrived from the source portal."
+    }
+  },
+  "required": [
+    "tenant_id",
+    "portal",
+    "external_id",
+    "state"
+  ]
+}
