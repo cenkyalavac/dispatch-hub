@@ -16,8 +16,12 @@ const KNOWN_SECRETS = new Set([
   'GOOGLE_SHEETS_SPREADSHEET_ID',
   'SYMFONIE_CLIENT_SECRET',
   'SYMFONIE_CLIENT_ID',
+  'JUNCTION_JWT',
   'JUNCTION_API_KEY',
 ]);
+
+// Optional secrets — present in required_secrets for documentation but never block usage.
+const OPTIONAL_SECRETS = new Set(['JUNCTION_API_BASE']);
 
 export default function Connectors() {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -107,7 +111,8 @@ export default function Connectors() {
     }
   };
 
-  const computeMissing = (portal) => (portal.required_secrets || []).filter(s => !KNOWN_SECRETS.has(s));
+  const computeMissing = (portal) =>
+    (portal.required_secrets || []).filter(s => !KNOWN_SECRETS.has(s) && !OPTIONAL_SECRETS.has(s));
 
   return (
     <div className="p-8 max-w-5xl">
