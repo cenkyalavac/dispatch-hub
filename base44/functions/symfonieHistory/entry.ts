@@ -1,9 +1,6 @@
 // Son N gün içindeki Completed + Approved task'ları çek.
 // Sheet'e YAZMAZ — sadece UI için historical view.
 // Symfonie 503'leri için retry-with-backoff var.
-// Sonucu CachedSnapshot'a da yazar — UI direkt cache'ten açılır, kullanıcı isterse refresh tetikler.
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
-
 const TENANT_ID = Deno.env.get('SYMFONIE_TENANT_ID');
 const SCOPE = 'api://c2e8870d-faef-45ea-919c-b603f97bd0cc/.default';
 const BASE_URL = 'https://projects.moravia.com/Api/V5';
@@ -36,28 +33,6 @@ async function fetchWithRetry(url, token, maxRetries = 4) {
   }
 }
 
-async function writeSnapshot(req, key, payload) {
-  // Best-effort cache write — never block the response if it fails.
-  try {
-    const base44 = createClientFromRequest(req);
-    const existing = await base44.asServiceRole.entities.CachedSnapshot.filter({ key });
-    const record = {
-      key,
-      data: payload,
-      fetched_at: new Date().toISOString(),
-      source_function: 'symfonieHistory',
-      item_count: Array.isArray(payload.tasks) ? payload.tasks.length : 0,
-    };
-    if (existing.length > 0) {
-      await base44.asServiceRole.entities.CachedSnapshot.update(existing[0].id, record);
-    } else {
-      await base44.asServiceRole.entities.CachedSnapshot.create(record);
-    }
-  } catch (e) {
-    console.error(`Snapshot write failed for ${key}: ${e.message}`);
-  }
-}
-
 Deno.serve(async (req) => {
   try {
     const { days = 30 } = await req.json().catch(() => ({}));
@@ -87,9 +62,7 @@ Deno.serve(async (req) => {
       created_at: t.CreatedAt || null,
     }));
 
-    const payload = { tasks, total: tasks.length, days, since };
-    await writeSnapshot(req, `history_symfonie_${days}`, payload);
-    return Response.json(payload);
+    return Response.json({ tasks, total: tasks.length, days, since });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

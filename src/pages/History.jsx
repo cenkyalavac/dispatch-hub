@@ -1,9 +1,8 @@
 import { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, Search } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
-import { toast } from 'sonner';
+import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import ErrorState from '@/components/ui/ErrorState';
@@ -11,26 +10,25 @@ import { fmtNumber, EM } from '@/lib/format';
 
 const DAY_OPTIONS = [7, 14, 30];
 
-// Cache-first: snapshot DB'den okur, kullanıcı isterse kaynak fonksiyonu tetikler.
-// Snapshot her 4 saatte bir scheduled automation ile yenilenir.
 export default function History() {
   const [days, setDays] = useState(30);
   const [search, setSearch] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
-  const queryClient = useQueryClient();
-  const cacheKey = `history_symfonie_${days}`;
 
-  const { data: snapshot, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['snapshot', cacheKey],
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ['symfonie-history', days],
     queryFn: async () => {
-      const records = await base44.entities.CachedSnapshot.filter({ key: cacheKey });
-      return records[0] || null;
+      const res = await base44.functions.invoke('symfonieHistory', { days });
+      if (res.data?.error) throw new Error(res.data.error);
+      return res.data;
     },
-    staleTime: 60_000,
+    staleTime: 10 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    retry: false,
   });
 
-  const tasks = snapshot?.data?.tasks || [];
-  const fetchedAt = snapshot?.fetched_at;
+  const tasks = data?.tasks || [];
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -43,23 +41,6 @@ export default function History() {
     );
   }, [tasks, search]);
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      const res = await base44.functions.invoke('symfonieHistory', { days });
-      if (res.data?.error) throw new Error(res.data.error);
-      await queryClient.invalidateQueries({ queryKey: ['snapshot', cacheKey] });
-      await refetch();
-      toast.success(`Refreshed: ${res.data?.total || 0} tasks`);
-    } catch (err) {
-      toast.error(err.message || 'Refresh failed');
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  const isEmpty = !snapshot && !isLoading && !isError;
-
   return (
     <div className="px-8 py-7 max-w-6xl">
       <header className="flex items-end justify-between mb-7 flex-wrap gap-4">
@@ -67,11 +48,6 @@ export default function History() {
           <h1 className="text-[22px] font-semibold tracking-tight text-ink-1">History</h1>
           <p className="text-[13px] text-ink-3 mt-1 italic-editorial">
             Completed & Approved tasks — read-only, not synced to sheet.
-            {fetchedAt && (
-              <span className="ml-2 text-ink-4">
-                Updated {formatDistanceToNow(new Date(fetchedAt), { addSuffix: true })}
-              </span>
-            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -83,11 +59,11 @@ export default function History() {
             {DAY_OPTIONS.map(d => <option key={d} value={d}>Last {d} days</option>)}
           </select>
           <button
-            onClick={handleRefresh}
-            disabled={refreshing}
+            onClick={() => refetch()}
+            disabled={isFetching}
             className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab disabled:opacity-40"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} /> Refresh
+            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
           </button>
         </div>
       </header>
@@ -102,7 +78,7 @@ export default function History() {
             className="w-full h-9 pl-9 pr-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4"
           />
         </div>
-        {!isLoading && !isError && snapshot && (
+        {!isLoading && !isError && (
           <span className="text-[12px] text-ink-3 tabular-nums">
             {fmtNumber(filtered.length)} / {fmtNumber(tasks.length)}
           </span>
@@ -113,13 +89,6 @@ export default function History() {
         <ErrorState error={error} onRetry={refetch} />
       ) : isLoading ? (
         <div className="space-y-2">{[1,2,3,4,5].map(i => <Skeleton key={i} className="h-14" />)}</div>
-      ) : isEmpty ? (
-        <EmptyState
-          title="No cached history yet"
-          body={`Hit Refresh to fetch the last ${days} days from Symfonie. After that, it auto-refreshes every 4 hours.`}
-          cta={() => <>Refresh now</>}
-          action={handleRefresh}
-        />
       ) : filtered.length === 0 ? (
         <EmptyState
           title="Nothing in this window"

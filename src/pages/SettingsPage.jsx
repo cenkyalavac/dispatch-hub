@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { CheckCircle2, AlertCircle, ChevronDown, ChevronUp, RefreshCw, Sheet } from 'lucide-react';
-import DropboxPathSection from '@/components/settings/DropboxPathSection';
 
 const secretGroups = [
   { title: 'Moravia Symfonie', items: ['SYMFONIE_CLIENT_ID', 'SYMFONIE_CLIENT_SECRET', 'SYMFONIE_TENANT_ID', 'SYMFONIE_SERVICE_ACCOUNT'] },
@@ -51,8 +50,6 @@ export default function SettingsPage() {
       </header>
 
       <div className="space-y-4">
-        <DropboxPathSection />
-
         {/* Symfonie test */}
         <section className="bg-surface-1 border border-line-1 rounded-md p-5">
           <h2 className="text-[14px] font-semibold text-ink-1">Symfonie connection</h2>

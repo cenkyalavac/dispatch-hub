@@ -1,13 +1,11 @@
 import { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, Search, Download } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 
 import TaskDetailCard from '@/components/pending/TaskDetailCard';
 import PendingFilters from '@/components/pending/PendingFilters';
-import BulkActionBar from '@/components/pending/BulkActionBar';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import ErrorState from '@/components/ui/ErrorState';
@@ -58,10 +56,6 @@ export default function PendingTasks() {
   const [selectedPortal, setSelectedPortal] = useState('symfonie');
   const [acceptingIds, setAcceptingIds] = useState(new Set());
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [selectedIds, setSelectedIds] = useState(new Set());
-  const [bulkBusy, setBulkBusy] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const queryClient = useQueryClient();
 
   const { data: portals = [] } = useQuery({
     queryKey: ['portals-all'],
@@ -71,36 +65,26 @@ export default function PendingTasks() {
   const activePortal = portals.find(p => p.key === selectedPortal);
   const fetchFn = activePortal?.fetch_function || 'symfonieGetTasks';
   const acceptFn = activePortal?.accept_function || 'symfonieAcceptTask';
-  const cacheKey = `pending_${selectedPortal}`;
 
-  // Cache-first: DB'deki snapshot'tan oku. Refresh butonu kaynak fonksiyonu
-  // tetikler — o da snapshot'ı günceller, sonra burayı invalidate ederiz.
-  const { data: snapshot, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['snapshot', cacheKey],
+  // Rate-limit dostu: 5 dk cache, otomatik refetch yok, 503 olunca cache'i koru.
+  // Symfonie "no available server" verince sessizce eski veriyi göster.
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ['pending-tasks', selectedPortal, fetchFn],
     queryFn: async () => {
-      const records = await base44.entities.CachedSnapshot.filter({ key: cacheKey });
-      return records[0] || null;
-    },
-    staleTime: 60_000,
-  });
-
-  const tasks = snapshot?.data?.tasks || [];
-  const fetchedAt = snapshot?.fetched_at;
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
       const res = await base44.functions.invoke(fetchFn, {});
       if (res.data?.error) throw new Error(res.data.error);
-      await queryClient.invalidateQueries({ queryKey: ['snapshot', cacheKey] });
-      await refetch();
-      toast.success(`Refreshed: ${res.data?.total || 0} tasks`);
-    } catch (err) {
-      toast.error(err.message || 'Refresh failed');
-    } finally {
-      setRefreshing(false);
-    }
-  };
+      return res.data;
+    },
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+    enabled: !!activePortal,
+  });
+
+  const tasks = data?.tasks || [];
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -175,39 +159,6 @@ export default function PendingTasks() {
     finally { setAcceptingIds(prev => { const s = new Set(prev); s.delete(task.id); return s; }); }
   };
 
-  const toggleSelect = (id, checked) => {
-    setSelectedIds(prev => {
-      const s = new Set(prev);
-      if (checked) s.add(id); else s.delete(id);
-      return s;
-    });
-  };
-
-  const handleBulkAction = async (action) => {
-    const targets = filtered.filter(t => selectedIds.has(t.id));
-    if (targets.length === 0) return;
-    if (!confirm(`${action === 'accept' ? 'Accept' : 'Reject'} ${targets.length} task(s)?`)) return;
-    setBulkBusy(true);
-    let ok = 0, fail = 0;
-    // Sirayla — Symfonie paralel istekleri reddediyor.
-    for (const t of targets) {
-      try {
-        const res = await base44.functions.invoke(acceptFn, {
-          task_id: t.id, task_name: t.name, project_name: t.project_name,
-          source_language: t.source_language, target_language: t.target_language,
-          word_count: t.word_count, price: t.price_max_usd, due_date: t.due_date,
-          action, // backend bunu okumuyorsa accept default kalir
-        });
-        if (res.data?.success) ok++; else fail++;
-      } catch { fail++; }
-    }
-    setBulkBusy(false);
-    setSelectedIds(new Set());
-    if (ok > 0) toast.success(`${ok} ${action === 'accept' ? 'accepted' : 'rejected'}${fail ? `, ${fail} failed` : ''}`);
-    else toast.error(`All ${fail} failed`);
-    refetch();
-  };
-
   // Single-pass totals.
   const { totalWords, totalMaxUsd, totalMinUsd } = useMemo(() => {
     let w = 0, max = 0, min = 0;
@@ -230,12 +181,7 @@ export default function PendingTasks() {
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight text-ink-1">Pending</h1>
           <p className="text-[13px] text-ink-3 mt-1 italic-editorial">
-            Tasks waiting for acceptance.
-            {fetchedAt && (
-              <span className="ml-2 text-ink-4">
-                Updated {formatDistanceToNow(new Date(fetchedAt), { addSuffix: true })}
-              </span>
-            )}
+            Tasks waiting for acceptance, fresh from the source.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -255,11 +201,11 @@ export default function PendingTasks() {
             <Download className="w-3.5 h-3.5" /> CSV
           </button>
           <button
-            onClick={handleRefresh}
-            disabled={refreshing}
+            onClick={() => { refetch(); }}
+            disabled={isFetching}
             className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab disabled:opacity-40"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} /> Refresh
+            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
           </button>
         </div>
       </header>
@@ -320,51 +266,22 @@ export default function PendingTasks() {
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState
-          title={!snapshot ? 'No cached data yet' : tasks.length === 0 ? 'Nothing pending' : 'No matches'}
-          body={!snapshot
-            ? `Hit Refresh to fetch the latest from ${activePortal?.name || 'the portal'}. After that, snapshots refresh automatically in the background.`
-            : tasks.length === 0
-              ? `${activePortal?.name || 'This portal'} has no tasks in "Order" state right now — a quiet moment.`
-              : 'Refine your search or clear the filter.'}
-          cta={!snapshot ? (() => <>Refresh now</>) : undefined}
-          action={!snapshot ? handleRefresh : undefined}
+          title={tasks.length === 0 ? 'Nothing pending' : 'No matches'}
+          body={tasks.length === 0
+            ? `${activePortal?.name || 'This portal'} has no tasks in “Order” state right now — a quiet moment.`
+            : 'Refine your search or clear the filter.'}
         />
       ) : (
-        <>
-          <BulkActionBar
-            count={[...selectedIds].filter(id => filtered.some(t => t.id === id)).length}
-            busy={bulkBusy}
-            onAcceptAll={() => handleBulkAction('accept')}
-            onRejectAll={() => handleBulkAction('reject')}
-            onClear={() => setSelectedIds(new Set())}
-          />
-          <div className="flex items-center gap-2 mb-3 px-1">
-            <label className="inline-flex items-center gap-2 cursor-pointer text-[12px] text-ink-3">
-              <input
-                type="checkbox"
-                checked={filtered.length > 0 && filtered.every(t => selectedIds.has(t.id))}
-                onChange={(e) => {
-                  if (e.target.checked) setSelectedIds(new Set(filtered.map(t => t.id)));
-                  else setSelectedIds(new Set());
-                }}
-                className="w-3.5 h-3.5 rounded border-line-2 text-accent focus:ring-accent cursor-pointer"
-              />
-              Select all in view
-            </label>
-          </div>
-          <div className="space-y-3">
-            {filtered.map(task => (
-              <TaskDetailCard
-                key={task.id}
-                task={task}
-                accepting={acceptingIds.has(task.id)}
-                onAccept={handleManualAccept}
-                selected={selectedIds.has(task.id)}
-                onToggleSelect={toggleSelect}
-              />
-            ))}
-          </div>
-        </>
+        <div className="space-y-3">
+          {filtered.map(task => (
+            <TaskDetailCard
+              key={task.id}
+              task={task}
+              accepting={acceptingIds.has(task.id)}
+              onAccept={handleManualAccept}
+            />
+          ))}
+        </div>
       )}
     </div>
   );

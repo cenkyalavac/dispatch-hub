@@ -1,7 +1,3 @@
-// Pending tasks fetcher. Sonucu CachedSnapshot'a yazar; UI cache'ten açılır,
-// kullanıcı isterse Refresh ile bu fonksiyonu tetikler.
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
-
 const TENANT_ID = Deno.env.get('SYMFONIE_TENANT_ID') || 'ead220ab-1743-4c57-83ae-e055f3401f19';
 const SCOPE = 'api://c2e8870d-faef-45ea-919c-b603f97bd0cc/.default';
 const BASE_URL = 'https://projects.moravia.com/Api/V5';
@@ -269,30 +265,10 @@ Deno.serve(async (req) => {
       };
     });
 
-    const payload = { tasks: mapped, total: mapped.length };
-
-    // Best-effort snapshot — UI bu cache'ten açılır.
-    try {
-      const base44 = createClientFromRequest(req);
-      const key = 'pending_symfonie';
-      const existing = await base44.asServiceRole.entities.CachedSnapshot.filter({ key });
-      const record = {
-        key,
-        data: payload,
-        fetched_at: new Date().toISOString(),
-        source_function: 'symfonieGetTasks',
-        item_count: mapped.length,
-      };
-      if (existing.length > 0) {
-        await base44.asServiceRole.entities.CachedSnapshot.update(existing[0].id, record);
-      } else {
-        await base44.asServiceRole.entities.CachedSnapshot.create(record);
-      }
-    } catch (e) {
-      console.error('Snapshot write failed for pending_symfonie:', e.message);
-    }
-
-    return Response.json(payload);
+    return Response.json({
+      tasks: mapped,
+      total: mapped.length
+    });
   } catch (error) {
     console.error('symfonieGetTasks error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });
