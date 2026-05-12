@@ -10,7 +10,7 @@ Deno.serve(async (req) => {
 
     const jwt = Deno.env.get('JUNCTION_JWT');
     const apiKey = Deno.env.get('JUNCTION_API_KEY');
-    const apiBase = Deno.env.get('JUNCTION_API_BASE') || PROD_BASE;
+    const apiBase = PROD_BASE;
 
     if (!jwt) {
       return Response.json({
@@ -20,9 +20,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Test by calling the offers endpoint with a tiny page.
+    // Test by calling the offers endpoint. The /v2/offer/me endpoint returns the full list
+    // and rejects limit/offset query params with HTTP 400.
     // x-api-key is defensive — Welocalize sends it from the UI; not yet enforced but include it when present.
-    const url = `${apiBase}/v2/offer/me?limit=1&offset=0`;
+    const url = `${apiBase}/v2/offer/me`;
     const headers = { 'x-pantheon-auth': jwt, 'Accept': 'application/json' };
     if (apiKey) headers['x-api-key'] = apiKey;
     const r = await fetch(url, { method: 'GET', headers });
