@@ -21,7 +21,7 @@ const KNOWN_SECRETS = new Set([
 ]);
 
 // Optional secrets — present in required_secrets for documentation but never block usage.
-const OPTIONAL_SECRETS = new Set(['JUNCTION_API_BASE']);
+const OPTIONAL_SECRETS = new Set();
 
 export default function Connectors() {
   const [dialogOpen, setDialogOpen] = useState(false);

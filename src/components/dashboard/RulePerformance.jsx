@@ -7,7 +7,8 @@ export default function RulePerformance({ tasks, rules, limit = 6 }) {
   const rows = useMemo(() => {
     const stats = new Map();
     for (const t of tasks) {
-      const key = t.matched_rule || (t.matched_rule === 'Manual' ? 'Manual' : '— No rule');
+      // Fall back to a stable bucket key when no rule matched (manual/legacy rows).
+      const key = t.matched_rule || '— no rule';
       const label = t.matched_rule || 'Manual / no rule';
       if (!stats.has(key)) stats.set(key, { key, label, accepted: 0, rejected: 0, total: 0 });
       const s = stats.get(key);

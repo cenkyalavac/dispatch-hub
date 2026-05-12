@@ -116,14 +116,15 @@ export default function PendingTasks() {
       }
       // Workflow
       if (filters.workflow !== 'all' && t.workflow_name !== filters.workflow) return false;
-      // Due window
+      // Due window — "today" means anything due before end-of-today (including overdue earlier in the day);
+      // 3d/7d windows include the past so the user doesn't lose overdue items when narrowing the range.
       if (filters.dueWindow !== 'all') {
         if (!t.due_date) return false;
         const due = new Date(t.due_date).getTime();
         if (filters.dueWindow === 'overdue' && due >= now) return false;
-        if (filters.dueWindow === 'today' && (due < now || due > endOfToday)) return false;
-        if (filters.dueWindow === '3d' && (due < now || due > now + 3 * dayMs)) return false;
-        if (filters.dueWindow === '7d' && (due < now || due > now + 7 * dayMs)) return false;
+        if (filters.dueWindow === 'today' && due > endOfToday) return false;
+        if (filters.dueWindow === '3d' && due > now + 3 * dayMs) return false;
+        if (filters.dueWindow === '7d' && due > now + 7 * dayMs) return false;
       }
       // Price
       if (filters.hasPrice === 'priced' && !(t.price_max_usd > 0)) return false;
@@ -195,16 +196,16 @@ export default function PendingTasks() {
     finally { setAcceptingIds(prev => { const s = new Set(prev); s.delete(task.id); return s; }); }
   };
 
-  // Single-pass totals.
+  // Single-pass totals — follow the active filter so the summary reflects what the user sees.
   const { totalWords, totalMaxUsd, totalMinUsd } = useMemo(() => {
     let w = 0, max = 0, min = 0;
-    for (const t of tasks) {
+    for (const t of filtered) {
       w += t.word_count || 0;
       max += t.price_max_usd || 0;
       min += t.price_min_usd || 0;
     }
     return { totalWords: w, totalMaxUsd: max, totalMinUsd: min };
-  }, [tasks]);
+  }, [filtered]);
 
   const portalOptions = useMemo(
     () => portals.filter(p => p.is_active && p.fetch_function),

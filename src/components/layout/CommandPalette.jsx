@@ -3,12 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 
 const ITEMS = [
-  { label: 'Overview',     to: '/' },
-  { label: 'Pending',      to: '/pending' },
-  { label: 'Activity',     to: '/tasks' },
-  { label: 'Connectors',   to: '/portals' },
-  { label: 'Rules',        to: '/rules' },
-  { label: 'Diagnostics',  to: '/settings' },
+  { label: 'Overview',          to: '/' },
+  { label: 'Pending',           to: '/pending' },
+  { label: 'Issues',            to: '/issues' },
+  { label: 'History',           to: '/history' },
+  { label: 'Activity',          to: '/tasks' },
+  { label: 'Connectors',        to: '/portals' },
+  { label: 'Rules',             to: '/rules' },
+  { label: 'API · Keys',        to: '/api' },
+  { label: 'API · Mappings',    to: '/mappings' },
+  { label: 'Settings',          to: '/settings' },
 ];
 
 export default function CommandPalette({ open, onClose }) {

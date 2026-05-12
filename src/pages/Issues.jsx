@@ -8,6 +8,7 @@ import IssueRow from '@/components/issues/IssueRow';
 import BulkActionBar from '@/components/pending/BulkActionBar';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
+import ErrorState from '@/components/ui/ErrorState';
 import { fmtNumber } from '@/lib/format';
 
 export default function Issues() {
@@ -18,7 +19,7 @@ export default function Issues() {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
 
-  const { data: projects = [], isLoading, refetch, isFetching } = useQuery({
+  const { data: projects = [], isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['failed-projects'],
     queryFn: () => base44.entities.Project.filter({ state: 'failed_to_sync' }, '-accepted_at', 200),
     staleTime: 30_000,
@@ -162,7 +163,9 @@ export default function Issues() {
         onClear={() => setSelectedIds(new Set())}
       />
 
-      {isLoading ? (
+      {isError ? (
+        <ErrorState error={error} onRetry={refetch} />
+      ) : isLoading ? (
         <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-14" />)}</div>
       ) : filtered.length === 0 ? (
         <EmptyState

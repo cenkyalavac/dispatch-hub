@@ -11,7 +11,7 @@ export default function BulkActionBar({
 }) {
   if (count === 0) return null;
   return (
-    <div className="sticky top-[52px] z-30 mb-3 flex items-center gap-3 px-4 py-2 bg-accent text-white rounded-md shadow-lg">
+    <div className="sticky top-[92px] z-30 mb-3 flex items-center gap-3 px-4 py-2 bg-accent text-white rounded-md shadow-lg">
       <span className="text-[13px] font-medium">{count} selected</span>
       <div className="ml-auto flex items-center gap-2">
         {onAccept && (

@@ -4,7 +4,7 @@ import HandoffPathSection from '@/components/settings/HandoffPathSection';
 
 const secretGroups = [
   { title: 'Moravia Symfonie', items: ['SYMFONIE_CLIENT_ID', 'SYMFONIE_CLIENT_SECRET', 'SYMFONIE_TENANT_ID', 'SYMFONIE_SERVICE_ACCOUNT'] },
-  { title: 'Welocalize Junction', items: ['JUNCTION_JWT (renews ~30 days)', 'JUNCTION_API_KEY (defensive)', 'JUNCTION_API_BASE (optional)'] },
+  { title: 'Welocalize Junction', items: ['JUNCTION_JWT (renews ~30 days)', 'JUNCTION_API_KEY (defensive)'] },
   { title: 'Google Sheets', items: ['GOOGLE_SHEETS_SPREADSHEET_ID (global default)'] },
 ];
 

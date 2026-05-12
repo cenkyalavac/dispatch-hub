@@ -126,11 +126,19 @@ export default function Dashboard() {
       });
       if (res.data?.success) {
         toast.success(`"${task.name || task.task_name}" accepted`);
-        setLastResult(prev => prev && ({
-          ...prev,
-          details: { ...prev.details, skipped: prev.details.skipped.filter(s => s.id !== task.id) },
-          summary: { ...prev.summary, skipped: Math.max(0, (prev.summary?.skipped || 0) - 1), accepted: (prev.summary?.accepted || 0) + 1 },
-        }));
+        setLastResult(prev => {
+          if (!prev) return prev;
+          const skipped = prev.details?.skipped || [];
+          return {
+            ...prev,
+            details: { ...(prev.details || {}), skipped: skipped.filter(s => s.id !== task.id) },
+            summary: {
+              ...(prev.summary || {}),
+              skipped: Math.max(0, (prev.summary?.skipped || 0) - 1),
+              accepted: (prev.summary?.accepted || 0) + 1,
+            },
+          };
+        });
         refetch();
       } else toast.error(res.data?.error || 'Accept failed');
     } catch (err) { toast.error(err.message); }

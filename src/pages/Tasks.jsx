@@ -28,7 +28,7 @@ export default function Tasks() {
   });
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = search.trim().toLowerCase();
     return tasks.filter(t => {
       const matchSearch = !q ||
         t.task_name?.toLowerCase().includes(q) ||
