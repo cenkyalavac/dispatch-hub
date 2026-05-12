@@ -63,9 +63,13 @@ function evaluateCondition(condition, task) {
 
   switch (field) {
     case 'project_name': taskValue = (task.project_name || '').toLowerCase(); break;
+    case 'task_name': taskValue = (task.task_name || '').toLowerCase(); break;
+    case 'workflow_name': taskValue = (task.workflow_name || '').toLowerCase(); break;
     case 'source_language': taskValue = (task.source_language || '').toLowerCase(); break;
     case 'target_language': taskValue = (task.target_language || '').toLowerCase(); break;
     case 'client_name': taskValue = (task.client_name || '').toLowerCase(); break;
+    case 'project_manager_first_name': taskValue = (task.project_manager_first_name || '').toLowerCase(); break;
+    case 'project_manager_last_name': taskValue = (task.project_manager_last_name || '').toLowerCase(); break;
     case 'word_count':
     case 'quantity': taskValue = Number(task.word_count) || 0; break;
     case 'price': taskValue = Number(task.price) || 0; break;
@@ -244,6 +248,8 @@ Deno.serve(async (req) => {
         sheets_synced: false,
         service_tag: raw.ServiceTag || '',
         workflow_name: raw.WorkflowName || '',
+        project_manager_first_name: raw.ProjectManager?.FirstName || raw.ProjectManagerFirstName || '',
+        project_manager_last_name: raw.ProjectManager?.LastName || raw.ProjectManagerLastName || '',
       };
 
       // Find first matching rule (rules sorted by priority asc)

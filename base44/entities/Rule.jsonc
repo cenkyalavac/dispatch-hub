@@ -35,12 +35,16 @@
             "type": "string",
             "enum": [
               "project_name",
+              "task_name",
+              "workflow_name",
               "source_language",
               "target_language",
               "client_name",
               "word_count",
               "price",
-              "quantity"
+              "quantity",
+              "project_manager_first_name",
+              "project_manager_last_name"
             ],
             "description": "Kontrol edilecek alan"
           },
