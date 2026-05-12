@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
-import { Command, Hexagon } from 'lucide-react';
+import { NavLink, useLocation, Link } from 'react-router-dom';
+import { Command, Hexagon, Settings } from 'lucide-react';
 import CommandPalette from './CommandPalette';
 
 const TABS = [
@@ -9,7 +9,7 @@ const TABS = [
   { to: '/issues',    label: 'Issues',     matches: ['/issues'] },
   { to: '/history',   label: 'History',    matches: ['/history'] },
   { to: '/tasks',     label: 'Activity',   matches: ['/tasks'] },
-  { to: '/portals',   label: 'Connectors', matches: ['/portals', '/rules', '/settings'] },
+  { to: '/portals',   label: 'Connectors', matches: ['/portals', '/rules'] },
   { to: '/api',       label: 'API',        matches: ['/api', '/mappings'] },
 ];
 
@@ -39,14 +39,18 @@ export default function TopBar() {
         style={{ height: 52 }}
         className="sticky top-0 z-40 bg-surface-1/95 backdrop-blur border-b border-line-1 flex items-center px-5"
       >
-        <div className="flex items-center gap-2 mr-7">
-          <span className="w-6 h-6 rounded-md bg-accent flex items-center justify-center">
+        <Link
+          to="/"
+          className="flex items-center gap-2 mr-7 group"
+          aria-label="Go to overview"
+        >
+          <span className="w-6 h-6 rounded-md bg-accent flex items-center justify-center group-hover:bg-[var(--accent-hover)] transition-colors duration-tab">
             <Hexagon className="w-3.5 h-3.5 text-white" />
           </span>
           <span className="text-[13px] font-semibold tracking-tight text-ink-1">
             Dispatch <span className="italic-editorial text-ink-3 ml-0.5">hub</span>
           </span>
-        </div>
+        </Link>
 
         <nav className="flex items-center gap-1">
           {TABS.map(t => {
@@ -67,14 +71,26 @@ export default function TopBar() {
           })}
         </nav>
 
-        <button
-          onClick={() => setPaletteOpen(true)}
-          className="ml-auto inline-flex items-center gap-2 h-8 px-3 rounded-md border border-line-1 bg-surface-1 hover:bg-surface-2 transition-colors duration-tab text-xs text-ink-3"
-        >
-          <Command className="w-3.5 h-3.5" />
-          <span>Search</span>
-          <kbd className="ml-2 px-1.5 py-0.5 rounded bg-surface-2 text-[10px] font-mono text-ink-2">⌘K</kbd>
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="inline-flex items-center gap-2 h-8 px-3 rounded-md border border-line-1 bg-surface-1 hover:bg-surface-2 transition-colors duration-tab text-xs text-ink-3"
+          >
+            <Command className="w-3.5 h-3.5" />
+            <span>Search</span>
+            <kbd className="ml-2 px-1.5 py-0.5 rounded bg-surface-2 text-[10px] font-mono text-ink-2">⌘K</kbd>
+          </button>
+          <NavLink
+            to="/settings"
+            aria-label="Settings"
+            className={({ isActive }) =>
+              `inline-flex items-center justify-center w-8 h-8 rounded-md border border-line-1 transition-colors duration-tab
+               ${isActive ? 'bg-surface-2 text-ink-1' : 'bg-surface-1 text-ink-3 hover:bg-surface-2 hover:text-ink-1'}`
+            }
+          >
+            <Settings className="w-3.5 h-3.5" />
+          </NavLink>
+        </div>
       </header>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
