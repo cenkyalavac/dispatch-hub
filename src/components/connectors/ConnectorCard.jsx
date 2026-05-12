@@ -7,6 +7,7 @@ import {
   Globe, Building2, Network, Plug, Boxes, Briefcase, Cloud,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import JwtExpiryBadge from './JwtExpiryBadge';
 
 const ICON_MAP = { Globe, Building2, Network, Plug, Boxes, Briefcase, Cloud };
 
@@ -25,12 +26,21 @@ const STATUS_MAP = {
   not_configured: { icon: AlertCircle,  color: 'text-slate-500',     bg: 'bg-slate-50 border-slate-200',      label: 'Not configured' },
 };
 
+// Parses "[jwt:N]" tail that handleTest stores on connection_message for JWT-auth connectors.
+function parseJwtDays(message) {
+  if (!message) return null;
+  const m = message.match(/\[jwt:(-?\d+)\]/);
+  return m ? Number(m[1]) : null;
+}
+
 export default function ConnectorCard({ portal, testing, onTest, onToggle, onEdit, onDelete, missingSecrets = [] }) {
   const colors = COLOR_MAP[portal.color] || COLOR_MAP.blue;
   const status = STATUS_MAP[portal.connection_status || 'not_configured'];
   const StatusIcon = status.icon;
   const Icon = ICON_MAP[portal.icon] || Globe;
   const hasMissing = missingSecrets.length > 0;
+  const jwtDays = parseJwtDays(portal.connection_message);
+  const cleanMessage = portal.connection_message?.replace(/\s*\[jwt:-?\d+\]\s*$/, '').trim();
 
   return (
     <Card className={`overflow-hidden shadow-sm hover:shadow-md transition-shadow ring-1 ${colors.ring}`}>
@@ -75,11 +85,13 @@ export default function ConnectorCard({ portal, testing, onTest, onToggle, onEdi
           </div>
         </div>
 
-        {portal.connection_message && (
+        {cleanMessage && (
           <p className="text-xs text-muted-foreground bg-secondary/50 px-2.5 py-1.5 rounded">
-            {portal.connection_message}
+            {cleanMessage}
           </p>
         )}
+
+        {jwtDays !== null && <JwtExpiryBadge days={jwtDays} />}
 
         {hasMissing && (
           <div className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-2.5 py-1.5">

@@ -9,11 +9,16 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const jwt = Deno.env.get('JUNCTION_JWT');
+    const apiKey = Deno.env.get('JUNCTION_API_KEY');
     const apiBase = Deno.env.get('JUNCTION_API_BASE') || PROD_BASE;
 
     if (!jwt) {
       return Response.json({ success: false, error: 'JUNCTION_JWT not configured', offers: [] });
     }
+
+    // Defensive: send x-api-key when configured (Welocalize UI sends it; not yet enforced).
+    const authHeaders = { 'x-pantheon-auth': jwt, 'Accept': 'application/json' };
+    if (apiKey) authHeaders['x-api-key'] = apiKey;
 
     // Fetch all direct offers with pagination (max limit per page is 25)
     const offers = [];
@@ -21,9 +26,7 @@ Deno.serve(async (req) => {
     const limit = 25;
     while (true) {
       const url = `${apiBase}/v2/offer/me?limit=${limit}&offset=${offset}`;
-      const r = await fetch(url, {
-        headers: { 'x-pantheon-auth': jwt, 'Accept': 'application/json' },
-      });
+      const r = await fetch(url, { headers: authHeaders });
       if (!r.ok) {
         const text = await r.text();
         return Response.json({

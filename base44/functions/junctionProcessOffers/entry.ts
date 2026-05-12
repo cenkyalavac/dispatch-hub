@@ -24,19 +24,27 @@ function matchesRule(task, rule) {
   return rule.conditions.every(c => evaluateCondition(task[c.field], c.operator, c.value));
 }
 
-async function acceptOffer(apiBase, jwt, offerId) {
+// Build auth headers once per run; x-api-key is defensive (Welocalize UI sends it).
+function authHeaders(jwt, apiKey, withContentType = false) {
+  const h = { 'x-pantheon-auth': jwt };
+  if (withContentType) h['Content-Type'] = 'application/json';
+  if (apiKey) h['x-api-key'] = apiKey;
+  return h;
+}
+
+async function acceptOffer(apiBase, jwt, apiKey, offerId) {
   const r = await fetch(`${apiBase}/v1/offer/accept-bulk`, {
     method: 'PUT',
-    headers: { 'x-pantheon-auth': jwt, 'Content-Type': 'application/json' },
+    headers: authHeaders(jwt, apiKey, true),
     body: JSON.stringify({ ids: [Number(offerId)] }),
   });
   return r.ok;
 }
 
-async function rejectOffer(apiBase, jwt, offerId, reason = 'capacity') {
+async function rejectOffer(apiBase, jwt, apiKey, offerId, reason = 'capacity') {
   const r = await fetch(`${apiBase}/v1/offer/${offerId}/reject`, {
     method: 'PUT',
-    headers: { 'x-pantheon-auth': jwt, 'Content-Type': 'application/json' },
+    headers: authHeaders(jwt, apiKey, true),
     body: JSON.stringify({ reasons: [{ reasonCategory: reason, reasonExplanation: null }] }),
   });
   return r.ok;
@@ -49,6 +57,7 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const jwt = Deno.env.get('JUNCTION_JWT');
+    const apiKey = Deno.env.get('JUNCTION_API_KEY');
     const apiBase = Deno.env.get('JUNCTION_API_BASE') || PROD_BASE;
     if (!jwt) return Response.json({ success: false, error: 'JUNCTION_JWT not configured' });
 
@@ -57,7 +66,7 @@ Deno.serve(async (req) => {
     let offset = 0;
     while (true) {
       const r = await fetch(`${apiBase}/v2/offer/me?limit=25&offset=${offset}`, {
-        headers: { 'x-pantheon-auth': jwt },
+        headers: authHeaders(jwt, apiKey),
       });
       if (!r.ok) return Response.json({ success: false, error: `Junction HTTP ${r.status}` });
       const page = await r.json();
@@ -104,8 +113,8 @@ Deno.serve(async (req) => {
 
       try {
         const ok = matched.action === 'accept'
-          ? await acceptOffer(apiBase, jwt, offer.id)
-          : await rejectOffer(apiBase, jwt, offer.id);
+          ? await acceptOffer(apiBase, jwt, apiKey, offer.id)
+          : await rejectOffer(apiBase, jwt, apiKey, offer.id);
 
         if (!ok) {
           summary.errors++;

@@ -16,6 +16,7 @@ const KNOWN_SECRETS = new Set([
   'GOOGLE_SHEETS_SPREADSHEET_ID',
   'SYMFONIE_CLIENT_SECRET',
   'SYMFONIE_CLIENT_ID',
+  'JUNCTION_API_KEY',
 ]);
 
 export default function Connectors() {
@@ -69,11 +70,17 @@ export default function Connectors() {
       const res = await base44.functions.invoke(portal.test_function, {});
       const data = res.data;
       const success = !!data?.success;
+      // For JWT-auth connectors (Junction), surface remaining JWT lifetime as a [jwt:N] tail
+      // — the ConnectorCard strips it back out before display and renders a JwtExpiryBadge.
+      const jwtDaysTail = (typeof data?.jwt?.expires_in_days === 'number')
+        ? ` [jwt:${data.jwt.expires_in_days}]`
+        : '';
+      const baseMessage = success
+        ? (data.whoami?.Login || data.jwt?.sub ? `Authenticated as ${data.whoami?.Login || data.jwt?.sub}` : 'Connection successful')
+        : (data?.error || 'Connection failed');
       await base44.entities.Portal.update(portal.id, {
         connection_status: success ? 'connected' : 'error',
-        connection_message: success
-          ? (data.whoami?.Login || data.jwt?.sub ? `Authenticated as ${data.whoami?.Login || data.jwt?.sub}` : 'Connection successful')
-          : (data?.error || 'Connection failed'),
+        connection_message: `${baseMessage}${jwtDaysTail}`,
         last_checked_at: new Date().toISOString(),
       });
       qc.invalidateQueries({ queryKey: ['portals-all'] });

@@ -9,22 +9,23 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const jwt = Deno.env.get('JUNCTION_JWT');
+    const apiKey = Deno.env.get('JUNCTION_API_KEY');
     const apiBase = Deno.env.get('JUNCTION_API_BASE') || PROD_BASE;
 
     if (!jwt) {
       return Response.json({
         success: false,
-        error: 'JUNCTION_JWT secret is not set. Get the token from junction.welocalize.com (Chrome DevTools → Network → any request → "pantheon-auth" header) and save it as the JUNCTION_JWT secret.',
+        error: 'JUNCTION_JWT secret is not set. Get the token from junction.welocalize.com (Chrome DevTools → Console → window.jwt) and save it as the JUNCTION_JWT secret.',
         configured: false,
       });
     }
 
-    // Test by calling the offers endpoint with a tiny page
+    // Test by calling the offers endpoint with a tiny page.
+    // x-api-key is defensive — Welocalize sends it from the UI; not yet enforced but include it when present.
     const url = `${apiBase}/v2/offer/me?limit=1&offset=0`;
-    const r = await fetch(url, {
-      method: 'GET',
-      headers: { 'x-pantheon-auth': jwt, 'Accept': 'application/json' },
-    });
+    const headers = { 'x-pantheon-auth': jwt, 'Accept': 'application/json' };
+    if (apiKey) headers['x-api-key'] = apiKey;
+    const r = await fetch(url, { method: 'GET', headers });
 
     const text = await r.text();
     let body;

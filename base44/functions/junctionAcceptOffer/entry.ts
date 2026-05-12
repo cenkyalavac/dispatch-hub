@@ -29,12 +29,17 @@ Deno.serve(async (req) => {
     const resolvedClient = client_name || account_name || '';
 
     const jwt = Deno.env.get('JUNCTION_JWT');
+    const apiKey = Deno.env.get('JUNCTION_API_KEY');
     const apiBase = Deno.env.get('JUNCTION_API_BASE') || PROD_BASE;
     if (!jwt) return Response.json({ success: false, error: 'JUNCTION_JWT not configured' });
 
+    // Defensive: send x-api-key when configured (Welocalize UI sends it; not yet enforced).
+    const headers = { 'x-pantheon-auth': jwt, 'Content-Type': 'application/json' };
+    if (apiKey) headers['x-api-key'] = apiKey;
+
     const r = await fetch(`${apiBase}/v1/offer/accept-bulk`, {
       method: 'PUT',
-      headers: { 'x-pantheon-auth': jwt, 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ ids: [Number(task_id)] }),
     });
 
