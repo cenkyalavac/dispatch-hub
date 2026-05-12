@@ -69,14 +69,16 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json();
-    const { task_id, task_name, project_name, source_language, target_language, word_count, price, due_date } = body;
+    const { task_id, task_name, project_name, source_language, target_language, word_count, price, due_date, action } = body;
 
     if (!task_id) return Response.json({ error: 'task_id is required' }, { status: 400 });
     const taskIdNum = Number(task_id);
+    const isReject = action === 'reject';
+    const command = isReject ? 'Reject' : 'Accept';
 
     const token = await getToken();
 
-    // Execute Accept command on Symfonie
+    // Execute command on Symfonie (Accept or Reject)
     const res = await fetch(`${BASE_URL}/Tasks(${taskIdNum})/Default.ExecuteTaskCommand`, {
       method: 'POST',
       headers: {
@@ -84,13 +86,13 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
-      body: JSON.stringify({ taskCommand: 'Accept' })
+      body: JSON.stringify({ taskCommand: command })
     });
 
     const responseText = await res.text();
     if (!res.ok) {
-      console.error(`Manual Accept for task ${taskIdNum} failed [${res.status}]:`, responseText.substring(0, 300));
-      return Response.json({ error: `Accept failed: ${responseText.substring(0, 200)}` }, { status: 400 });
+      console.error(`Manual ${command} for task ${taskIdNum} failed [${res.status}]:`, responseText.substring(0, 300));
+      return Response.json({ error: `${command} failed: ${responseText.substring(0, 200)}` }, { status: 400 });
     }
 
     // Save to AcceptedTask
@@ -105,13 +107,18 @@ Deno.serve(async (req) => {
       price: price || 0,
       due_date: due_date || null,
       accepted_at: new Date().toISOString(),
-      matched_rule: 'Manual',
-      status: 'accepted',
+      matched_rule: isReject ? 'Manual reject' : 'Manual',
+      status: isReject ? 'rejected' : 'accepted',
       sheets_synced: false,
     };
 
     const saved = await base44.asServiceRole.entities.AcceptedTask.create(taskRecord);
-    console.log(`Task ${taskIdNum} manually accepted by ${user?.email || 'user'}`);
+    console.log(`Task ${taskIdNum} manually ${command.toLowerCase()}ed by ${user?.email || 'user'}`);
+
+    // Reject icin Sheets/Handoff yok — sadece accept'te
+    if (isReject) {
+      return Response.json({ success: true, action: 'reject' });
+    }
 
     const synced = await appendToSheets(base44, taskRecord);
     if (synced) {

@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import TaskDetailCard from '@/components/pending/TaskDetailCard';
 import PendingFilters from '@/components/pending/PendingFilters';
+import BulkActionBar from '@/components/pending/BulkActionBar';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import ErrorState from '@/components/ui/ErrorState';
@@ -56,6 +57,8 @@ export default function PendingTasks() {
   const [selectedPortal, setSelectedPortal] = useState('symfonie');
   const [acceptingIds, setAcceptingIds] = useState(new Set());
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const { data: portals = [] } = useQuery({
     queryKey: ['portals-all'],
@@ -157,6 +160,39 @@ export default function PendingTasks() {
       else toast.error(res.data?.error || 'Accept failed');
     } catch (err) { toast.error(err.message); }
     finally { setAcceptingIds(prev => { const s = new Set(prev); s.delete(task.id); return s; }); }
+  };
+
+  const toggleSelect = (id, checked) => {
+    setSelectedIds(prev => {
+      const s = new Set(prev);
+      if (checked) s.add(id); else s.delete(id);
+      return s;
+    });
+  };
+
+  const handleBulkAction = async (action) => {
+    const targets = filtered.filter(t => selectedIds.has(t.id));
+    if (targets.length === 0) return;
+    if (!confirm(`${action === 'accept' ? 'Accept' : 'Reject'} ${targets.length} task(s)?`)) return;
+    setBulkBusy(true);
+    let ok = 0, fail = 0;
+    // Sirayla — Symfonie paralel istekleri reddediyor.
+    for (const t of targets) {
+      try {
+        const res = await base44.functions.invoke(acceptFn, {
+          task_id: t.id, task_name: t.name, project_name: t.project_name,
+          source_language: t.source_language, target_language: t.target_language,
+          word_count: t.word_count, price: t.price_max_usd, due_date: t.due_date,
+          action, // backend bunu okumuyorsa accept default kalir
+        });
+        if (res.data?.success) ok++; else fail++;
+      } catch { fail++; }
+    }
+    setBulkBusy(false);
+    setSelectedIds(new Set());
+    if (ok > 0) toast.success(`${ok} ${action === 'accept' ? 'accepted' : 'rejected'}${fail ? `, ${fail} failed` : ''}`);
+    else toast.error(`All ${fail} failed`);
+    refetch();
   };
 
   // Single-pass totals.
@@ -272,16 +308,41 @@ export default function PendingTasks() {
             : 'Refine your search or clear the filter.'}
         />
       ) : (
-        <div className="space-y-3">
-          {filtered.map(task => (
-            <TaskDetailCard
-              key={task.id}
-              task={task}
-              accepting={acceptingIds.has(task.id)}
-              onAccept={handleManualAccept}
-            />
-          ))}
-        </div>
+        <>
+          <BulkActionBar
+            count={[...selectedIds].filter(id => filtered.some(t => t.id === id)).length}
+            busy={bulkBusy}
+            onAcceptAll={() => handleBulkAction('accept')}
+            onRejectAll={() => handleBulkAction('reject')}
+            onClear={() => setSelectedIds(new Set())}
+          />
+          <div className="flex items-center gap-2 mb-3 px-1">
+            <label className="inline-flex items-center gap-2 cursor-pointer text-[12px] text-ink-3">
+              <input
+                type="checkbox"
+                checked={filtered.length > 0 && filtered.every(t => selectedIds.has(t.id))}
+                onChange={(e) => {
+                  if (e.target.checked) setSelectedIds(new Set(filtered.map(t => t.id)));
+                  else setSelectedIds(new Set());
+                }}
+                className="w-3.5 h-3.5 rounded border-line-2 text-accent focus:ring-accent cursor-pointer"
+              />
+              Select all in view
+            </label>
+          </div>
+          <div className="space-y-3">
+            {filtered.map(task => (
+              <TaskDetailCard
+                key={task.id}
+                task={task}
+                accepting={acceptingIds.has(task.id)}
+                onAccept={handleManualAccept}
+                selected={selectedIds.has(task.id)}
+                onToggleSelect={toggleSelect}
+              />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

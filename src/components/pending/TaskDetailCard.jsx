@@ -89,13 +89,23 @@ function PoNumbersStrip({ rows }) {
   );
 }
 
-export default function TaskDetailCard({ task, accepting, onAccept }) {
+export default function TaskDetailCard({ task, accepting, onAccept, selected, onToggleSelect }) {
   const [expanded, setExpanded] = useState(false);
   const isOverdue = task.due_date && new Date(task.due_date) < new Date();
 
   return (
-    <div className="bg-surface-1 border border-line-1 rounded-md hover-surface">
+    <div className={`bg-surface-1 border rounded-md hover-surface transition-colors duration-tab ${selected ? 'border-accent ring-1 ring-accent/30' : 'border-line-1'}`}>
       <div className="flex items-start gap-4 p-4">
+        {onToggleSelect && (
+          <label className="flex items-center pt-1 cursor-pointer flex-shrink-0">
+            <input
+              type="checkbox"
+              checked={!!selected}
+              onChange={(e) => onToggleSelect(task.id, e.target.checked)}
+              className="w-4 h-4 rounded border-line-2 text-accent focus:ring-accent cursor-pointer"
+            />
+          </label>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-[14px] text-ink-1 truncate">{task.name || EM}</span>

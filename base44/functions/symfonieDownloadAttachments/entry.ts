@@ -101,11 +101,25 @@ Deno.serve(async (req) => {
     const listData = await listRes.json();
     const attachments = listData.value || [];
 
-    // 2) Hedef klasor yolu
+    // 2) Hedef klasor yolu — AppSetting'ten okunabilir base path + template
+    let basePath = '';
+    let folderTemplate = '{account}/{project}/{task_id}_{task_name}/HO';
+    try {
+      const settings = await base44.asServiceRole.entities.AppSetting.filter({ key: 'dropbox_base_path' }, '', 1);
+      if (settings[0]?.value) basePath = settings[0].value.replace(/^\/+|\/+$/g, '');
+      const tpl = await base44.asServiceRole.entities.AppSetting.filter({ key: 'dropbox_folder_template' }, '', 1);
+      if (tpl[0]?.value) folderTemplate = tpl[0].value;
+    } catch { /* setting yoksa default kullan */ }
+
     const acc = sanitizePathSegment(account_name || 'Unknown Account');
     const proj = sanitizePathSegment(project_name || 'Unknown Project');
-    const taskFolder = sanitizePathSegment(`${task_id}_${task_name || 'Task'}`);
-    const handoffDir = `/${acc}/${proj}/${taskFolder}/HO`;
+    const safeTaskName = sanitizePathSegment(task_name || 'Task');
+    const resolved = folderTemplate
+      .replace(/\{account\}/g, acc)
+      .replace(/\{project\}/g, proj)
+      .replace(/\{task_id\}/g, String(task_id))
+      .replace(/\{task_name\}/g, safeTaskName);
+    const handoffDir = '/' + [basePath, resolved].filter(Boolean).join('/').replace(/\/+/g, '/').replace(/\/$/, '');
 
     if (attachments.length === 0) {
       return Response.json({
