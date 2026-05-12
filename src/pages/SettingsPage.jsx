@@ -44,9 +44,9 @@ export default function SettingsPage() {
   return (
     <div className="px-8 py-7 max-w-3xl">
       <header className="mb-7">
-        <h1 className="text-[22px] font-semibold tracking-tight text-ink-1">Diagnostics</h1>
+        <h1 className="text-[22px] font-semibold tracking-tight text-ink-1">Settings</h1>
         <p className="text-[13px] text-ink-3 mt-1 italic-editorial">
-          Connection probes, one-time setup, and a quick map of the secrets you’ll need.
+          Diagnostics, handoff paths, one-time setup, and the secrets reference.
         </p>
       </header>
 
