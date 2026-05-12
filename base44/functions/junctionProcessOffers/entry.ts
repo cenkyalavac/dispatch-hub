@@ -69,11 +69,11 @@ Deno.serve(async (req) => {
     }
 
     // 2. Get active rules for junction
-    const rules = (await base44.entities.Rule.filter({ is_active: true, portal: 'junction' }))
+    const rules = (await base44.asServiceRole.entities.Rule.filter({ is_active: true, portal: 'junction' }))
       .sort((a, b) => (a.priority || 1) - (b.priority || 1));
 
     // 3. Skip already-processed
-    const processedIds = new Set((await base44.entities.AcceptedTask.filter({ portal: 'junction' }))
+    const processedIds = new Set((await base44.asServiceRole.entities.AcceptedTask.filter({ portal: 'junction' }, '-created_date', 2000))
       .map(t => Number(t.task_id)));
 
     const summary = { accepted: 0, rejected: 0, skipped: 0, errors: 0 };
@@ -113,17 +113,50 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        await base44.entities.AcceptedTask.create({
+        const acceptedAt = new Date().toISOString();
+        const savedTask = await base44.asServiceRole.entities.AcceptedTask.create({
           portal: 'junction',
           ...task,
-          accepted_at: new Date().toISOString(),
+          accepted_at: acceptedAt,
           matched_rule: matched.name,
           status: matched.action === 'accept' ? 'accepted' : 'rejected',
           sheets_synced: false,
         });
 
-        if (matched.action === 'accept') { summary.accepted++; details.accepted.push(task.task_name); }
-        else { summary.rejected++; details.rejected.push(task.task_name); }
+        // Mirror Symfonie: every rule-accepted task gets a Project record + webhook fire.
+        // Without this, junction-accepted tasks never reach the BMS pipeline.
+        if (matched.action === 'accept') {
+          try {
+            const project = await base44.asServiceRole.entities.Project.create({
+              tenant_id: 'default',
+              accepted_task_id: savedTask.id,
+              portal: 'junction',
+              external_id: `junction:${offer.id}`,
+              state: 'accepted',
+              name: task.task_name,
+              client_name: task.client_name || '',
+              project_name: task.project_name || '',
+              source_language: task.source_language || '',
+              target_language: task.target_language || '',
+              word_count: task.word_count || 0,
+              price: task.price || 0,
+              currency: 'USD',
+              due_date: task.due_date || null,
+              accepted_at: acceptedAt,
+              origin: task,
+            });
+            base44.asServiceRole.functions.invoke('dispatchWebhook', {
+              tenant_id: 'default', event: 'project.accepted', project_id: project.id,
+            }).catch((e) => console.error('webhook dispatch failed:', e.message));
+          } catch (e) {
+            console.error(`Project create failed for offer ${offer.id}:`, e.message);
+          }
+          summary.accepted++;
+          details.accepted.push(task.task_name);
+        } else {
+          summary.rejected++;
+          details.rejected.push(task.task_name);
+        }
       } catch (err) {
         summary.errors++;
         details.errors.push({ id: offer.id, error: err.message });

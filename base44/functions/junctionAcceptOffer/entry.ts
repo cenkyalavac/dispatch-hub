@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
 
     const acceptedAt = new Date().toISOString();
 
-    const savedTask = await base44.entities.AcceptedTask.create({
+    const savedTask = await base44.asServiceRole.entities.AcceptedTask.create({
       portal: 'junction',
       task_id: Number(task_id),
       task_name: task_name || `Offer #${task_id}`,

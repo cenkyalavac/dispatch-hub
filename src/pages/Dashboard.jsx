@@ -113,9 +113,14 @@ export default function Dashboard() {
     const acceptFn = portal?.accept_function || 'symfonieAcceptTask';
     setAcceptingIds(prev => new Set([...prev, task.id]));
     try {
+      // symfonieAcceptTask expects `account_name`; junctionAcceptOffer accepts both. Send both so
+      // either function gets the client name regardless of which portal the task came from.
       const res = await base44.functions.invoke(acceptFn, {
         task_id: task.id, task_name: task.name || task.task_name,
-        project_name: task.project_name, source_language: task.source_language,
+        project_name: task.project_name,
+        account_name: task.account_name || task.client_name || '',
+        client_name: task.client_name || task.account_name || '',
+        source_language: task.source_language,
         target_language: task.target_language, word_count: task.word_count,
         price: task.price, due_date: task.due_date,
       });

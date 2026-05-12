@@ -25,9 +25,11 @@ export default function ApiAccess() {
     queryKey: ['webhook-subs'],
     queryFn: () => base44.entities.WebhookSubscription.list('-created_date'),
   });
+  // Pull a healthier window — the health indicator looks at the last 10 deliveries PER subscription.
   const { data: deliveries = [] } = useQuery({
     queryKey: ['webhook-deliveries'],
-    queryFn: () => base44.entities.WebhookDelivery.list('-created_date', 20),
+    queryFn: () => base44.entities.WebhookDelivery.list('-created_date', 200),
+    refetchInterval: 30_000,
   });
   const { data: projects = [] } = useQuery({
     queryKey: ['projects-summary'],
@@ -203,7 +205,15 @@ export default function ApiAccess() {
           <EmptyState title="No webhooks yet" body="Add a URL to receive project.* events." />
         ) : (
           <div className="space-y-2">
-            {hooks.map(h => <WebhookRow key={h.id} sub={h} onToggle={toggleHook} onDelete={deleteHook} />)}
+            {hooks.map(h => (
+              <WebhookRow
+                key={h.id}
+                sub={h}
+                deliveries={deliveries}
+                onToggle={toggleHook}
+                onDelete={deleteHook}
+              />
+            ))}
           </div>
         )}
       </section>
@@ -214,18 +224,26 @@ export default function ApiAccess() {
           <header className="px-5 py-3 border-b border-line-1">
             <h2 className="text-[14px] font-semibold text-ink-1">Recent deliveries</h2>
           </header>
-          <div className="divide-y divide-line-1">
-            {deliveries.map(d => (
-              <div key={d.id} className="px-5 py-2.5 flex items-center gap-3 text-[12px]">
-                <span className={`w-1.5 h-1.5 rounded-full ${d.status === 'success' ? 'bg-success' : 'bg-danger'}`} />
-                <span className="font-mono text-ink-2">{d.event}</span>
-                <span className="font-mono text-ink-3 truncate flex-1">{d.url}</span>
-                <span className="text-ink-3 tabular-nums">{d.http_status || (d.error ? 'err' : '—')}</span>
-                <span className="text-ink-3 italic-editorial">
-                  {d.delivered_at ? formatDistanceToNow(new Date(d.delivered_at), { addSuffix: true }) : '—'}
-                </span>
-              </div>
-            ))}
+          <div className="divide-y divide-line-1 max-h-96 overflow-y-auto">
+            {deliveries.slice(0, 30).map(d => {
+              const tone =
+                d.status === 'success' ? 'bg-success' :
+                d.status === 'retry_scheduled' ? 'bg-warning' :
+                d.status === 'failed' ? 'bg-danger' :
+                'bg-ink-4';
+              return (
+                <div key={d.id} className="px-5 py-2.5 flex items-center gap-3 text-[12px]">
+                  <span className={`w-1.5 h-1.5 rounded-full ${tone}`} title={d.status} />
+                  <span className="font-mono text-ink-2">{d.event}</span>
+                  <span className="font-mono text-ink-3 truncate flex-1">{d.url}</span>
+                  {d.attempt > 1 && <span className="text-[10px] uppercase tracking-wider text-ink-3">try {d.attempt}</span>}
+                  <span className="text-ink-3 tabular-nums">{d.http_status || (d.error ? 'err' : '—')}</span>
+                  <span className="text-ink-3 italic-editorial">
+                    {d.delivered_at ? formatDistanceToNow(new Date(d.delivered_at), { addSuffix: true }) : '—'}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}

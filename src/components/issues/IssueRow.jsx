@@ -3,12 +3,24 @@ import { format } from 'date-fns';
 import { RefreshCw, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { EM } from '@/lib/format';
 
-export default function IssueRow({ project, busy, onReset }) {
+export default function IssueRow({ project, busy, onReset, selected, onToggleSelect }) {
   const [open, setOpen] = useState(false);
+  const selectable = typeof onToggleSelect === 'function';
 
   return (
     <>
-      <tr className="border-b border-line-1 last:border-0 hover:bg-surface-2 transition-colors">
+      <tr className={`border-b border-line-1 last:border-0 hover:bg-surface-2 transition-colors ${selected ? 'bg-accent-soft/40' : ''}`}>
+        {selectable && (
+          <td className="px-3 py-2.5 w-8" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={!!selected}
+              onChange={() => onToggleSelect(project)}
+              className="w-4 h-4 accent-[var(--accent)] cursor-pointer"
+              aria-label={`Select ${project.name}`}
+            />
+          </td>
+        )}
         <td className="px-2 py-2.5 w-6 cursor-pointer" onClick={() => setOpen(o => !o)}>
           {open ? <ChevronUp className="w-3.5 h-3.5 text-ink-3" /> : <ChevronDown className="w-3.5 h-3.5 text-ink-3" />}
         </td>
@@ -42,7 +54,7 @@ export default function IssueRow({ project, busy, onReset }) {
       </tr>
       {open && (
         <tr className="bg-surface-2 border-b border-line-1">
-          <td colSpan={6} className="px-5 py-3">
+          <td colSpan={selectable ? 7 : 6} className="px-5 py-3">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[12px]">
               {[
                 ['Project ID',  project.id],

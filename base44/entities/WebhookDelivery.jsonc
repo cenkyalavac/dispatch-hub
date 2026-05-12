@@ -24,7 +24,8 @@
       "enum": [
         "success",
         "failed",
-        "pending"
+        "pending",
+        "retry_scheduled"
       ],
       "default": "pending"
     },
@@ -40,6 +41,11 @@
     "attempt": {
       "type": "integer",
       "default": 1
+    },
+    "next_retry_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the background retry job should try again. Null when no more retries are planned."
     },
     "delivered_at": {
       "type": "string",

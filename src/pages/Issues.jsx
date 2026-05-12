@@ -5,6 +5,7 @@ import { RefreshCw, Search, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import IssueRow from '@/components/issues/IssueRow';
+import BulkActionBar from '@/components/pending/BulkActionBar';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import { fmtNumber } from '@/lib/format';
@@ -14,6 +15,8 @@ export default function Issues() {
   const [search, setSearch] = useState('');
   const [portalFilter, setPortalFilter] = useState('all');
   const [resettingIds, setResettingIds] = useState(new Set());
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const { data: projects = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['failed-projects'],
@@ -37,21 +40,57 @@ export default function Issues() {
     });
   }, [projects, search, portalFilter]);
 
+  const resetOne = async (project) => {
+    const res = await base44.functions.invoke('projectResetSync', { project_id: project.id });
+    return res.data?.success ? { ok: true } : { ok: false, error: res.data?.error };
+  };
+
   const handleReset = async (project) => {
     setResettingIds(prev => new Set([...prev, project.id]));
     try {
-      const res = await base44.functions.invoke('projectResetSync', { project_id: project.id });
-      if (res.data?.success) {
+      const r = await resetOne(project);
+      if (r.ok) {
         toast.success(`"${project.name}" reset — waiting for BMS pickup`);
         qc.invalidateQueries({ queryKey: ['failed-projects'] });
       } else {
-        toast.error(res.data?.error || 'Reset failed');
+        toast.error(r.error || 'Reset failed');
       }
     } catch (err) {
       toast.error(err.message);
     } finally {
       setResettingIds(prev => { const s = new Set(prev); s.delete(project.id); return s; });
     }
+  };
+
+  const toggleSelect = (project) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(project.id)) next.delete(project.id); else next.add(project.id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filtered.map(p => p.id)));
+  };
+
+  const handleBulkReset = async () => {
+    const targets = filtered.filter(p => selectedIds.has(p.id));
+    if (targets.length === 0) return;
+    setBulkBusy(true);
+    let ok = 0, fail = 0;
+    // Sequential — keeps the dispatchWebhook calls from stampeding the BMS at once.
+    for (const p of targets) {
+      try {
+        const r = await resetOne(p);
+        if (r.ok) ok++; else fail++;
+      } catch { fail++; }
+    }
+    toast[fail === 0 ? 'success' : 'warning'](`Reset: ${ok} ok${fail ? `, ${fail} failed` : ''}`);
+    setSelectedIds(new Set());
+    setBulkBusy(false);
+    qc.invalidateQueries({ queryKey: ['failed-projects'] });
   };
 
   return (
@@ -114,6 +153,15 @@ export default function Issues() {
         )}
       </div>
 
+      <BulkActionBar
+        count={selectedIds.size}
+        busy={bulkBusy}
+        onAccept={handleBulkReset}
+        acceptLabel="Reset selected"
+        canReject={false}
+        onClear={() => setSelectedIds(new Set())}
+      />
+
       {isLoading ? (
         <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-14" />)}</div>
       ) : filtered.length === 0 ? (
@@ -128,6 +176,16 @@ export default function Issues() {
           <table className="w-full text-[12px]">
             <thead>
               <tr className="bg-surface-2 border-b border-line-1 text-[10px] uppercase tracking-wider text-ink-3">
+                <th className="px-3 py-2 w-8">
+                  <input
+                    type="checkbox"
+                    checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                    ref={el => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < filtered.length; }}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 accent-[var(--accent)] cursor-pointer"
+                    aria-label="Select all"
+                  />
+                </th>
                 <th className="px-2 py-2 w-6" />
                 <th className="text-left px-3 py-2 font-medium">Project</th>
                 <th className="text-left px-3 py-2 font-medium">Portal</th>
@@ -143,6 +201,8 @@ export default function Issues() {
                   project={p}
                   busy={resettingIds.has(p.id)}
                   onReset={handleReset}
+                  selected={selectedIds.has(p.id)}
+                  onToggleSelect={toggleSelect}
                 />
               ))}
             </tbody>

@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import MappingForm from '@/components/mappings/MappingForm';
 import MappingRow from '@/components/mappings/MappingRow';
+import SuggestedMappings from '@/components/mappings/SuggestedMappings';
 import EmptyState from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -68,6 +69,8 @@ export default function Mappings() {
           Translate portal values into the language your BMS speaks. Case-insensitive; unmatched values pass through unchanged.
         </p>
       </header>
+
+      <SuggestedMappings />
 
       <MappingForm portals={portals.filter(p => p.is_active)} onSubmit={createMapping} />
 

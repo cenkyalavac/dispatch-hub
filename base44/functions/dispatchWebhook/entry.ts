@@ -67,24 +67,37 @@ Deno.serve(async (req) => {
         project_id: project.id, url: sub.url, payload, attempt: 1,
       };
 
+      // First attempt — if it fails, mark `retry_scheduled` with a 1-minute retry window
+      // so the background webhookRetry sweep can pick it up. dispatchWebhook NEVER retries inline.
+      const now = new Date().toISOString();
+      const retryAt = new Date(Date.now() + 60_000).toISOString();
       try {
         const r = await fetch(sub.url, { method: 'POST', headers, body });
         const txt = await r.text().catch(() => '');
-        const status = r.ok ? 'success' : 'failed';
         await base44.asServiceRole.entities.WebhookDelivery.create({
-          ...log, status, http_status: r.status,
+          ...log,
+          status: r.ok ? 'success' : 'retry_scheduled',
+          http_status: r.status,
           response_excerpt: txt.slice(0, 500),
-          delivered_at: new Date().toISOString(),
+          error: r.ok ? null : `HTTP ${r.status}`,
+          delivered_at: now,
+          next_retry_at: r.ok ? null : retryAt,
         });
         await base44.asServiceRole.entities.WebhookSubscription.update(sub.id, {
-          last_delivered_at: new Date().toISOString(),
+          last_delivered_at: now,
           last_status: `${r.status}`,
         });
         return { sub: sub.id, ok: r.ok, status: r.status };
       } catch (e) {
         await base44.asServiceRole.entities.WebhookDelivery.create({
-          ...log, status: 'failed', error: e.message,
-          delivered_at: new Date().toISOString(),
+          ...log,
+          status: 'retry_scheduled',
+          error: e.message,
+          delivered_at: now,
+          next_retry_at: retryAt,
+        });
+        await base44.asServiceRole.entities.WebhookSubscription.update(sub.id, {
+          last_status: e.message.slice(0, 80),
         });
         return { sub: sub.id, ok: false, error: e.message };
       }
