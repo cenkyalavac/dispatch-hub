@@ -150,6 +150,9 @@ export default function PendingTasks() {
     try {
       const res = await base44.functions.invoke(acceptFn, {
         task_id: task.id, task_name: task.name, project_name: task.project_name,
+        // Symfonie uses 'account_name' (Customer), Junction uses 'client_name' (project.client.name) — send both.
+        account_name: task.account_name || task.client_name || '',
+        client_name: task.client_name || task.account_name || '',
         source_language: task.source_language, target_language: task.target_language,
         word_count: task.word_count, price: task.price_max_usd, due_date: task.due_date,
       });

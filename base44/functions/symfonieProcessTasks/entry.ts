@@ -180,6 +180,28 @@ Deno.serve(async (req) => {
     const rawTasks = await fetchAllPages(url, token);
     console.log(`Found ${rawTasks.length} tasks in Order state`);
 
+    // Faz 2: Resolve Customer/Account names via the Projects endpoint (Customer is inline on Projects, NOT on Tasks).
+    // Without this, client_name on Project records stays empty and FieldMapping never gets a chance to fire.
+    const projectIds = [...new Set(rawTasks.map(t => t.Project?.Id).filter(Boolean))];
+    const customerByProject = new Map();
+    if (projectIds.length > 0) {
+      const chunks = [];
+      for (let i = 0; i < projectIds.length; i += 20) chunks.push(projectIds.slice(i, i + 20));
+      try {
+        const batches = await Promise.all(chunks.map(async (chunk) => {
+          const filter = chunk.map(id => `Id eq ${id}`).join(' or ');
+          return fetchAllPages(
+            `${BASE_URL}/Projects?$filter=${encodeURIComponent(filter)}&$top=${chunk.length}`,
+            token
+          );
+        }));
+        batches.flat().forEach(p => { if (p.Customer?.Name) customerByProject.set(p.Id, p.Customer.Name); });
+      } catch (e) {
+        // Don't block automation if customer resolution fails — just log and continue with empty client_name.
+        console.error('Customer resolution failed:', e.message);
+      }
+    }
+
     // 4. Get already-processed task IDs to avoid re-processing
     // Use a Set of numeric task IDs from our AcceptedTask records
     const existing = await base44.asServiceRole.entities.AcceptedTask.list('-created_date', 2000);
@@ -204,11 +226,12 @@ Deno.serve(async (req) => {
       const wordCount = Number(wordRow?.Quantity) || 0;
       const totalPrice = financeRows.reduce((sum, r) => sum + (Number(r.MaxUsd) || 0), 0);
 
+      const clientName = (raw.Project?.Id && customerByProject.get(raw.Project.Id)) || '';
       const task = {
         task_id: taskId,
         task_name: raw.Name || '',
-        project_name: raw.JobName || raw.ProjectName || '',
-        client_name: '',
+        project_name: raw.Project?.Name || raw.JobName || raw.ProjectName || '',
+        client_name: clientName,
         source_language: raw.SourceLanguageCode || '',
         target_language: raw.TargetLanguageCode || '',
         word_count: wordCount,
@@ -261,13 +284,43 @@ Deno.serve(async (req) => {
           await base44.asServiceRole.entities.AcceptedTask.update(saved.id, { sheets_synced: true });
         }
 
-        // Handoff: Dropbox'a indir (basarisiz olsa bile accept bozulmasin)
+        // Faz 1/2 BMS pipeline: every accepted task MUST get a Project record + webhook fire,
+        // otherwise downstream BMS never sees rule-accepted tasks (only manual ones).
+        let project = null;
+        try {
+          project = await base44.asServiceRole.entities.Project.create({
+            tenant_id: 'default',
+            accepted_task_id: saved.id,
+            portal: 'symfonie',
+            external_id: `symfonie:${taskId}`,
+            state: 'accepted',
+            name: raw.Name || '',
+            client_name: task.client_name || '',
+            project_name: task.project_name || '',
+            source_language: task.source_language || '',
+            target_language: task.target_language || '',
+            word_count: task.word_count || 0,
+            price: task.price || 0,
+            currency: 'USD',
+            due_date: task.due_date || null,
+            accepted_at: task.accepted_at,
+            origin: task,
+          });
+          base44.asServiceRole.functions.invoke('dispatchWebhook', {
+            tenant_id: 'default', event: 'project.accepted', project_id: project.id,
+          }).catch((e) => console.error('webhook dispatch failed:', e.message));
+        } catch (e) {
+          console.error(`Project create failed for task ${taskId}:`, e.message);
+        }
+
+        // Handoff: Dropbox'a indir + ProjectAttachment katalogu (basarisiz olsa bile accept bozulmasin)
         try {
           await base44.asServiceRole.functions.invoke('symfonieDownloadAttachments', {
             task_id: taskId,
             task_name: raw.Name || '',
             project_name: task.project_name || '',
-            account_name: 'Symfonie',
+            account_name: task.client_name || 'Symfonie',
+            project_id: project?.id || null,
           });
         } catch (e) {
           console.error(`Handoff failed for task ${taskId}:`, e.message);

@@ -13,7 +13,7 @@
     },
     "token_prefix": {
       "type": "string",
-      "description": "First 8 chars of the token, shown in the UI after creation."
+      "description": "First 12 chars of the token, shown in the UI after creation."
     },
     "tenant_id": {
       "type": "string",

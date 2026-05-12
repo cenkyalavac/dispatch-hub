@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json();
-    const { task_id, task_name, project_name, source_language, target_language, word_count, price, due_date } = body;
+    const { task_id, task_name, project_name, account_name, source_language, target_language, word_count, price, due_date } = body;
 
     if (!task_id) return Response.json({ error: 'task_id is required' }, { status: 400 });
     const taskIdNum = Number(task_id);
@@ -99,6 +99,7 @@ Deno.serve(async (req) => {
       task_id: taskIdNum,
       task_name: task_name || '',
       project_name: project_name || '',
+      client_name: account_name || '',
       source_language: source_language || '',
       target_language: target_language || '',
       word_count: word_count || 0,
@@ -129,6 +130,7 @@ Deno.serve(async (req) => {
         external_id: `symfonie:${taskIdNum}`,
         state: 'accepted',
         name: task_name || '',
+        client_name: account_name || '',
         project_name: project_name || '',
         source_language: source_language || '',
         target_language: target_language || '',
@@ -153,7 +155,7 @@ Deno.serve(async (req) => {
         task_id: taskIdNum,
         task_name: task_name || '',
         project_name: project_name || '',
-        account_name: 'Symfonie',
+        account_name: account_name || 'Symfonie',
         project_id: project?.id || null,
       });
       handoff = hoRes.data;

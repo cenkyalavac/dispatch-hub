@@ -24,8 +24,9 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { task_id, task_name, project_name, source_language, target_language, word_count, price, due_date } = await req.json();
+    const { task_id, task_name, project_name, client_name, account_name, source_language, target_language, word_count, price, due_date } = await req.json();
     if (!task_id) return Response.json({ success: false, error: 'task_id is required' }, { status: 400 });
+    const resolvedClient = client_name || account_name || '';
 
     const jwt = Deno.env.get('JUNCTION_JWT');
     const apiBase = Deno.env.get('JUNCTION_API_BASE') || PROD_BASE;
@@ -49,6 +50,7 @@ Deno.serve(async (req) => {
       task_id: Number(task_id),
       task_name: task_name || `Offer #${task_id}`,
       project_name: project_name || '',
+      client_name: resolvedClient,
       source_language: source_language || '',
       target_language: target_language || '',
       word_count: word_count || 0,
@@ -70,6 +72,7 @@ Deno.serve(async (req) => {
         external_id: `junction:${task_id}`,
         state: 'accepted',
         name: task_name || `Offer #${task_id}`,
+        client_name: resolvedClient,
         project_name: project_name || '',
         source_language: source_language || '',
         target_language: target_language || '',
@@ -78,7 +81,7 @@ Deno.serve(async (req) => {
         currency: 'USD',
         due_date: due_date || null,
         accepted_at: acceptedAt,
-        origin: { task_id, task_name, project_name, source_language, target_language, word_count, price, due_date },
+        origin: { task_id, task_name, project_name, client_name: resolvedClient, source_language, target_language, word_count, price, due_date },
       });
       base44.asServiceRole.functions.invoke('dispatchWebhook', {
         tenant_id: 'default', event: 'project.accepted', project_id: project.id,
@@ -93,7 +96,7 @@ Deno.serve(async (req) => {
       task_id,
       task_name || '',
       project_name || '',
-      '',
+      resolvedClient,
       source_language || '',
       target_language || '',
       word_count || 0,

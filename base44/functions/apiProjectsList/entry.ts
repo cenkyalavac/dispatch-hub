@@ -1,7 +1,8 @@
 // GET-style endpoint for downstream BMS: list projects (filterable by state).
 // Auth: Authorization: Apikey <token>   (also accepts "Bearer <token>")
-// Body or query params (we accept JSON body since base44 functions only receive payload through invoke):
-//   { state?: "accepted"|"synchronized"|"delivered"|"failed_to_sync", limit?: number, skip?: number, since?: ISO }
+// Body params:
+//   { state?: "accepted"|"synchronized"|"delivered"|"failed_to_sync", limit?: number (<=500) }
+// Ordered by -accepted_at. For detail incl. mapping & attachments, see apiProjectsGet.
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 function parseApiKey(req) {
@@ -43,7 +44,9 @@ function serializeProject(p) {
     due_date: p.due_date,
     accepted_at: p.accepted_at,
     acknowledged_at: p.acknowledged_at,
+    acknowledged_by: p.acknowledged_by,
     delivered_at: p.delivered_at,
+    sync_error: p.sync_error,
     origin: p.origin,
   };
 }
