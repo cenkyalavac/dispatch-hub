@@ -70,6 +70,18 @@ export default function Connectors() {
       return;
     }
     setTestingKey(portal.key);
+
+    // Persist test result back to the Portal — but never let a write failure mask
+    // the actual test outcome. Wrapped in its own try so the user always sees the truth.
+    const persist = async (patch) => {
+      try {
+        await base44.entities.Portal.update(portal.id, patch);
+        qc.invalidateQueries({ queryKey: ['portals-all'] });
+      } catch (e) {
+        console.warn('Portal status persist failed:', e.message);
+      }
+    };
+
     try {
       const res = await base44.functions.invoke(portal.test_function, {});
       const data = res.data;
@@ -82,22 +94,22 @@ export default function Connectors() {
       const baseMessage = success
         ? (data.whoami?.Login || data.jwt?.sub ? `Authenticated as ${data.whoami?.Login || data.jwt?.sub}` : 'Connection successful')
         : (data?.error || 'Connection failed');
-      await base44.entities.Portal.update(portal.id, {
+      await persist({
         connection_status: success ? 'connected' : 'error',
         connection_message: `${baseMessage}${jwtDaysTail}`,
         last_checked_at: new Date().toISOString(),
       });
-      qc.invalidateQueries({ queryKey: ['portals-all'] });
       if (success) toast.success(`${portal.name}: connected`);
       else toast.error(`${portal.name}: ${data?.error || 'failed'}`);
     } catch (err) {
-      await base44.entities.Portal.update(portal.id, {
+      // Surface the real HTTP body when axios swallows it behind a generic 500.
+      const detail = err.response?.data?.error || err.response?.data?.message || err.message;
+      await persist({
         connection_status: 'error',
-        connection_message: err.message,
+        connection_message: detail,
         last_checked_at: new Date().toISOString(),
       });
-      qc.invalidateQueries({ queryKey: ['portals-all'] });
-      toast.error('Test failed: ' + err.message);
+      toast.error('Test failed: ' + detail);
     } finally {
       setTestingKey(null);
     }

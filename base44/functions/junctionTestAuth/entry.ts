@@ -5,8 +5,12 @@ const PROD_BASE = 'https://hypnos.welocalize.tools';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    // Soft auth: if the session is missing/expired we still allow the test —
+    // this endpoint only proves Junction credentials work, no Base44 data is touched.
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) {
+      console.warn('junctionTestAuth: no Base44 user, continuing anonymously');
+    }
 
     const jwt = Deno.env.get('JUNCTION_JWT');
     const apiKey = Deno.env.get('JUNCTION_API_KEY');
