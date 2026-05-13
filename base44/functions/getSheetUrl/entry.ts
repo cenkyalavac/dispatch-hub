@@ -8,19 +8,12 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     await base44.auth.me().catch(() => null);
 
-    let sheetId = null;
-    try {
-      const portals = await base44.asServiceRole.entities.Portal.list();
-      const p = portals.find(p => p.sheets_spreadsheet_id);
-      if (p) sheetId = p.sheets_spreadsheet_id;
-    } catch (_) { /* ignore */ }
-
-    if (!sheetId) sheetId = Deno.env.get('GOOGLE_SHEETS_SPREADSHEET_ID') || null;
-
-    if (!sheetId) {
-      return Response.json({ url: null, error: 'No spreadsheet configured' });
+    const portals = await base44.asServiceRole.entities.Portal.list();
+    const p = portals.find(p => p.sheets_spreadsheet_id);
+    if (!p) {
+      return Response.json({ url: null, error: 'No portal has a spreadsheet configured' });
     }
-    return Response.json({ url: `https://docs.google.com/spreadsheets/d/${sheetId}` });
+    return Response.json({ url: `https://docs.google.com/spreadsheets/d/${p.sheets_spreadsheet_id}` });
   } catch (error) {
     return Response.json({ url: null, error: error.message }, { status: 500 });
   }

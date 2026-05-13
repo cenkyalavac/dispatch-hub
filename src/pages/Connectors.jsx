@@ -13,7 +13,6 @@ import ConnectorFormDialog from '@/components/connectors/ConnectorFormDialog';
 const KNOWN_SECRETS = new Set([
   'SYMFONIE_TENANT_ID',
   'SYMFONIE_SERVICE_ACCOUNT',
-  'GOOGLE_SHEETS_SPREADSHEET_ID',
   'SYMFONIE_CLIENT_SECRET',
   'SYMFONIE_CLIENT_ID',
   'JUNCTION_JWT',

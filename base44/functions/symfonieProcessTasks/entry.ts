@@ -118,11 +118,14 @@ async function executeTaskCommand(taskId, command, token) {
   return { ok: true };
 }
 
-async function appendToSheets(base44, taskRecord) {
-  const spreadsheetId = Deno.env.get('GOOGLE_SHEETS_SPREADSHEET_ID');
+async function appendToSheets(base44, taskRecord, portal) {
+  // Sheet config now lives on the Portal entity — no global secret fallback.
+  const spreadsheetId = portal?.sheets_spreadsheet_id;
   if (!spreadsheetId) return false;
 
   const { accessToken } = await base44.asServiceRole.connectors.getConnection('googlesheets');
+  const tab = portal?.sheets_tab_name || '';
+  const range = tab ? `${encodeURIComponent(tab)}!A1:append` : 'A1:append';
 
   const row = [
     taskRecord.task_id,
@@ -139,7 +142,7 @@ async function appendToSheets(base44, taskRecord) {
   ];
 
   const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A1:append?valueInputOption=USER_ENTERED`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
     {
       method: 'POST',
       headers: {
@@ -171,6 +174,10 @@ Deno.serve(async (req) => {
     // 1. Get active rules sorted by priority (ascending = higher priority runs first)
     const rules = await base44.asServiceRole.entities.Rule.filter({ portal: 'symfonie', is_active: true }, 'priority', 200);
     console.log(`Found ${rules.length} active rules`);
+
+    // Load portal config once — needed for Sheet routing in appendToSheets.
+    const portalRows = await base44.asServiceRole.entities.Portal.filter({ key: 'symfonie' });
+    const portal = portalRows[0] || null;
 
     // 2. Get Azure AD token
     const token = await getToken();
@@ -285,7 +292,7 @@ Deno.serve(async (req) => {
         console.log(`Task ${taskId} "${raw.Name}" accepted via rule "${matchedRule.name}"`);
         const saved = await base44.asServiceRole.entities.AcceptedTask.create(task);
 
-        const synced = await appendToSheets(base44, task);
+        const synced = await appendToSheets(base44, task, portal);
         if (synced) {
           await base44.asServiceRole.entities.AcceptedTask.update(saved.id, { sheets_synced: true });
         }

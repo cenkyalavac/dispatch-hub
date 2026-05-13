@@ -31,7 +31,7 @@ export default function PortalSheetsFields({ portalKey, spreadsheetId, tabName, 
       <div className="flex items-center gap-2 mb-1">
         <Sheet className="w-3.5 h-3.5 text-ink-3" />
         <h3 className="text-[13px] font-semibold text-ink-1">Google Sheets log</h3>
-        <span className="text-[11px] text-ink-3 italic-editorial">— leave blank to use the global default</span>
+        <span className="text-[11px] text-ink-3 italic-editorial">— required to log accepted tasks</span>
       </div>
 
       <div className="grid grid-cols-[1fr_140px] gap-3 mt-3">
