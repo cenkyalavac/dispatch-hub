@@ -1,12 +1,26 @@
 import { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, Search } from 'lucide-react';
+import { RefreshCw, Search, Download } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import ErrorState from '@/components/ui/ErrorState';
 import HistoryRow from '@/components/history/HistoryRow';
 import { fmtNumber } from '@/lib/format';
+import { downloadCsv } from '@/lib/csv';
+
+const HISTORY_HEADERS = ['ID','Task','Project','Account','Source','Target','Workflow','State','Updated'];
+const historyRow = (t) => [
+  t.id ?? '',
+  t.name || '',
+  t.project_name || '',
+  t.account_code || '',
+  t.source_language || '',
+  t.target_language || '',
+  t.workflow_name || '',
+  t.state || '',
+  t.updated_at ? new Date(t.updated_at).toISOString() : '',
+];
 
 const DAY_OPTIONS = [7, 14, 30];
 
@@ -81,6 +95,13 @@ export default function History() {
           >
             {DAY_OPTIONS.map(d => <option key={d} value={d}>Last {d} days</option>)}
           </select>
+          <button
+            onClick={() => downloadCsv(`history_${selectedPortal}_${days}d_${new Date().toISOString().slice(0, 10)}`, HISTORY_HEADERS, filtered.map(historyRow))}
+            disabled={filtered.length === 0}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab disabled:opacity-40"
+          >
+            <Download className="w-3.5 h-3.5" /> CSV
+          </button>
           <button
             onClick={() => refetch()}
             disabled={isFetching || !historyFn}

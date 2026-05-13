@@ -1,13 +1,31 @@
 import { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, XCircle, Search } from 'lucide-react';
+import { CheckCircle2, XCircle, Search, Download } from 'lucide-react';
 import { format } from 'date-fns';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import ErrorState from '@/components/ui/ErrorState';
 import { EM, fmtNumber } from '@/lib/format';
+import { downloadCsv } from '@/lib/csv';
+
+const ACTIVITY_HEADERS = ['Status','Task','Project','Portal','Client','Source','Target','Words','Price','Due','Rule','Accepted','Sheets Synced'];
+const activityRow = (t) => [
+  t.status || '',
+  t.task_name || '',
+  t.project_name || '',
+  t.portal || '',
+  t.client_name || '',
+  t.source_language || '',
+  t.target_language || '',
+  t.word_count ?? '',
+  t.price ?? '',
+  t.due_date ? new Date(t.due_date).toISOString() : '',
+  t.matched_rule || '',
+  t.accepted_at ? new Date(t.accepted_at).toISOString() : '',
+  t.sheets_synced ? 'yes' : 'no',
+];
 
 export default function Tasks() {
   const [search, setSearch] = useState('');
@@ -41,11 +59,20 @@ export default function Tasks() {
 
   return (
     <div className="px-8 py-7 max-w-7xl">
-      <header className="mb-7">
-        <h1 className="text-[22px] font-semibold tracking-tight text-ink-1">Activity</h1>
-        <p className="text-[13px] text-ink-3 mt-1 italic-editorial">
-          Complete history of accepted and rejected tasks.
-        </p>
+      <header className="flex items-end justify-between mb-7 flex-wrap gap-4">
+        <div>
+          <h1 className="text-[22px] font-semibold tracking-tight text-ink-1">Activity</h1>
+          <p className="text-[13px] text-ink-3 mt-1 italic-editorial">
+            Complete history of accepted and rejected tasks.
+          </p>
+        </div>
+        <button
+          onClick={() => downloadCsv(`activity_${new Date().toISOString().slice(0, 10)}`, ACTIVITY_HEADERS, filtered.map(activityRow))}
+          disabled={filtered.length === 0}
+          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab disabled:opacity-40"
+        >
+          <Download className="w-3.5 h-3.5" /> CSV
+        </button>
       </header>
 
       {/* Filters */}

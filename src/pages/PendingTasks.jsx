@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import ErrorState from '@/components/ui/ErrorState';
 import { fmtNumber, EM } from '@/lib/format';
+import { downloadCsv } from '@/lib/csv';
 
 const DEFAULT_FILTERS = {
   account: 'all',
@@ -21,36 +22,24 @@ const DEFAULT_FILTERS = {
   sortBy: 'due_asc',
 };
 
-// Quote every cell so commas/quotes/newlines inside values can't break the columns.
-const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-
-function exportToCsv(tasks) {
-  const headers = ['ID','Task','Account','Project','Project Code','Source','Target','Words','Min USD','Max USD','Due','Created','Workflow','Service','Type'];
-  const rows = tasks.map(t => [
-    t.id,
-    csvCell(t.name),
-    csvCell(t.account_name),
-    csvCell(t.project_name),
-    csvCell(t.project_code),
-    csvCell(t.source_language),
-    csvCell(t.target_language),
-    t.word_count || 0,
-    (t.price_min_usd || 0).toFixed(2),
-    (t.price_max_usd || 0).toFixed(2),
-    t.due_date ? new Date(t.due_date).toISOString() : '',
-    t.created_at ? new Date(t.created_at).toISOString() : '',
-    csvCell(t.workflow_name),
-    csvCell(t.service_tag),
-    csvCell(t.task_type),
-  ]);
-  // \r\n is the RFC 4180 line ending — Excel on Windows requires it; BOM prefix fixes UTF-8 detection.
-  const csv = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = `pending_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
-  URL.revokeObjectURL(url);
-}
+const PENDING_HEADERS = ['ID','Task','Account','Project','Project Code','Source','Target','Words','Min USD','Max USD','Due','Created','Workflow','Service','Type'];
+const pendingRow = (t) => [
+  t.id ?? '',
+  t.name || '',
+  t.account_name || '',
+  t.project_name || '',
+  t.project_code || '',
+  t.source_language || '',
+  t.target_language || '',
+  t.word_count || 0,
+  (t.price_min_usd || 0).toFixed(2),
+  (t.price_max_usd || 0).toFixed(2),
+  t.due_date ? new Date(t.due_date).toISOString() : '',
+  t.created_at ? new Date(t.created_at).toISOString() : '',
+  t.workflow_name || '',
+  t.service_tag || '',
+  t.task_type || '',
+];
 
 export default function PendingTasks() {
   const [search, setSearch] = useState('');
@@ -231,7 +220,7 @@ export default function PendingTasks() {
             {portalOptions.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
           </select>
           <button
-            onClick={() => exportToCsv(filtered)}
+            onClick={() => downloadCsv(`pending_${selectedPortal}_${new Date().toISOString().slice(0, 10)}`, PENDING_HEADERS, filtered.map(pendingRow))}
             disabled={filtered.length === 0}
             className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab disabled:opacity-40"
           >

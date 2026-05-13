@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation, Link } from 'react-router-dom';
-import { Command, Hexagon, Settings } from 'lucide-react';
+import { Command, Hexagon, Settings, Sheet } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
 import CommandPalette from './CommandPalette';
 
 const TABS = [
@@ -16,6 +18,16 @@ const TABS = [
 export default function TopBar() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { pathname } = useLocation();
+
+  // Pick the first portal that has a sheets_spreadsheet_id configured so we can
+  // surface a one-click "open the log sheet" button in the top bar.
+  const { data: portals = [] } = useQuery({
+    queryKey: ['portals-all'],
+    queryFn: () => base44.entities.Portal.list(),
+    staleTime: 5 * 60_000,
+  });
+  const sheetId = portals.find(p => p.sheets_spreadsheet_id)?.sheets_spreadsheet_id;
+  const sheetUrl = sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}` : null;
 
   const isActive = (tab) => {
     if (tab.to === '/') return pathname === '/';
@@ -72,6 +84,18 @@ export default function TopBar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
+          {sheetUrl && (
+            <a
+              href={sheetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-line-1 bg-surface-1 hover:bg-surface-2 transition-colors duration-tab text-xs text-ink-2"
+              title="Open Google Sheet log"
+            >
+              <Sheet className="w-3.5 h-3.5 text-success" />
+              <span>Sheet</span>
+            </a>
+          )}
           <button
             onClick={() => setPaletteOpen(true)}
             className="inline-flex items-center gap-2 h-8 px-3 rounded-md border border-line-1 bg-surface-1 hover:bg-surface-2 transition-colors duration-tab text-xs text-ink-3"
