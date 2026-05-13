@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import JwtExpiryBadge from './JwtExpiryBadge';
+import SheetRoutesSummary from './SheetRoutesSummary';
 
 const ICON_MAP = { Globe, Building2, Network, Plug, Boxes, Briefcase, Cloud };
 
@@ -98,6 +99,8 @@ export default function ConnectorCard({ portal, testing, onTest, onToggle, onEdi
             <span className="font-medium">Missing secrets:</span> {missingSecrets.join(', ')}
           </div>
         )}
+
+        <SheetRoutesSummary portal={portal} />
 
         <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
           <span>

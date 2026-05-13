@@ -118,13 +118,46 @@ async function executeTaskCommand(taskId, command, token) {
   return { ok: true };
 }
 
-async function appendToSheets(base44, taskRecord, portal) {
-  // Sheet config now lives on the Portal entity — no global secret fallback.
-  const spreadsheetId = portal?.sheets_spreadsheet_id;
-  if (!spreadsheetId) return false;
+function evalSheetCondition(c, task) {
+  const raw = task[c.field];
+  const taskStr = String(raw ?? '').toLowerCase();
+  const taskNum = Number(raw);
+  const value = String(c.value ?? '').toLowerCase();
+  const numVal = Number(c.value);
+  switch (c.operator) {
+    case 'contains':       return taskStr.includes(value);
+    case 'not_contains':   return !taskStr.includes(value);
+    case 'equals':         return taskStr === value;
+    case 'starts_with':    return taskStr.startsWith(value);
+    case 'in':             return value.split(',').map(v => v.trim()).filter(Boolean).includes(taskStr);
+    case 'greater_than':   return taskNum > numVal;
+    case 'less_than':      return taskNum < numVal;
+    case 'greater_equal':  return taskNum >= numVal;
+    case 'less_equal':     return taskNum <= numVal;
+    default:               return true;
+  }
+}
+
+function resolveSheetDestination(task, routes, portal) {
+  for (const r of routes) {
+    if (r.portal !== 'symfonie') continue;
+    const conds = r.conditions || [];
+    const matched = conds.length === 0 || conds.every(c => evalSheetCondition(c, task));
+    if (matched) return { spreadsheet_id: r.spreadsheet_id, tab_name: r.tab_name || '' };
+  }
+  if (portal?.sheets_spreadsheet_id) {
+    return { spreadsheet_id: portal.sheets_spreadsheet_id, tab_name: portal.sheets_tab_name || '' };
+  }
+  return null;
+}
+
+async function appendToSheets(base44, taskRecord, portal, routes) {
+  const dest = resolveSheetDestination(taskRecord, routes || [], portal);
+  if (!dest) return false;
 
   const { accessToken } = await base44.asServiceRole.connectors.getConnection('googlesheets');
-  const tab = portal?.sheets_tab_name || '';
+  const spreadsheetId = dest.spreadsheet_id;
+  const tab = dest.tab_name;
   const range = tab ? `${encodeURIComponent(tab)}!A1:append` : 'A1:append';
 
   const row = [
@@ -175,8 +208,11 @@ Deno.serve(async (req) => {
     const rules = await base44.asServiceRole.entities.Rule.filter({ portal: 'symfonie', is_active: true }, 'priority', 200);
     console.log(`Found ${rules.length} active rules`);
 
-    // Load portal config once — needed for Sheet routing in appendToSheets.
-    const portalRows = await base44.asServiceRole.entities.Portal.filter({ key: 'symfonie' });
+    // Load portal config + active sheet routes once — needed for Sheet routing in appendToSheets.
+    const [portalRows, sheetRoutes] = await Promise.all([
+      base44.asServiceRole.entities.Portal.filter({ key: 'symfonie' }),
+      base44.asServiceRole.entities.SheetRoute.filter({ portal: 'symfonie', is_active: true }, 'priority', 200),
+    ]);
     const portal = portalRows[0] || null;
 
     // 2. Get Azure AD token
@@ -292,7 +328,7 @@ Deno.serve(async (req) => {
         console.log(`Task ${taskId} "${raw.Name}" accepted via rule "${matchedRule.name}"`);
         const saved = await base44.asServiceRole.entities.AcceptedTask.create(task);
 
-        const synced = await appendToSheets(base44, task, portal);
+        const synced = await appendToSheets(base44, task, portal, sheetRoutes);
         if (synced) {
           await base44.asServiceRole.entities.AcceptedTask.update(saved.id, { sheets_synced: true });
         }

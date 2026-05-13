@@ -1,0 +1,78 @@
+{
+  "name": "SheetRoute",
+  "type": "object",
+  "description": "Conditional routing rule that overrides a portal's default Google Sheet destination when an AcceptedTask matches the conditions.",
+  "properties": {
+    "portal": {
+      "type": "string",
+      "description": "Portal key this route belongs to (e.g. symfonie, junction)."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human label shown in the UI."
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "priority": {
+      "type": "integer",
+      "default": 1,
+      "description": "Lower number runs first. First matching route wins."
+    },
+    "conditions": {
+      "type": "array",
+      "description": "AND-combined conditions evaluated against an AcceptedTask. Empty array = always matches.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "project_name",
+              "task_name",
+              "client_name",
+              "source_language",
+              "target_language",
+              "workflow_name",
+              "word_count",
+              "price",
+              "matched_rule"
+            ]
+          },
+          "operator": {
+            "type": "string",
+            "enum": [
+              "contains",
+              "not_contains",
+              "equals",
+              "starts_with",
+              "in",
+              "greater_than",
+              "less_than",
+              "greater_equal",
+              "less_equal"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "description": "Comparison value. For 'in', use comma-separated list (e.g. 'tr,turkish,tr-tr')."
+          }
+        }
+      }
+    },
+    "spreadsheet_id": {
+      "type": "string",
+      "description": "Target Google Sheet ID for matched tasks."
+    },
+    "tab_name": {
+      "type": "string",
+      "description": "Worksheet/tab name. Defaults to first sheet if empty."
+    }
+  },
+  "required": [
+    "portal",
+    "name",
+    "spreadsheet_id"
+  ]
+}

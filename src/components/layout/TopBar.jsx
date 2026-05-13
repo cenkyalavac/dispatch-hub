@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation, Link } from 'react-router-dom';
-import { Command, Hexagon, Settings, Sheet } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { Command, Hexagon, Settings } from 'lucide-react';
 import CommandPalette from './CommandPalette';
 
 const TABS = [
@@ -19,18 +17,7 @@ export default function TopBar() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { pathname } = useLocation();
 
-  // Get the Google Sheet log URL — backend resolves Portal override OR the global
-  // GOOGLE_SHEETS_SPREADSHEET_ID secret so the button works even without per-portal config.
-  const { data: sheetData } = useQuery({
-    queryKey: ['sheet-url'],
-    queryFn: async () => {
-      const res = await base44.functions.invoke('getSheetUrl', {});
-      return res.data;
-    },
-    staleTime: 30 * 60_000,
-  });
-  const sheetUrl = sheetData?.url || null;
-
+  // Sheet destinations live per-connector now — see ConnectorCard's SheetRoutesSummary.
   const isActive = (tab) => {
     if (tab.to === '/') return pathname === '/';
     return tab.matches.some(m => pathname === m || pathname.startsWith(m + '/'));
@@ -86,18 +73,6 @@ export default function TopBar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          {sheetUrl && (
-            <a
-              href={sheetUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-line-1 bg-surface-1 hover:bg-surface-2 transition-colors duration-tab text-xs text-ink-2"
-              title="Open Google Sheet log"
-            >
-              <Sheet className="w-3.5 h-3.5 text-success" />
-              <span>Sheet</span>
-            </a>
-          )}
           <button
             onClick={() => setPaletteOpen(true)}
             className="inline-flex items-center gap-2 h-8 px-3 rounded-md border border-line-1 bg-surface-1 hover:bg-surface-2 transition-colors duration-tab text-xs text-ink-3"

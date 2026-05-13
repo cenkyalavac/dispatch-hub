@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import FormField from '@/components/ui/FormField';
 import PortalDropboxFields from './PortalDropboxFields';
 import PortalSheetsFields from './PortalSheetsFields';
+import PortalSheetRoutes from './PortalSheetRoutes';
 
 const empty = {
   key: '', name: '', vendor: '', description: '',
@@ -110,6 +111,8 @@ export default function ConnectorFormDialog({ open, onClose, onSave, initial, is
             tabName={form.sheets_tab_name}
             onChange={update}
           />
+
+          <PortalSheetRoutes portalKey={isEdit ? form.key : null} />
         </div>
 
         <footer className="px-5 py-4 border-t border-line-1 flex items-center justify-end gap-2">
