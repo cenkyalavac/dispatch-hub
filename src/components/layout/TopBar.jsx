@@ -19,15 +19,17 @@ export default function TopBar() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { pathname } = useLocation();
 
-  // Pick the first portal that has a sheets_spreadsheet_id configured so we can
-  // surface a one-click "open the log sheet" button in the top bar.
-  const { data: portals = [] } = useQuery({
-    queryKey: ['portals-all'],
-    queryFn: () => base44.entities.Portal.list(),
-    staleTime: 5 * 60_000,
+  // Get the Google Sheet log URL — backend resolves Portal override OR the global
+  // GOOGLE_SHEETS_SPREADSHEET_ID secret so the button works even without per-portal config.
+  const { data: sheetData } = useQuery({
+    queryKey: ['sheet-url'],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getSheetUrl', {});
+      return res.data;
+    },
+    staleTime: 30 * 60_000,
   });
-  const sheetId = portals.find(p => p.sheets_spreadsheet_id)?.sheets_spreadsheet_id;
-  const sheetUrl = sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}` : null;
+  const sheetUrl = sheetData?.url || null;
 
   const isActive = (tab) => {
     if (tab.to === '/') return pathname === '/';
