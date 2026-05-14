@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+// useMutation is still used for save/delete mutations below — toggle now uses
+// a plain async function so its ordering against the test call is deterministic.
 import { Plus, Plug, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -53,44 +55,55 @@ export default function Connectors() {
     onError: (err) => toast.error('Error: ' + err.message),
   });
 
-  const toggleMutation = useMutation({
-    mutationFn: ({ id, is_active }) => base44.entities.Portal.update(id, { is_active }),
-    // Optimistic update — flip the switch in the UI immediately so the user
-    // sees the new state without waiting for the server roundtrip.
-    onMutate: async ({ id, is_active }) => {
-      await qc.cancelQueries({ queryKey: ['portals-all'] });
-      const previous = qc.getQueryData(['portals-all']);
-      qc.setQueryData(['portals-all'], (old) =>
-        (old || []).map((p) => (p.id === id ? { ...p, is_active } : p))
-      );
-      return { previous };
-    },
-    onError: (err, _vars, ctx) => {
-      if (ctx?.previous) qc.setQueryData(['portals-all'], ctx.previous);
-      toast.error('Toggle failed: ' + err.message);
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['portals-all'] });
-      qc.invalidateQueries({ queryKey: ['portals'] });
-      qc.invalidateQueries({ queryKey: ['portals-sidebar'] });
-    },
-  });
+  // Optimistic helper — flip a portal's UI state instantly without an awaited mutation.
+  // We then perform the actual persist (and any follow-up test) in handleToggle.
+  // Doing this with useMutation introduced a race against the awaited test/update
+  // calls below; a plain function call gives us deterministic ordering.
+  const optimisticPatch = (id, patch) => {
+    qc.setQueryData(['portals-all'], (old) =>
+      (old || []).map((p) => (p.id === id ? { ...p, ...patch } : p))
+    );
+  };
+  const invalidatePortals = () => {
+    qc.invalidateQueries({ queryKey: ['portals-all'] });
+    qc.invalidateQueries({ queryKey: ['portals'] });
+    qc.invalidateQueries({ queryKey: ['portals-sidebar'] });
+  };
 
   // When the user flips a portal ON, immediately verify the connection.
   // If the test fails, flip it back OFF so the UI never claims "active but broken".
   // Turning OFF is a pure persist — no test required.
   const handleToggle = async (portal, nextActive) => {
+    // OFF → persist, no test, done.
     if (!nextActive) {
-      toggleMutation.mutate({ id: portal.id, is_active: false });
+      optimisticPatch(portal.id, { is_active: false });
+      try {
+        await base44.entities.Portal.update(portal.id, { is_active: false });
+      } catch (err) {
+        optimisticPatch(portal.id, { is_active: true });
+        toast.error('Toggle failed: ' + err.message);
+      } finally {
+        invalidatePortals();
+      }
       return;
     }
-    // Optimistic flip ON
-    toggleMutation.mutate({ id: portal.id, is_active: true });
+
+    // ON → optimistic flip, then test.
+    optimisticPatch(portal.id, { is_active: true });
 
     if (!portal.test_function) {
-      toast.warning(`${portal.name} enabled — no test function configured.`);
+      try {
+        await base44.entities.Portal.update(portal.id, { is_active: true });
+        toast.warning(`${portal.name} enabled — no test function configured.`);
+      } catch (err) {
+        optimisticPatch(portal.id, { is_active: false });
+        toast.error('Toggle failed: ' + err.message);
+      } finally {
+        invalidatePortals();
+      }
       return;
     }
+
     setTestingKey(portal.key);
     try {
       const res = await base44.functions.invoke(portal.test_function, {});
@@ -100,29 +113,32 @@ export default function Connectors() {
       const baseMessage = success
         ? (data.whoami?.Login || data.jwt?.sub ? `Authenticated as ${data.whoami?.Login || data.jwt?.sub}` : 'Connection successful')
         : (data?.error || 'Connection failed');
+
+      // Single authoritative write — combines toggle + status in one update.
       await base44.entities.Portal.update(portal.id, {
-        is_active: success, // auto-revert to OFF if test failed
+        is_active: success,
         connection_status: success ? 'connected' : 'error',
         connection_message: `${baseMessage}${jwtDaysTail}`,
         last_checked_at: new Date().toISOString(),
       });
-      qc.invalidateQueries({ queryKey: ['portals-all'] });
-      qc.invalidateQueries({ queryKey: ['portals'] });
-      qc.invalidateQueries({ queryKey: ['portals-sidebar'] });
+      if (!success) optimisticPatch(portal.id, { is_active: false });
       if (success) toast.success(`${portal.name}: enabled & connected`);
       else toast.error(`${portal.name}: ${data?.error || 'test failed'} — disabled`);
     } catch (err) {
       const detail = err.response?.data?.error || err.response?.data?.message || err.message;
-      await base44.entities.Portal.update(portal.id, {
-        is_active: false,
-        connection_status: 'error',
-        connection_message: detail,
-        last_checked_at: new Date().toISOString(),
-      });
-      qc.invalidateQueries({ queryKey: ['portals-all'] });
+      optimisticPatch(portal.id, { is_active: false });
+      try {
+        await base44.entities.Portal.update(portal.id, {
+          is_active: false,
+          connection_status: 'error',
+          connection_message: detail,
+          last_checked_at: new Date().toISOString(),
+        });
+      } catch { /* swallow — best-effort persist */ }
       toast.error(`${portal.name}: ${detail} — disabled`);
     } finally {
       setTestingKey(null);
+      invalidatePortals();
     }
   };
 
