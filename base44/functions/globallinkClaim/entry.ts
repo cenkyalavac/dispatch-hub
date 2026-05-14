@@ -2,40 +2,39 @@
 // Three sequential POSTs to task.pd, each chaining the previous processUuid.
 // No DB writes — caller (globallinkApproveOne) handles persistence.
 //
+// All PD calls go through broker /proxy/pd.
+//
 // Contract:
 //   Input  : { submission_ticket: string, target_languages: string[] }
 //   Output : { success: true, claimed_languages, process_uuid } on commit
 //          | { success: false, error, reasons?, tp_response? } on TP-side fail
 //
 // Critical rules (do not relax):
-//   1. target_languages MUST be a non-empty array of locale strings — empty
-//      array = silent no-op on TP side. Caller is responsible for the locale
-//      intersection logic (see globallinkApproveOne).
+//   1. target_languages MUST be a non-empty array of locale strings.
 //   2. parentTickets MUST contain the FRESH ticket from a just-fetched
 //      submissionTargetSearch.pd — cached/stale tickets silently no-op.
-//   3. 3 sequential POSTs are required. 1 or 2 calls may return success:true
-//      but do NOT commit the claim. The 3rd is the COMMIT.
-//   4. processUuid lives at d.taskResponse.model.processUuid (nested), not at
-//      the response root.
+//   3. 3 sequential POSTs are required. The 3rd is the COMMIT.
+//   4. processUuid lives at d.taskResponse.model.processUuid (nested).
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const DEFAULT_BASE = 'https://gle-prod-eu.transperfect.com/PD';
-
-async function postTask(base, headers, body) {
-  const res = await fetch(`${base}/task.pd`, {
+async function pdProxy(brokerUrl, brokerKey, endpoint, body) {
+  const res = await fetch(`${brokerUrl}/proxy/pd`, {
     method: 'POST',
-    headers,
-    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${brokerKey}` },
+    body: JSON.stringify({ endpoint, body }),
   });
   const text = await res.text();
-  let data;
-  try { data = JSON.parse(text); } catch { data = text; }
-  if (!res.ok) {
-    const detail = typeof data === 'string' ? data.slice(0, 200) : JSON.stringify(data).slice(0, 200);
-    throw new Error(`task.pd HTTP ${res.status}: ${detail}`);
+  let payload;
+  try { payload = JSON.parse(text); } catch { payload = { error: text.slice(0, 200) }; }
+  if (!res.ok) throw new Error(`Broker proxy HTTP ${res.status}: ${payload?.error || text.slice(0, 200)}`);
+  const pdStatus = payload?.status ?? 200;
+  const pdBody = payload?.body ?? payload;
+  if (pdStatus >= 400) {
+    const detail = typeof pdBody === 'string' ? pdBody.slice(0, 200) : JSON.stringify(pdBody).slice(0, 200);
+    throw new Error(`PD ${endpoint} HTTP ${pdStatus}: ${detail}`);
   }
-  return data;
+  return pdBody;
 }
 
 Deno.serve(async (req) => {
@@ -59,25 +58,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    const tokenRes = await base44.asServiceRole.functions.invoke('getGlobalLinkToken', {});
-    if (!tokenRes?.data?.token_value) {
-      return Response.json({ success: false, error: tokenRes?.data?.error || 'No cached GlobalLink JWT available' }, { status: 503 });
+    const brokerUrl = (Deno.env.get('BROKER_URL') || '').replace(/\/$/, '');
+    const brokerKey = Deno.env.get('BROKER_KEY');
+    if (!brokerUrl || !brokerKey) {
+      return Response.json({ success: false, error: 'BROKER_URL or BROKER_KEY secret missing' }, { status: 503 });
     }
-    const jwt = tokenRes.data.token_value;
-    const csrf = tokenRes.data.csrf_value || null;
-    const contextUser = Deno.env.get('GLOBALLINK_CONTEXT_USER') || 'VerbatoTrans';
-    const base = (Deno.env.get('GLOBALLINK_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
-
-    // PD .pd endpoints require BOTH Bearer JWT and `csrfToken` header.
-    const headers = {
-      'Authorization': `Bearer ${jwt}`,
-      'Content-Type': 'application/json',
-      'X-Requested-With': 'XMLHttpRequest',
-      'ajaxRequest': 'true',
-      'appVersion': '11.5.0',
-      'contextUser': contextUser,
-    };
-    if (csrf) headers['csrfToken'] = csrf;
 
     let processUuid = null;
     let finalResponse = null;
@@ -87,7 +72,7 @@ Deno.serve(async (req) => {
         ? { folder: 'AVAILABLE_SUBMISSION', targetLanguages: target_languages }
         : { processUuid, folder: 'AVAILABLE_SUBMISSION', targetLanguages: target_languages };
 
-      const resp = await postTask(base, headers, {
+      const resp = await pdProxy(brokerUrl, brokerKey, 'task.pd', {
         taskName: 'claim.PostEdit',
         parentTickets: [submission_ticket],
         jsonTaskData: JSON.stringify(jsonTaskData),

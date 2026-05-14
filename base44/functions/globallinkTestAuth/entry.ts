@@ -1,137 +1,78 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+// Sağlık probu: broker'ın /proxy/pd üzerinden submissionTargetSearch.pd çağrısı.
+// Hub artık PD'ye direkt fetch etmiyor — tüm istekler broker'ın tarayıcı bağlamında
+// yapılıyor (cookie/CSRF/JWT/IP hepsi orada doğal olarak sağlam). Hub yalnızca
+// broker'a HTTP atıyor ve cevabı yorumluyor.
 
-// Reference: GlobalLink PD vendor API recipe (2026-05-14).
-// JWT lives ~15 minutes and is refreshed by an external broker that pushes
-// into the CachedToken entity (key='globallink_jwt'). We therefore read the
-// JWT via the getGlobalLinkToken helper — NOT from env — so the token always
-// reflects the broker's latest push.
-const DEFAULT_BASE = 'https://gle-prod-eu.transperfect.com/PD';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     await base44.auth.me().catch(() => null);
 
-    // Pull JWT from CachedToken via helper (broker keeps it fresh).
-    const tokenRes = await base44.asServiceRole.functions.invoke('getGlobalLinkToken', {});
-    if (!tokenRes?.data?.token_value) {
+    const brokerUrl = Deno.env.get('BROKER_URL');
+    const brokerKey = Deno.env.get('BROKER_KEY');
+    if (!brokerUrl || !brokerKey) {
       return Response.json({
         success: false,
         configured: false,
-        error: tokenRes?.data?.error
-          || 'No cached GlobalLink JWT. Is the token broker running and pushing? Check /health on the broker service.',
-        hint: "Broker pushes to CachedToken[key=globallink_jwt] every ~60s. If empty, broker hasn't bootstrapped yet.",
+        error: 'BROKER_URL or BROKER_KEY secret is missing.',
       }, { status: 503 });
     }
-    const jwt = tokenRes.data.token_value;
-    const csrf = tokenRes.data.csrf_value || null;
-    const contextUser = Deno.env.get('GLOBALLINK_CONTEXT_USER') || 'VerbatoTrans';
-    const base = (Deno.env.get('GLOBALLINK_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
 
-    // Decode JWT to surface expiry — useful because the token expires fast.
-    let jwtInfo = null;
-    try {
-      const payload = JSON.parse(atob(jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-      const expiresInMs = payload.exp ? (payload.exp * 1000 - Date.now()) : null;
-      jwtInfo = {
-        exp: payload.exp,
-        expires_at: payload.exp ? new Date(payload.exp * 1000).toISOString() : null,
-        expires_in_minutes: expiresInMs !== null ? Math.floor(expiresInMs / 60000) : null,
-        expires_in_days: expiresInMs !== null ? Math.floor(expiresInMs / 86400000) : null,
-        sub: payload.sub || payload.preferred_username || null,
-      };
-    } catch {}
-
-    // Lightweight probe: submissionTargetSearch.pd with size=1 — the same call used to list Available.
-    // PD requires BOTH Authorization: Bearer JWT AND a `csrfToken` header on .pd endpoints.
-    // The broker pushes the CSRF alongside the JWT into CachedToken[key=globallink_csrf].
-    const probeHeaders = {
-      'Authorization': `Bearer ${jwt}`,
-      'Content-Type': 'application/json',
-      'X-Requested-With': 'XMLHttpRequest',
-      'ajaxRequest': 'true',
-      'appVersion': '11.5.0',
-      'contextUser': contextUser,
-    };
-    if (csrf) probeHeaders['csrfToken'] = csrf;
-    const res = await fetch(`${base}/submissionTargetSearch.pd`, {
+    const proxyRes = await fetch(`${brokerUrl.replace(/\/$/, '')}/proxy/pd`, {
       method: 'POST',
-      headers: probeHeaders,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${brokerKey}`,
+      },
       body: JSON.stringify({
-        folder: 'AVAILABLE_SUBMISSION',
-        entityTickets: [],
-        parentEntityTickets: [],
-        index: 0,
-        size: 1,
+        endpoint: 'submissionTargetSearch.pd',
+        body: {
+          folder: 'AVAILABLE_SUBMISSION',
+          entityTickets: [],
+          parentEntityTickets: [],
+          index: 0,
+          size: 1,
+        },
       }),
     });
 
-    const text = await res.text();
-    let body;
-    try { body = JSON.parse(text); } catch { body = text.slice(0, 400); }
+    const text = await proxyRes.text();
+    let payload;
+    try { payload = JSON.parse(text); } catch { payload = text.slice(0, 400); }
 
-    // Diagnostic logging — PD 401s often come back with an EMPTY body and
-    // the real reason lives in headers (WWW-Authenticate) or response status text.
-    // Capture everything so we can see the actual rejection cause from runtime logs.
-    if (!res.ok) {
-      // Body FIRST — PD's rejection reason. CSP header dump is huge (~2KB) and
-      // truncates downstream logs, so we surface the body on its own line and
-      // skip headers entirely (only WWW-Authenticate matters and we extract it).
-      const wwwAuth = res.headers.get('www-authenticate') || null;
-      console.log('[globallinkTestAuth] PD body', text.slice(0, 1000));
-      console.log('[globallinkTestAuth] PD meta', {
-        status: res.status,
-        statusText: res.statusText,
-        body_length: text.length,
-        www_authenticate: wwwAuth,
-        context_user: contextUser,
-        api_base: base,
-        jwt_sub: jwtInfo?.sub,
-        jwt_expires_in_minutes: jwtInfo?.expires_in_minutes,
-        csrf_present: !!csrf,
+    if (!proxyRes.ok) {
+      console.log('[globallinkTestAuth] broker body', text.slice(0, 1000));
+      console.log('[globallinkTestAuth] broker meta', { status: proxyRes.status, statusText: proxyRes.statusText });
+      return Response.json({
+        success: false,
+        broker_status: proxyRes.status,
+        error: `Broker proxy HTTP ${proxyRes.status}: ${typeof payload === 'string' ? payload : (payload?.error || 'broker error')}`,
+        response: payload,
       });
     }
 
-    if (!res.ok) {
-      // Surface the actual PD error message — 401s typically include a
-      // body like {"errorCode":"...","errorMessage":"..."} that explains
-      // whether it's a stale token vs a contextUser mismatch vs scope issue.
-      const detail =
-        (body && typeof body === 'object' && (body.errorMessage || body.message || body.error)) ||
-        (typeof body === 'string' && body.length > 0 ? body : null);
-      const reason = res.status === 401
-        ? (detail
-            ? `PD says: ${detail}`
-            : 'PD rejected the JWT. Likely causes: (a) broker pushed a stale token, (b) contextUser mismatch — JWT sub is not authorized for this vendor org.')
-        : (detail || 'PD rejected the request.');
+    // Broker dönüşü şu yapıda olmalı: { ok, status, body }
+    // body PD'nin ham cevabı (parsed JSON).
+    const pdBody = payload?.body ?? payload;
+    const pdStatus = payload?.status ?? 200;
+    const success = payload?.ok === true || (pdStatus >= 200 && pdStatus < 300 && pdBody?.success !== false);
+
+    if (!success) {
       return Response.json({
         success: false,
-        api_base: base,
-        api_status: res.status,
-        error: `GlobalLink API HTTP ${res.status}. ${reason}`,
-        response: body,
-        jwt: jwtInfo,
-        debug: {
-          context_user_used: contextUser,
-          token_last_pushed_at: tokenRes.data.last_pushed_at || null,
-          token_expires_at: tokenRes.data.expires_at || null,
-          csrf_present: !!csrf,
-          csrf_expires_at: tokenRes.data.csrf_expires_at || null,
-        },
+        api_status: pdStatus,
+        error: pdBody?.description || pdBody?.reasons || pdBody?.errorMessage || `PD rejected the request (status ${pdStatus}).`,
+        response: pdBody,
       });
     }
 
     return Response.json({
       success: true,
-      api_base: base,
-      api_status: res.status,
-      whoami: { Login: contextUser },
-      // submissionTargetSearch.pd exposes the grand total under gridContentInfo.totalCount.
-      // Fall back to items.length when the field is missing (older PD builds).
-      available_count: body?.gridContentInfo?.totalCount ?? (Array.isArray(body?.items) ? body.items.length : null),
-      jwt: jwtInfo,
-      token_source: 'cached_token_entity',
-      token_last_pushed_at: tokenRes.data.last_pushed_at || null,
+      api_status: pdStatus,
+      available_count: pdBody?.gridContentInfo?.totalCount ?? (Array.isArray(pdBody?.items) ? pdBody.items.length : null),
+      token_source: 'broker_proxy',
     });
   } catch (error) {
     return Response.json({ success: false, error: error.message }, { status: 500 });

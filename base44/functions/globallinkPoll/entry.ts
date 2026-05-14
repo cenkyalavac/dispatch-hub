@@ -2,52 +2,37 @@
 // and upserts them into GlobalLinkSubmission. One submission can expand into multiple
 // language pairs; we write one row per (submission_ticket, target_language).
 //
-// Auth: pulls JWT from the CachedToken entity via getGlobalLinkToken — never reads
-// GLOBALLINK_JWT env var directly so the broker stays the single source of truth.
+// All PD calls now go through the broker's /proxy/pd endpoint — the broker holds
+// the live browser session (cookie + JWT + CSRF) and executes the fetch from its
+// page context. Hub stays a pure orchestrator.
 //
-// Kill switch: respects Portal(key='globallink').is_active — same pattern as
-// symfonieProcessTasks/junctionProcessOffers.
+// Kill switch: respects Portal(key='globallink').is_active.
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const DEFAULT_BASE = 'https://gle-prod-eu.transperfect.com/PD';
 const FOLDER = 'AVAILABLE_SUBMISSION';
 
-// PD .pd endpoints require BOTH Bearer JWT and `csrfToken` header.
-// Broker pushes both into CachedToken (keys: globallink_jwt, globallink_csrf).
-function buildHeaders(jwt, contextUser, csrf) {
-  const h = {
-    'Authorization': `Bearer ${jwt}`,
-    'Content-Type': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest',
-    'ajaxRequest': 'true',
-    'appVersion': '11.5.0',
-    'contextUser': contextUser,
-  };
-  if (csrf) h['csrfToken'] = csrf;
-  return h;
-}
-
-async function fetchSubmissions(base, headers) {
-  const res = await fetch(`${base}/submissionTargetSearch.pd`, {
+async function pdProxy(brokerUrl, brokerKey, endpoint, body) {
+  const res = await fetch(`${brokerUrl}/proxy/pd`, {
     method: 'POST',
-    headers,
-    body: JSON.stringify({ folder: FOLDER, entityTickets: [], parentEntityTickets: [], index: 0, size: 50 }),
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${brokerKey}`,
+    },
+    body: JSON.stringify({ endpoint, body }),
   });
-  if (!res.ok) throw new Error(`submissionTargetSearch.pd HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = await res.json();
-  return data?.items || [];
-}
-
-async function fetchLanguagePairs(base, headers, submissionTicket) {
-  const res = await fetch(`${base}/submissionLanguageSearch.pd`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ submissionTicket, folder: FOLDER }),
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data?.items || [];
+  const text = await res.text();
+  let payload;
+  try { payload = JSON.parse(text); } catch { payload = { error: text.slice(0, 200) }; }
+  if (!res.ok) {
+    throw new Error(`Broker proxy HTTP ${res.status}: ${payload?.error || text.slice(0, 200)}`);
+  }
+  const pdStatus = payload?.status ?? 200;
+  const pdBody = payload?.body ?? payload;
+  if (pdStatus >= 400) {
+    throw new Error(`PD ${endpoint} HTTP ${pdStatus}: ${pdBody?.description || pdBody?.reasons || JSON.stringify(pdBody).slice(0, 200)}`);
+  }
+  return pdBody;
 }
 
 Deno.serve(async (req) => {
@@ -67,19 +52,16 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, skipped: true, reason: 'Portal disabled', summary: { upserted: 0 } });
     }
 
-    // Get JWT from cache via the helper function
-    const tokenRes = await base44.asServiceRole.functions.invoke('getGlobalLinkToken', {});
-    if (!tokenRes?.data?.token_value) {
-      return Response.json({ success: false, error: tokenRes?.data?.error || 'No cached GlobalLink JWT available' }, { status: 503 });
+    const brokerUrl = (Deno.env.get('BROKER_URL') || '').replace(/\/$/, '');
+    const brokerKey = Deno.env.get('BROKER_KEY');
+    if (!brokerUrl || !brokerKey) {
+      return Response.json({ success: false, error: 'BROKER_URL or BROKER_KEY secret missing' }, { status: 503 });
     }
-    const jwt = tokenRes.data.token_value;
-    const csrf = tokenRes.data.csrf_value || null;
 
-    const contextUser = Deno.env.get('GLOBALLINK_CONTEXT_USER') || 'VerbatoTrans';
-    const base = (Deno.env.get('GLOBALLINK_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
-    const headers = buildHeaders(jwt, contextUser, csrf);
-
-    const submissions = await fetchSubmissions(base, headers);
+    const listData = await pdProxy(brokerUrl, brokerKey, 'submissionTargetSearch.pd', {
+      folder: FOLDER, entityTickets: [], parentEntityTickets: [], index: 0, size: 50,
+    });
+    const submissions = listData?.items || [];
     console.log(`globallinkPoll: ${submissions.length} available submissions from PD`);
 
     // Existing rows keyed by submission_ticket + target_language so we don't duplicate.
@@ -95,7 +77,9 @@ Deno.serve(async (req) => {
     for (let i = 0; i < submissions.length; i += BATCH) {
       const slice = submissions.slice(i, i + BATCH);
       const pairs = await Promise.all(slice.map((s) =>
-        fetchLanguagePairs(base, headers, s.ticket).then((items) => ({ s, items }))
+        pdProxy(brokerUrl, brokerKey, 'submissionLanguageSearch.pd', { submissionTicket: s.ticket, folder: FOLDER })
+          .then((d) => ({ s, items: d?.items || [] }))
+          .catch(() => ({ s, items: [] }))
       ));
 
       for (const { s, items } of pairs) {
@@ -124,12 +108,11 @@ Deno.serve(async (req) => {
             }];
 
         for (const row of rows) {
-          if (!row.target_language) continue; // skip language-less rows; the API guarantees at least one when claimable
+          if (!row.target_language) continue;
           const key = `${row.submission_ticket}::${row.target_language}`;
           const prior = existingKey.get(key);
           try {
             if (prior) {
-              // Don't overwrite a claimed/skipped row — only refresh metadata on still-available ones.
               if (prior.status && prior.status !== 'available') continue;
               await base44.asServiceRole.entities.GlobalLinkSubmission.update(prior.id, row);
               summary.updated++;
@@ -146,7 +129,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Stamp last sync on the portal so the UI shows freshness.
     if (portal?.id) {
       await base44.asServiceRole.entities.Portal.update(portal.id, { last_sync_at: new Date().toISOString() }).catch(() => null);
     }

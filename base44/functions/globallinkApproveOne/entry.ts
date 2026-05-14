@@ -1,25 +1,17 @@
 // Approve a single GlobalLinkSubmission — the UI action handler.
 //
+// All PD calls go through broker /proxy/pd (page-context fetch).
+//
 // Critical orchestration (in order — DO NOT reorder):
 //   1. Fresh-ticket fetch: submissionTargetSearch.pd → match by submissionId.
-//      Cached/stale tickets silently no-op the claim, so we re-fetch every time.
-//   2. submissionLanguageSearch.pd → enumerate target locales available on
-//      this submission right now.
-//   3. Locale-family intersection: Portal.allowed_language_families (e.g.
-//      ['tr','ar']) × available locales, via family-prefix match. Family
-//      'tr' matches 'tr-TR', 'tr_TR', 'tr-x-foo' but NOT 'turkish-custom'.
-//   4. globallinkClaim with the matched locales (multi-language single claim).
-//   5. Flip all matching DB rows (same submission_ticket, matched target_languages)
-//      to status=claimed.
+//   2. submissionLanguageSearch.pd → enumerate target locales.
+//   3. Locale-family intersection: Portal.allowed_language_families.
+//   4. globallinkClaim with the matched locales.
+//   5. Flip matching DB rows to status=claimed.
 //   6. Create one AcceptedTask + Project per claimed language → fire webhook.
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const DEFAULT_BASE = 'https://gle-prod-eu.transperfect.com/PD';
-
-// Family-prefix matcher — locale-agnostic. 'tr' matches 'tr-TR', 'tr_TR',
-// 'tr-x-foo'; 'ar' matches 'ar-SA', 'ar-EG', 'ar-MSA'. Avoids matching
-// 'turkish-custom' or 'arabic-foo' (no separator after the family prefix).
 function localeMatchesFamily(locale, family) {
   if (!locale || !family) return false;
   const loc = String(locale).toLowerCase();
@@ -28,22 +20,24 @@ function localeMatchesFamily(locale, family) {
 }
 
 function filterLocalesByFamilies(locales, families) {
-  if (!Array.isArray(families) || families.length === 0) return locales; // empty = allow all
+  if (!Array.isArray(families) || families.length === 0) return locales;
   return locales.filter((loc) => families.some((fam) => localeMatchesFamily(loc, fam)));
 }
 
-// PD .pd endpoints require BOTH Bearer JWT and `csrfToken` header.
-function buildHeaders(jwt, contextUser, csrf) {
-  const h = {
-    'Authorization': `Bearer ${jwt}`,
-    'Content-Type': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest',
-    'ajaxRequest': 'true',
-    'appVersion': '11.5.0',
-    'contextUser': contextUser,
-  };
-  if (csrf) h['csrfToken'] = csrf;
-  return h;
+async function pdProxy(brokerUrl, brokerKey, endpoint, body) {
+  const res = await fetch(`${brokerUrl}/proxy/pd`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${brokerKey}` },
+    body: JSON.stringify({ endpoint, body }),
+  });
+  const text = await res.text();
+  let payload;
+  try { payload = JSON.parse(text); } catch { payload = { error: text.slice(0, 200) }; }
+  if (!res.ok) throw new Error(`Broker proxy HTTP ${res.status}: ${payload?.error || text.slice(0, 200)}`);
+  const pdStatus = payload?.status ?? 200;
+  const pdBody = payload?.body ?? payload;
+  if (pdStatus >= 400) throw new Error(`PD ${endpoint} HTTP ${pdStatus}: ${pdBody?.description || pdBody?.reasons || JSON.stringify(pdBody).slice(0, 200)}`);
+  return pdBody;
 }
 
 Deno.serve(async (req) => {
@@ -66,29 +60,17 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, already: true, message: 'Already claimed' });
     }
 
-    // Auth setup
-    const tokenRes = await base44.asServiceRole.functions.invoke('getGlobalLinkToken', {});
-    if (!tokenRes?.data?.token_value) {
-      return Response.json({ success: false, error: tokenRes?.data?.error || 'No cached GlobalLink JWT available' }, { status: 503 });
+    const brokerUrl = (Deno.env.get('BROKER_URL') || '').replace(/\/$/, '');
+    const brokerKey = Deno.env.get('BROKER_KEY');
+    if (!brokerUrl || !brokerKey) {
+      return Response.json({ success: false, error: 'BROKER_URL or BROKER_KEY secret missing' }, { status: 503 });
     }
-    const jwt = tokenRes.data.token_value;
-    const csrf = tokenRes.data.csrf_value || null;
-    const contextUser = Deno.env.get('GLOBALLINK_CONTEXT_USER') || 'VerbatoTrans';
-    const base = (Deno.env.get('GLOBALLINK_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
-    const headers = buildHeaders(jwt, contextUser, csrf);
 
-    // 1) FRESH TICKET — cached/stale tickets silently no-op. Match by submissionId.
+    // 1) FRESH TICKET — match by submissionId.
     const submissionIdRaw = row.submission_id;
-    const listResp = await fetch(`${base}/submissionTargetSearch.pd`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ folder: 'AVAILABLE_SUBMISSION', entityTickets: [], parentEntityTickets: [], index: 0, size: 100 }),
+    const listData = await pdProxy(brokerUrl, brokerKey, 'submissionTargetSearch.pd', {
+      folder: 'AVAILABLE_SUBMISSION', entityTickets: [], parentEntityTickets: [], index: 0, size: 100,
     });
-    if (!listResp.ok) {
-      const text = await listResp.text();
-      return Response.json({ success: false, error: `submissionTargetSearch.pd HTTP ${listResp.status}: ${text.slice(0, 200)}` }, { status: 502 });
-    }
-    const listData = await listResp.json();
     const items = listData?.items || [];
     const fresh = items.find((s) => String(s.submissionId) === String(submissionIdRaw))
       || items.find((s) => s.ticket === row.submission_ticket);
@@ -104,23 +86,16 @@ Deno.serve(async (req) => {
     }
     const freshTicket = fresh.ticket;
 
-    // 2) Enumerate target locales on this submission
-    const langResp = await fetch(`${base}/submissionLanguageSearch.pd`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ submissionTicket: freshTicket, folder: 'AVAILABLE_SUBMISSION' }),
+    // 2) Enumerate target locales.
+    const langData = await pdProxy(brokerUrl, brokerKey, 'submissionLanguageSearch.pd', {
+      submissionTicket: freshTicket, folder: 'AVAILABLE_SUBMISSION',
     });
-    if (!langResp.ok) {
-      const text = await langResp.text();
-      return Response.json({ success: false, error: `submissionLanguageSearch.pd HTTP ${langResp.status}: ${text.slice(0, 200)}` }, { status: 502 });
-    }
-    const langData = await langResp.json();
     const availableItems = langData?.items || [];
     const availableLocales = availableItems
       .map((i) => i?.languageDirectionPreview?.targetLanguage?.locale)
       .filter(Boolean);
 
-    // 3) Locale-family intersection
+    // 3) Locale-family intersection.
     const portalRows = await base44.asServiceRole.entities.Portal.filter({ key: 'globallink' });
     const portal = portalRows[0] || null;
     const families = portal?.allowed_language_families || [];
@@ -136,7 +111,7 @@ Deno.serve(async (req) => {
       }, { status: 409 });
     }
 
-    // 4) Claim (multi-language single chain)
+    // 4) Claim.
     const claimRes = await base44.asServiceRole.functions.invoke('globallinkClaim', {
       submission_ticket: freshTicket,
       target_languages: claimable,
@@ -155,15 +130,12 @@ Deno.serve(async (req) => {
     const sameSubmissionRows = await base44.asServiceRole.entities.GlobalLinkSubmission
       .filter({ submission_ticket: row.submission_ticket });
 
-    // 5) + 6) For each claimed locale, mark the corresponding row claimed,
-    //         create AcceptedTask + Project, fire webhook.
-    const claimedSet = new Set(claimable.map((s) => s.toLowerCase()));
     const created = [];
 
     for (const claimedLocale of claimable) {
       const matchRow = sameSubmissionRows.find(
         (r) => (r.target_language || '').toLowerCase() === claimedLocale.toLowerCase()
-      ) || row; // fallback to the originating row if no per-language entry exists
+      ) || row;
 
       const acceptedTask = await base44.asServiceRole.entities.AcceptedTask.create({
         portal: 'globallink',
@@ -217,12 +189,6 @@ Deno.serve(async (req) => {
 
       created.push({ accepted_task_id: acceptedTask.id, target_language: claimedLocale });
     }
-
-    // Non-matching locales stay 'available' in the DB so the user keeps full
-    // visibility. They are NOT auto-skipped — user can manually claim them
-    // later (future UI) or extend Portal.allowed_language_families.
-    // Note: TP-side these rows are gone from Available the moment we claim,
-    // so a subsequent poll will clean them up. That's the source of truth.
 
     console.log(`globallinkApproveOne: claimed submission ${submissionIdRaw} for ${claimable.join(', ')}`);
 

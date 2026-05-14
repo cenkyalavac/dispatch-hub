@@ -2,10 +2,23 @@
 // Called from the /globallink/pending UI when the user opens a row's detail.
 // Persists the result back to GlobalLinkSubmission.leverage so subsequent
 // opens are instant.
+//
+// PD calls go through broker /proxy/pd.
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const DEFAULT_BASE = 'https://gle-prod-eu.transperfect.com/PD';
+async function pdProxy(brokerUrl, brokerKey, endpoint, body) {
+  const res = await fetch(`${brokerUrl}/proxy/pd`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${brokerKey}` },
+    body: JSON.stringify({ endpoint, body }),
+  });
+  const text = await res.text();
+  let payload;
+  try { payload = JSON.parse(text); } catch { payload = { error: text.slice(0, 200) }; }
+  if (!res.ok) throw new Error(`Broker proxy HTTP ${res.status}: ${payload?.error || text.slice(0, 200)}`);
+  return { status: payload?.status ?? 200, body: payload?.body ?? payload };
+}
 
 Deno.serve(async (req) => {
   try {
@@ -21,52 +34,30 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error: 'submission_ticket is required' }, { status: 400 });
     }
 
-    // Get JWT via cache helper
-    const tokenRes = await base44.asServiceRole.functions.invoke('getGlobalLinkToken', {});
-    if (!tokenRes?.data?.token_value) {
-      return Response.json({ success: false, error: tokenRes?.data?.error || 'No cached GlobalLink JWT available' }, { status: 503 });
+    const brokerUrl = (Deno.env.get('BROKER_URL') || '').replace(/\/$/, '');
+    const brokerKey = Deno.env.get('BROKER_KEY');
+    if (!brokerUrl || !brokerKey) {
+      return Response.json({ success: false, error: 'BROKER_URL or BROKER_KEY secret missing' }, { status: 503 });
     }
-    const jwt = tokenRes.data.token_value;
-    const csrf = tokenRes.data.csrf_value || null;
 
-    const contextUser = Deno.env.get('GLOBALLINK_CONTEXT_USER') || 'VerbatoTrans';
-    const base = (Deno.env.get('GLOBALLINK_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
-
-    // PD .pd endpoints require BOTH Bearer JWT and `csrfToken` header.
-    const reqHeaders = {
-      'Authorization': `Bearer ${jwt}`,
-      'Content-Type': 'application/json',
-      'X-Requested-With': 'XMLHttpRequest',
-      'ajaxRequest': 'true',
-      'appVersion': '11.5.0',
-      'contextUser': contextUser,
-    };
-    if (csrf) reqHeaders['csrfToken'] = csrf;
-    const res = await fetch(`${base}/submissionView.pd`, {
-      method: 'POST',
-      headers: reqHeaders,
-      body: JSON.stringify({
-        classifier: 'Batch1',
-        folder: 'AVAILABLE_SUBMISSION',
-        submissionTicket: submission_ticket,
-        sourceLanguageComboBox: (source_language || 'tr-tr').toLowerCase(),
-      }),
+    const { status, body: pdBody } = await pdProxy(brokerUrl, brokerKey, 'submissionView.pd', {
+      classifier: 'Batch1',
+      folder: 'AVAILABLE_SUBMISSION',
+      submissionTicket: submission_ticket,
+      sourceLanguageComboBox: (source_language || 'tr-tr').toLowerCase(),
     });
 
     // 403 "Permission Violation" → vendor hasn't claimed this submission yet,
-    // TP refuses submissionView. Not a true error; return null leverage so the
-    // UI can show "leverage unavailable until claimed".
-    if (res.status === 403) {
+    // TP refuses submissionView. Not a true error.
+    if (status === 403) {
       return Response.json({ success: true, leverage: null, skipped: 'permission_violation' });
     }
-    if (!res.ok) {
-      const text = await res.text();
-      return Response.json({ success: false, error: `submissionView.pd HTTP ${res.status}: ${text.slice(0, 200)}` }, { status: res.status });
+    if (status >= 400) {
+      return Response.json({ success: false, error: `submissionView.pd HTTP ${status}: ${pdBody?.description || JSON.stringify(pdBody).slice(0, 200)}` }, { status });
     }
-    const data = await res.json();
-    const leverage = data?.additionalData?.cumulativeTmStatistics || data?.additionalData || null;
 
-    // Persist back if we can identify the row(s) for this submission.
+    const leverage = pdBody?.additionalData?.cumulativeTmStatistics || pdBody?.additionalData || null;
+
     const rows = await base44.asServiceRole.entities.GlobalLinkSubmission.filter({ submission_ticket });
     const fetchedAt = new Date().toISOString();
     for (const row of rows) {

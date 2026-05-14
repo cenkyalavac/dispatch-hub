@@ -3,44 +3,25 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 // Returns the Available submissions list normalized into the same task shape that
 // PendingTasks and the rule engine expect. One submission can have multiple target
 // languages — we expand each language pair into its own pending task row.
-const DEFAULT_BASE = 'https://gle-prod-eu.transperfect.com/PD';
+//
+// All PD calls go through the broker's /proxy/pd endpoint (page-context fetch).
+
 const FOLDER = 'AVAILABLE_SUBMISSION';
 
-// PD .pd endpoints require BOTH the Bearer JWT and a `csrfToken` header.
-// Broker pushes both into CachedToken (keys: globallink_jwt, globallink_csrf).
-function buildHeaders(jwt, contextUser, csrf) {
-  const h = {
-    'Authorization': `Bearer ${jwt}`,
-    'Content-Type': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest',
-    'ajaxRequest': 'true',
-    'appVersion': '11.5.0',
-    'contextUser': contextUser,
-  };
-  if (csrf) h['csrfToken'] = csrf;
-  return h;
-}
-
-async function fetchSubmissions(base, headers) {
-  const res = await fetch(`${base}/submissionTargetSearch.pd`, {
+async function pdProxy(brokerUrl, brokerKey, endpoint, body) {
+  const res = await fetch(`${brokerUrl}/proxy/pd`, {
     method: 'POST',
-    headers,
-    body: JSON.stringify({ folder: FOLDER, entityTickets: [], parentEntityTickets: [], index: 0, size: 100 }),
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${brokerKey}` },
+    body: JSON.stringify({ endpoint, body }),
   });
-  if (!res.ok) throw new Error(`submissionTargetSearch.pd HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = await res.json();
-  return data?.items || [];
-}
-
-async function fetchLanguagePairs(base, headers, submissionTicket) {
-  const res = await fetch(`${base}/submissionLanguageSearch.pd`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ submissionTicket, folder: FOLDER }),
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data?.items || [];
+  const text = await res.text();
+  let payload;
+  try { payload = JSON.parse(text); } catch { payload = { error: text.slice(0, 200) }; }
+  if (!res.ok) throw new Error(`Broker proxy HTTP ${res.status}: ${payload?.error || text.slice(0, 200)}`);
+  const pdStatus = payload?.status ?? 200;
+  const pdBody = payload?.body ?? payload;
+  if (pdStatus >= 400) throw new Error(`PD ${endpoint} HTTP ${pdStatus}: ${pdBody?.description || pdBody?.reasons || JSON.stringify(pdBody).slice(0, 200)}`);
+  return pdBody;
 }
 
 Deno.serve(async (req) => {
@@ -48,31 +29,26 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     await base44.auth.me().catch(() => null);
 
-    // Pull JWT from CachedToken (broker-managed) instead of env — same source
-    // the other GlobalLink functions use, so a single broker push fixes them all.
-    const tokenRes = await base44.asServiceRole.functions.invoke('getGlobalLinkToken', {});
-    if (!tokenRes?.data?.token_value) {
-      return Response.json({
-        success: false,
-        error: tokenRes?.data?.error || 'No cached GlobalLink JWT — broker not pushing yet.',
-        tasks: [],
-      }, { status: 503 });
+    const brokerUrl = (Deno.env.get('BROKER_URL') || '').replace(/\/$/, '');
+    const brokerKey = Deno.env.get('BROKER_KEY');
+    if (!brokerUrl || !brokerKey) {
+      return Response.json({ success: false, error: 'BROKER_URL or BROKER_KEY secret missing', tasks: [] }, { status: 503 });
     }
-    const jwt = tokenRes.data.token_value;
-    const csrf = tokenRes.data.csrf_value || null;
-    const contextUser = Deno.env.get('GLOBALLINK_CONTEXT_USER') || 'VerbatoTrans';
-    const base = (Deno.env.get('GLOBALLINK_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
 
-    const headers = buildHeaders(jwt, contextUser, csrf);
-    const submissions = await fetchSubmissions(base, headers);
+    const listData = await pdProxy(brokerUrl, brokerKey, 'submissionTargetSearch.pd', {
+      folder: FOLDER, entityTickets: [], parentEntityTickets: [], index: 0, size: 100,
+    });
+    const submissions = listData?.items || [];
 
-    // Expand each submission into its language pairs. Run in small parallel batches to
-    // avoid hammering PD when many submissions are open.
     const tasks = [];
     const BATCH = 5;
     for (let i = 0; i < submissions.length; i += BATCH) {
       const slice = submissions.slice(i, i + BATCH);
-      const pairs = await Promise.all(slice.map(s => fetchLanguagePairs(base, headers, s.ticket).then(items => ({ s, items }))));
+      const pairs = await Promise.all(slice.map((s) =>
+        pdProxy(brokerUrl, brokerKey, 'submissionLanguageSearch.pd', { submissionTicket: s.ticket, folder: FOLDER })
+          .then((d) => ({ s, items: d?.items || [] }))
+          .catch(() => ({ s, items: [] }))
+      ));
       for (const { s, items } of pairs) {
         if (!items || items.length === 0) {
           tasks.push({
