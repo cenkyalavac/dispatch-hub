@@ -50,18 +50,28 @@ Deno.serve(async (req) => {
     });
 
     // 403 "Permission Violation" → vendor hasn't claimed this submission yet,
-    // TP refuses submissionView. Not a true error.
+    // TP refuses submissionView. Mark the rows so the UI stops asking.
+    const fetchedAt = new Date().toISOString();
+    const rows = await base44.asServiceRole.entities.GlobalLinkSubmission.filter({ submission_ticket });
+
     if (status === 403) {
+      for (const row of rows) {
+        await base44.asServiceRole.entities.GlobalLinkSubmission.update(row.id, {
+          leverage: { _unavailable: true, reason: 'permission_violation' },
+          leverage_fetched_at: fetchedAt,
+        }).catch((e) => console.error('Leverage permission-violation persist failed:', e.message));
+      }
       return Response.json({ success: true, leverage: null, skipped: 'permission_violation' });
     }
     if (status >= 400) {
       return Response.json({ success: false, error: `submissionView.pd HTTP ${status}: ${pdBody?.description || JSON.stringify(pdBody).slice(0, 200)}` }, { status });
     }
 
-    const leverage = pdBody?.additionalData?.cumulativeTmStatistics || pdBody?.additionalData || null;
+    const tmStats = pdBody?.additionalData?.cumulativeTmStatistics || null;
+    // If TP returned 200 but no TM breakdown, that means leverage isn't
+    // exposed pre-claim for this submission — treat as unavailable.
+    const leverage = tmStats || { _unavailable: true, reason: 'no_tm_statistics' };
 
-    const rows = await base44.asServiceRole.entities.GlobalLinkSubmission.filter({ submission_ticket });
-    const fetchedAt = new Date().toISOString();
     for (const row of rows) {
       try {
         await base44.asServiceRole.entities.GlobalLinkSubmission.update(row.id, {
@@ -73,7 +83,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return Response.json({ success: true, leverage, fetched_at: fetchedAt });
+    return Response.json({ success: true, leverage: tmStats, fetched_at: fetchedAt });
   } catch (error) {
     console.error('globallinkLeverage error:', error.message);
     return Response.json({ success: false, error: error.message }, { status: 500 });

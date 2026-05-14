@@ -21,8 +21,9 @@ function Cell({ value, dim }) {
 }
 
 export default function SubmissionTableRow({ row, onApprove, onSkip, onFetchLeverage, busyAction, leverageBusy }) {
-  const lev = extractLeverage(row.leverage);
   const isBusy = !!busyAction;
+  const isUnavailable = row.leverage && row.leverage._unavailable;
+  const lev = isUnavailable ? null : extractLeverage(row.leverage);
 
   // Leverage cells — show '—' until data arrives.
   const cells = lev
@@ -39,6 +40,10 @@ export default function SubmissionTableRow({ row, onApprove, onSkip, onFetchLeve
 
       {cells ? (
         cells.map((v, i) => <Cell key={i} value={num(v)} dim={v === 0} />)
+      ) : isUnavailable ? (
+        <td className="px-2 py-2 text-[11px] text-ink-3 italic-editorial" colSpan={9} title="TransPerfect doesn't expose 12-band TM stats until the submission is claimed.">
+          Fuzzy breakdown unavailable pre-claim — total WC: <span className="not-italic font-mono text-ink-2">{num(row.word_count)}</span>
+        </td>
       ) : (
         <td className="px-2 py-2 text-[12px] text-ink-3" colSpan={9}>
           {leverageBusy ? (

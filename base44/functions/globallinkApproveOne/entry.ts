@@ -128,20 +128,43 @@ Deno.serve(async (req) => {
       }, { status: 409 });
     }
 
-    // 4) Claim.
-    const claimRes = await base44.asServiceRole.functions.invoke('globallinkClaim', {
-      submission_ticket: freshTicket,
-      target_languages: claimable,
-    });
-    const claimData = claimRes?.data || {};
-    if (!claimData.success) {
-      const errMsg = claimData.error || 'claim failed';
-      await base44.asServiceRole.entities.GlobalLinkSubmission.update(row.id, {
-        status: 'error',
-        claim_error: errMsg,
-      });
-      return Response.json({ success: false, error: errMsg, reasons: claimData.reasons || null }, { status: 502 });
+    // 4) Claim — inline 3-step chain. We used to invoke functions/globallinkClaim
+    // via asServiceRole.functions.invoke, but cross-function service invocation
+    // is rejected by the platform (HTTP 403). Inlining keeps the same contract.
+    let processUuid = null;
+    let claimErr = null;
+    try {
+      for (let i = 0; i < 3; i++) {
+        const jsonTaskData = i === 0
+          ? { folder: 'AVAILABLE_SUBMISSION', targetLanguages: claimable }
+          : { processUuid, folder: 'AVAILABLE_SUBMISSION', targetLanguages: claimable };
+        const resp = await pdProxy(brokerUrl, brokerKey, 'task.pd', {
+          taskName: 'claim.PostEdit',
+          parentTickets: [freshTicket],
+          jsonTaskData: JSON.stringify(jsonTaskData),
+        });
+        if (i === 0) {
+          processUuid = resp?.taskResponse?.model?.processUuid || resp?.processUuid || resp?.uuid || null;
+          if (!processUuid) {
+            claimErr = 'Claim step 1 failed: no processUuid in taskResponse.model';
+            break;
+          }
+        }
+        if (resp?.success === false) {
+          claimErr = `Claim step ${i + 1} failed: ${resp.description || resp.desciption || JSON.stringify(resp.reasons || resp).slice(0, 200)}`;
+          break;
+        }
+      }
+    } catch (e) {
+      claimErr = e.message;
     }
+    if (claimErr) {
+      await base44.asServiceRole.entities.GlobalLinkSubmission.update(row.id, {
+        status: 'error', claim_error: claimErr,
+      });
+      return Response.json({ success: false, error: claimErr }, { status: 502 });
+    }
+    const claimData = { success: true, process_uuid: processUuid };
 
     const acceptedAt = new Date().toISOString();
     const sameSubmissionRows = await base44.asServiceRole.entities.GlobalLinkSubmission
