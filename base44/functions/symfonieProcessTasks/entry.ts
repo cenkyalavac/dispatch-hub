@@ -204,16 +204,23 @@ Deno.serve(async (req) => {
 
     console.log('symfonieProcessTasks started, user:', user?.email || 'scheduled/system');
 
-    // 1. Get active rules sorted by priority (ascending = higher priority runs first)
-    const rules = await base44.asServiceRole.entities.Rule.filter({ portal: 'symfonie', is_active: true }, 'priority', 200);
-    console.log(`Found ${rules.length} active rules`);
-
     // Load portal config + active sheet routes once — needed for Sheet routing in appendToSheets.
     const [portalRows, sheetRoutes] = await Promise.all([
       base44.asServiceRole.entities.Portal.filter({ key: 'symfonie' }),
       base44.asServiceRole.entities.SheetRoute.filter({ portal: 'symfonie', is_active: true }, 'priority', 200),
     ]);
     const portal = portalRows[0] || null;
+
+    // Kill switch: if the portal is toggled off, do nothing. The scheduler still ticks,
+    // but no tasks are fetched, accepted, or rejected.
+    if (portal && portal.is_active === false) {
+      console.log('symfonieProcessTasks skipped: portal is_active=false');
+      return Response.json({ success: true, skipped: true, reason: 'Portal disabled', summary: { accepted: 0, rejected: 0, skipped: 0, errors: 0 } });
+    }
+
+    // 1. Get active rules sorted by priority (ascending = higher priority runs first)
+    const rules = await base44.asServiceRole.entities.Rule.filter({ portal: 'symfonie', is_active: true }, 'priority', 200);
+    console.log(`Found ${rules.length} active rules`);
 
     // 2. Get Azure AD token
     const token = await getToken();

@@ -62,6 +62,14 @@ Deno.serve(async (req) => {
     const apiBase = PROD_BASE;
     if (!jwt) return Response.json({ success: false, error: 'JUNCTION_JWT not configured' });
 
+    // Kill switch: if the Junction portal is toggled off in the UI, do nothing.
+    const junctionPortalRows = await base44.asServiceRole.entities.Portal.filter({ key: 'junction' });
+    const junctionPortal = junctionPortalRows[0] || null;
+    if (junctionPortal && junctionPortal.is_active === false) {
+      console.log('junctionProcessOffers skipped: portal is_active=false');
+      return Response.json({ success: true, skipped: true, reason: 'Portal disabled', summary: { accepted: 0, rejected: 0, skipped: 0, errors: 0 } });
+    }
+
     // 1. Fetch offers — endpoint returns the full list; query params are rejected.
     const offersRes = await fetch(`${apiBase}/v2/offer/me`, {
       headers: authHeaders(jwt, apiKey),
