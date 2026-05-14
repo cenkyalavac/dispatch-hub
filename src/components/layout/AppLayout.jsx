@@ -2,21 +2,14 @@ import { Outlet, useLocation } from 'react-router-dom';
 import TopBar from './TopBar';
 import SubNav from './SubNav';
 
-const SUB_NAVS_CONNECTORS = [
-  { to: '/portals',  label: 'All connectors', end: true },
-  { to: '/rules',    label: 'Rules' },
-  { to: '/settings', label: 'Diagnostics' },
-];
-
+// Connectors no longer needs a sub-nav: Rules/Diagnostics live elsewhere
+// (Rules under a portal's own tab, Diagnostics in TopBar/Settings).
 const SUB_NAVS_API = [
   { to: '/api',      label: 'Keys & webhooks', end: true },
   { to: '/mappings', label: 'Field mappings' },
 ];
 
 function resolveSubNav(pathname) {
-  if (pathname.startsWith('/rules') || pathname.startsWith('/settings') || pathname.startsWith('/portals')) {
-    return SUB_NAVS_CONNECTORS;
-  }
   if (pathname.startsWith('/api') || pathname.startsWith('/mappings')) {
     return SUB_NAVS_API;
   }

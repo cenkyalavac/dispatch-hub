@@ -252,7 +252,6 @@ export default function Connectors() {
               missingSecrets={computeMissing(p)}
               onTest={handleTest}
               onToggle={handleToggle}
-              onEdit={handleEdit}
               onDelete={handleDelete}
             />
           ))}

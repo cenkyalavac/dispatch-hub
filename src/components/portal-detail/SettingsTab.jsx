@@ -28,7 +28,9 @@ export default function SettingsTab({ portal, onDeleted }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [portal.id, portal.key]);
 
-  const dirty = JSON.stringify(form) !== JSON.stringify(normalize(portal));
+  // Stable JSON for dirty check — keys sorted so insertion order doesn't matter.
+  const stable = (o) => JSON.stringify(o, Object.keys(o).sort());
+  const dirty = stable(form) !== stable(normalize(portal));
 
   const saveMutation = useMutation({
     mutationFn: (data) => base44.entities.Portal.update(portal.id, data),

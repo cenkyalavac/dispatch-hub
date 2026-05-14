@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import {
-  CheckCircle2, AlertCircle, XCircle, Loader2, ExternalLink, Settings2, Play, Trash2, ArrowUpRight,
+  CheckCircle2, AlertCircle, XCircle, Loader2, ExternalLink, Play, Trash2, ArrowUpRight,
   Globe, Building2, Network, Plug, Boxes, Briefcase, Cloud,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -35,7 +35,7 @@ function parseJwtDays(message) {
   return m ? Number(m[1]) : null;
 }
 
-export default function ConnectorCard({ portal, testing, onTest, onToggle, onEdit, onDelete, missingSecrets = [] }) {
+export default function ConnectorCard({ portal, testing, onTest, onToggle, onDelete, missingSecrets = [] }) {
   const colors = COLOR_MAP[portal.color] || COLOR_MAP.blue;
   const status = STATUS_MAP[portal.connection_status || 'not_configured'];
   const StatusIcon = status.icon;
@@ -131,9 +131,6 @@ export default function ConnectorCard({ portal, testing, onTest, onToggle, onEdi
           >
             {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
             {testing ? 'Testing...' : 'Test'}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => onEdit?.(portal)} className="h-8 px-2" title="Quick edit">
-            <Settings2 className="w-3.5 h-3.5" />
           </Button>
           {onDelete && (
             <Button size="sm" variant="ghost" onClick={() => onDelete?.(portal)} className="h-8 px-2 text-destructive hover:text-destructive">

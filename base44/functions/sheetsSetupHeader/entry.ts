@@ -2,6 +2,17 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 // Write the header row into a specific portal's sheet.
 // portal_key is required — no global default.
+// If the portal has active SheetColumnMapping rows, headers come from those
+// (in `order` ascending). Otherwise fall back to the legacy fixed 11-column schema.
+
+const LEGACY_HEADERS = ['Task ID','Task Name','Project Name','Client','Source Language','Target Language','Word Count','Price','Due Date','Accepted At','Matched Rule'];
+
+function colLetter(n) {
+  let s = '';
+  while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -25,13 +36,17 @@ Deno.serve(async (req) => {
     const { accessToken } = await base44.asServiceRole.connectors.getConnection('googlesheets');
     if (!accessToken) return Response.json({ error: 'Google Sheets connector not authorized' }, { status: 400 });
 
-    const tab = portal.sheets_tab_name || '';
-    const range = tab ? `${encodeURIComponent(tab)}!A1:K1` : 'A1:K1';
+    // Pick headers: custom mapping if defined, else legacy.
+    const mappings = await base44.asServiceRole.entities.SheetColumnMapping.filter(
+      { portal: portal_key, is_active: true }, 'order', 200
+    );
+    const headers = mappings.length > 0
+      ? mappings.map(m => m.header || m.source_field)
+      : LEGACY_HEADERS;
 
-    const headers = [
-      'Task ID', 'Task Name', 'Project Name', 'Client', 'Source Language', 'Target Language',
-      'Word Count', 'Price', 'Due Date', 'Accepted At', 'Matched Rule'
-    ];
+    const tab = portal.sheets_tab_name || '';
+    const colRange = `A1:${colLetter(headers.length)}1`;
+    const range = tab ? `${encodeURIComponent(tab)}!${colRange}` : colRange;
 
     const res = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
@@ -47,7 +62,12 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Failed to write header', status: res.status, details: err }, { status: 400 });
     }
 
-    return Response.json({ success: true, message: `Header row created for ${portal.name}` });
+    return Response.json({
+      success: true,
+      message: `Header row created for ${portal.name}`,
+      columns: headers.length,
+      source: mappings.length > 0 ? 'custom' : 'legacy',
+    });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

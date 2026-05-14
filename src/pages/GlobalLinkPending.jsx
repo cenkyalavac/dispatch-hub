@@ -81,9 +81,18 @@ export default function GlobalLinkPending() {
         qc.invalidateQueries({ queryKey: ['globallink-submissions'] });
       } else {
         toast.error('Accept failed: ' + (res.data?.error || 'unknown'));
+        qc.invalidateQueries({ queryKey: ['globallink-submissions'] });
       }
     } catch (err) {
-      toast.error('Accept failed: ' + (err.response?.data?.error || err.message));
+      // Surface the real backend error body (status + message) instead of axios's generic 404.
+      const status = err.response?.status;
+      const backendErr = err.response?.data?.error;
+      const msg = backendErr
+        ? `${backendErr}${status ? ` (HTTP ${status})` : ''}`
+        : err.message;
+      toast.error('Accept failed: ' + msg);
+      // Row may be stale (deleted, claimed elsewhere) — refresh the list.
+      qc.invalidateQueries({ queryKey: ['globallink-submissions'] });
     } finally {
       clearBusy(row.id);
     }
