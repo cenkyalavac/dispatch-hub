@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${brokerKey}`,
+        'X-Broker-Key': brokerKey,
       },
       body: JSON.stringify({
         endpoint: 'submissionTargetSearch.pd',

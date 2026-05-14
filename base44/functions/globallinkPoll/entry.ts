@@ -17,7 +17,7 @@ async function pdProxy(brokerUrl, brokerKey, endpoint, body) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${brokerKey}`,
+      'X-Broker-Key': brokerKey,
     },
     body: JSON.stringify({ endpoint, body }),
   });

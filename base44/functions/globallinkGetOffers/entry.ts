@@ -11,7 +11,7 @@ const FOLDER = 'AVAILABLE_SUBMISSION';
 async function pdProxy(brokerUrl, brokerKey, endpoint, body) {
   const res = await fetch(`${brokerUrl}/proxy/pd`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${brokerKey}` },
+    headers: { 'Content-Type': 'application/json', 'X-Broker-Key': brokerKey },
     body: JSON.stringify({ endpoint, body }),
   });
   const text = await res.text();
