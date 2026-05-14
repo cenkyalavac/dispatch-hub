@@ -31,6 +31,26 @@
       "type": "string",
       "format": "date-time"
     },
+    "deadline_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Phase-level deadline from submissionLanguageSearch.pd \u2192 phaseStatusData[0].phaseDueDate. May differ from submission-level due_date."
+    },
+    "phase_name": {
+      "type": "string",
+      "description": "Current phase the vendor would claim (e.g. 'PostEdit', 'Translate', 'Review')."
+    },
+    "workflow_name": {
+      "type": "string",
+      "description": "Workflow / step template name from PD (e.g. 'NoDownload_FullPE-autoTransIQ1-Finalize Edit (nobudget) (noTMupdate)')."
+    },
+    "vendor_languages": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Display-name target languages assigned to vendors on this submission (from submissionTargetSearch.pd \u2192 vendorInfos[].targetLanguages, flattened, deduped)."
+    },
     "status": {
       "type": "string",
       "enum": [
@@ -43,7 +63,48 @@
     },
     "leverage": {
       "type": "object",
-      "description": "12-band TM breakdown from submissionView.pd \u2192 additionalData.cumulativeTmStatistics. Populated lazily when user opens detail or clicks Approve.",
+      "description": "TM stats from submissionView.pd \u2192 cumulativeTmStatistics. Populated lazily when user opens detail or clicks Approve. Empty fields stay 0 (e.g. NoLev submissions).",
+      "properties": {
+        "context": {
+          "type": "number"
+        },
+        "rep": {
+          "type": "number"
+        },
+        "match100": {
+          "type": "number"
+        },
+        "fuzzy_95_99_tm": {
+          "type": "number"
+        },
+        "fuzzy_95_99_reps": {
+          "type": "number"
+        },
+        "fuzzy_85_94_tm": {
+          "type": "number"
+        },
+        "fuzzy_85_94_reps": {
+          "type": "number"
+        },
+        "fuzzy_75_84_tm": {
+          "type": "number"
+        },
+        "fuzzy_75_84_reps": {
+          "type": "number"
+        },
+        "fuzzy_50_74_tm": {
+          "type": "number"
+        },
+        "fuzzy_50_74_reps": {
+          "type": "number"
+        },
+        "no_match": {
+          "type": "number"
+        },
+        "total_wc": {
+          "type": "number"
+        }
+      },
       "additionalProperties": true
     },
     "leverage_fetched_at": {

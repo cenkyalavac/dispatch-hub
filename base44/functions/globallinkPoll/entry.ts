@@ -91,6 +91,11 @@ Deno.serve(async (req) => {
       ));
 
       for (const { s, items } of pairs) {
+        // Vendor language names from submissionTargetSearch.pd (one-time per submission).
+        const vendorLangs = Array.from(new Set(
+          (s.vendorInfos || []).flatMap((v) => v.targetLanguages || [])
+        ));
+
         const rows = (items && items.length > 0)
           ? items.map((it) => {
               // Support both nested shapes:
@@ -105,6 +110,8 @@ Deno.serve(async (req) => {
                 ?? null;
               const dueIso = typeof phaseDue === 'number' ? new Date(phaseDue).toISOString()
                           : (phaseDue?.date ? new Date(phaseDue.date).toISOString() : (phaseDue || s.dueDate || null));
+              const phaseName = it.phaseStatusData?.[0]?.phaseName || '';
+              const workflowName = it.workflow || '';
               return {
                 submission_ticket: s.ticket,
                 submission_id: String(s.submissionId ?? ''),
@@ -114,6 +121,10 @@ Deno.serve(async (req) => {
                 target_language: tgtLoc,
                 word_count: Number(it.wordCount) || Number(s.wordCount) || 0,
                 due_date: dueIso,
+                deadline_at: dueIso,
+                phase_name: phaseName,
+                workflow_name: workflowName,
+                vendor_languages: vendorLangs,
                 raw: { submission: s, language: it },
               };
             })

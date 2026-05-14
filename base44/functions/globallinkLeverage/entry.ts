@@ -72,7 +72,34 @@ Deno.serve(async (req) => {
     // Treat that the same as a 403.
     const tpFailed = pdBody?.success === false;
     const tmStats = pdBody?.additionalData?.cumulativeTmStatistics || null;
-    const leverage = tmStats || { _unavailable: true, reason: tpFailed ? 'view_forbidden' : 'no_tm_statistics' };
+
+    // Map PD's nested cumulativeTmStatistics → flat schema persisted on
+    // GlobalLinkSubmission.leverage. PD bands are { wordCount, segmentCount, ... };
+    // we keep only wordCount per band. NoLev submissions return zeros, not nulls.
+    const num = (v) => {
+      if (v == null) return 0;
+      if (typeof v === 'number') return v;
+      if (typeof v === 'object') return Number(v.wordCount ?? 0) || 0;
+      return Number(v) || 0;
+    };
+    const flatten = (s) => ({
+      context:           num(s.inContextMatchWordCount),
+      rep:               num(s.repetitionWordCount),
+      match100:          num(s.oneHundredMatchWordCount),
+      fuzzy_95_99_tm:    num(s.fuzzyWordCount1),
+      fuzzy_95_99_reps:  num(s.fuzzyRepetitionsWordCount1),
+      fuzzy_85_94_tm:    num(s.fuzzyWordCount2),
+      fuzzy_85_94_reps:  num(s.fuzzyRepetitionsWordCount2),
+      fuzzy_75_84_tm:    num(s.fuzzyWordCount3),
+      fuzzy_75_84_reps:  num(s.fuzzyRepetitionsWordCount3),
+      fuzzy_50_74_tm:    num(s.fuzzyWordCount4),
+      fuzzy_50_74_reps:  num(s.fuzzyRepetitionsWordCount4),
+      no_match:          num(s.noMatchWordCount),
+      total_wc:          num(s.totalWordCount),
+    });
+    const leverage = tmStats
+      ? flatten(tmStats)
+      : { _unavailable: true, reason: tpFailed ? 'view_forbidden' : 'no_tm_statistics' };
 
     for (const row of rows) {
       try {
@@ -85,7 +112,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return Response.json({ success: true, leverage: tmStats, fetched_at: fetchedAt });
+    return Response.json({ success: true, leverage, fetched_at: fetchedAt });
   } catch (error) {
     console.error('globallinkLeverage error:', error.message);
     return Response.json({ success: false, error: error.message }, { status: 500 });
