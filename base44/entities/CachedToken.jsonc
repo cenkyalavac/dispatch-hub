@@ -1,0 +1,33 @@
+{
+  "name": "CachedToken",
+  "type": "object",
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "Token'\u0131 tan\u0131mlayan benzersiz anahtar. \u00d6rn: 'globallink_jwt', 'junction_jwt'. Ayn\u0131 key zaten varsa g\u00fcncelle (upsert)."
+    },
+    "token_value": {
+      "type": "string",
+      "description": "Bearer JWT'nin kendisi. UI'da g\u00f6sterilmemeli (sensitive)."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Token'\u0131n bitti\u011fi UTC ISO datetime. Token okuyan fonksiyonlar buna bak\u0131p expire kontrol\u00fc yapacak."
+    },
+    "scope": {
+      "type": "string",
+      "description": "Token'\u0131n izin verdi\u011fi scope listesi (debug i\u00e7in saklan\u0131r)."
+    },
+    "last_pushed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Broker'dan son geli\u015f zaman\u0131 (audit i\u00e7in)."
+    }
+  },
+  "required": [
+    "key",
+    "token_value",
+    "expires_at"
+  ]
+}
