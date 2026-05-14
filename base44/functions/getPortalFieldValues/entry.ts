@@ -1,19 +1,14 @@
 // Returns the set of distinct values for a (portal, field) pair, sourced from
-// records that have actually passed through this app. This is what powers the
-// data-aware dropdowns in RuleForm.
+// records that have actually passed through this app. Powers data-aware
+// dropdowns in RuleForm, MappingForm, SheetRouteRow.
 //
-// Why not call the portal's fetch_function?
-//   Function-to-function HTTP invocation is blocked in some environments
-//   ("Backend functions cannot be accessed from the platform domain"), making
-//   that path fragile. Reading our own entities is faster, deterministic, and
-//   accurately reflects what the rule engine will actually see in production.
+// Auth: any signed-in user (not admin-gated). The function only reads
+// integration data the user already has access to via normal SDK calls.
 //
 // Sources by portal:
 //   globallink → GlobalLinkSubmission (rich staging table from polling)
 //   symfonie/junction/* → AcceptedTask filtered by portal
-//
-// Input:  { portal_key, field, force? }
-// Output: { values: string[], count, fetched_at, from_cache, source }
+//   '*' → union across all
 //
 // Cache: CachedSnapshot keyed by fieldvalues_<portal>_<field>, 5 min fresh.
 
@@ -21,7 +16,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const FRESH_MS = 5 * 60 * 1000;
 const MAX_RECORDS = 500;
-const TEXT_FIELDS = new Set([
+
+// Whitelist kept for the legacy `field` validation. Pulled from
+// the union of all known portal vocabularies — anything not in here returns
+// an empty array. Add new field names here when a new portal needs one.
+const KNOWN_TEXT_FIELDS = new Set([
   'project_name',
   'task_name',
   'workflow_name',
@@ -32,26 +31,37 @@ const TEXT_FIELDS = new Set([
   'project_manager_last_name',
   'matched_rule',
   'service_tag',
+  'submission_id',
+  'submission_name',
 ]);
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // Soft auth — we want to NOT crash on auth.me() platform errors, but we
+    // also want to refuse anonymous callers. createClientFromRequest already
+    // hands us a request-scoped client; if there's no signed-in user the call
+    // below resolves to null (the SDK swallows the auth error in some paths).
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const body = await req.json().catch(() => ({}));
     const { portal_key, field, force } = body;
     if (!portal_key || !field) {
       return Response.json({ error: 'portal_key and field are required' }, { status: 400 });
     }
-    if (!TEXT_FIELDS.has(field)) {
+    if (!KNOWN_TEXT_FIELDS.has(field)) {
       return Response.json({ values: [], reason: 'numeric_or_unsupported_field' });
     }
 
     const cacheKey = `fieldvalues_${portal_key}_${field}`;
 
-    // 1) Cache lookup
+    // 1) Cache lookup. CRITICAL: use asServiceRole for ALL entity reads here.
+    //    User-scoped reads on cross-tenant cache entities can trigger
+    //    "Authentication required to view users" inside Base44's auth chain.
     if (!force) {
       const cached = await base44.asServiceRole.entities.CachedSnapshot.filter({ key: cacheKey });
       const hit = cached?.[0];
@@ -67,9 +77,6 @@ Deno.serve(async (req) => {
     }
 
     // 2) Choose record source
-    //    portal_key === '*'  → union across ALL portals (used by FieldMapping where portal is "Any")
-    //    portal_key === 'globallink' → GlobalLinkSubmission staging table
-    //    else → AcceptedTask filtered by portal
     let records = [];
     let source = '';
     if (portal_key === '*') {
@@ -89,7 +96,7 @@ Deno.serve(async (req) => {
       source = 'AcceptedTask';
     }
 
-    // 3) Extract uniques
+    // 3) Extract uniques (case-insensitive de-dupe, keep first-seen casing)
     const seen = new Map();
     for (const r of records) {
       const raw = r?.[field];

@@ -124,6 +124,48 @@
       },
       "default": [],
       "description": "ISO 639-1 language code prefixes (e.g. ['tr','ar']). Submission targetLanguage.locale start-with match \u2014 'tr' covers tr-TR, tr_TR, tr-x-foo; 'ar' covers ar-SA, ar-EG, ar-MSA, etc. Empty array = no filter (claim all available). Add a new family to onboard a new language pair without touching code."
+    },
+    "rule_fields": {
+      "type": "array",
+      "description": "Connector-specific field definitions used by rules, mappings, and routing. Each portal defines its own field vocabulary \u2014 no hardcoded cross-portal field list. Empty array = no portal-specific fields (falls back to defaults).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Entity field name as stored on AcceptedTask/GlobalLinkSubmission (e.g. 'workflow_name')"
+          },
+          "label": {
+            "type": "string",
+            "description": "Human label shown in the UI (e.g. 'Workflow')"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "number"
+            ],
+            "default": "string"
+          },
+          "operators": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "equals",
+                "contains",
+                "not_contains",
+                "starts_with",
+                "greater_than",
+                "less_than",
+                "greater_equal",
+                "less_equal"
+              ]
+            },
+            "description": "Allowed operators for this field. Defaults to standard text or numeric ops based on type."
+          }
+        }
+      }
     }
   },
   "required": [

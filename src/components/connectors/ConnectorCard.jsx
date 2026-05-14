@@ -3,9 +3,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import {
-  CheckCircle2, AlertCircle, XCircle, Loader2, ExternalLink, Settings2, Play, Trash2,
+  CheckCircle2, AlertCircle, XCircle, Loader2, ExternalLink, Settings2, Play, Trash2, ArrowUpRight,
   Globe, Building2, Network, Plug, Boxes, Briefcase, Cloud,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import JwtExpiryBadge from './JwtExpiryBadge';
 import SheetRoutesSummary from './SheetRoutesSummary';
@@ -116,17 +117,22 @@ export default function ConnectorCard({ portal, testing, onTest, onToggle, onEdi
         </div>
 
         <div className="flex items-center gap-2 pt-2 border-t border-border/60">
+          <Button asChild size="sm" className="flex-1 gap-1.5 h-8">
+            <Link to={`/portals/${portal.key}`}>
+              Open <ArrowUpRight className="w-3.5 h-3.5" />
+            </Link>
+          </Button>
           <Button
             size="sm"
             variant="outline"
             onClick={() => onTest?.(portal)}
             disabled={testing || hasMissing}
-            className="flex-1 gap-1.5 h-8"
+            className="gap-1.5 h-8"
           >
             {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-            {testing ? 'Testing...' : 'Test connection'}
+            {testing ? 'Testing...' : 'Test'}
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => onEdit?.(portal)} className="h-8 px-2">
+          <Button size="sm" variant="ghost" onClick={() => onEdit?.(portal)} className="h-8 px-2" title="Quick edit">
             <Settings2 className="w-3.5 h-3.5" />
           </Button>
           {onDelete && (
