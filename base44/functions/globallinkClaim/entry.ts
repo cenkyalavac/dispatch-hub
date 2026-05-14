@@ -2,6 +2,9 @@
 // 6 sequential PD calls (verified against broker logs for claim 0122458).
 // No DB writes — caller (globallinkApproveOne) handles persistence.
 //
+// FULL API REFERENCE: docs/globallink-api.md  (§7.1 — claim chain recipe)
+// Keep this implementation in sync with that document.
+//
 // All PD calls go through broker /proxy/pd.
 //
 // Contract:

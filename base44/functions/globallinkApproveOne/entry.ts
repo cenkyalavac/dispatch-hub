@@ -2,6 +2,10 @@
 //
 // All PD calls go through broker /proxy/pd (page-context fetch).
 //
+// FULL API REFERENCE: docs/globallink-api.md  (§7.1 — 6-step claim chain)
+// The inline claim chain below mirrors functions/globallinkClaim.runClaimChain
+// — keep both in sync when the PD contract changes.
+//
 // Critical orchestration (in order — DO NOT reorder):
 //   1. Fresh-ticket fetch: submissionTargetSearch.pd → match by submissionId.
 //   2. submissionLanguageSearch.pd → enumerate target locales.

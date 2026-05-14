@@ -8,6 +8,13 @@
 //
 // Kill switch: respects Portal(key='globallink').is_active.
 
+// Poll GlobalLink AVAILABLE pool and upsert GlobalLinkSubmission rows with
+// per-target-locale leverage bands + WWC.
+//
+// FULL API REFERENCE: docs/globallink-api.md
+//   §6.3  submissionView.pd  (12-band cumulativeTmStatistics, lowercase TARGET locale)
+//   §7.2  leverage breakdown recipe
+
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const FOLDER = 'AVAILABLE_SUBMISSION';
