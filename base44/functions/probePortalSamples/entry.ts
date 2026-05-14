@@ -35,6 +35,8 @@ Deno.serve(async (req) => {
     }
 
     const out = { globallink: {}, symfonie: {}, junction: {} };
+    const reqBody = await req.json().catch(() => ({}));
+    const which = reqBody.portal || 'all';
 
     // ──────── GlobalLink ────────
     try {
@@ -49,48 +51,62 @@ Deno.serve(async (req) => {
       out.globallink.available_count = items.length;
       out.globallink.available_first = items[0] || null;
 
-      // Walk first 5 submissions; record cumulativeTmStatistics for each so we
-      // can see whether ANY available submission has a non-NoLev TM breakdown.
+      // For each available submission, enumerate target locales from
+      // submissionLanguageSearch.pd, then call submissionView.pd with
+      // sourceLanguageComboBox = TARGET locale (PD's misleading name —
+      // this field is actually the target locale filter, not the source).
+      // The 12-band breakdown only appears with the correct target locale.
+      const TARGET_FAMILY = (reqBody?.target_family || 'tr').toLowerCase();
       const tmSurvey = [];
       for (const it of items.slice(0, 5)) {
         try {
-          const view = await pdProxy(brokerUrl, brokerKey, 'submissionView.pd', {
-            classifier: 'Batch1',
-            folder: 'AVAILABLE_SUBMISSION',
-            submissionTicket: it.ticket,
-            sourceLanguageComboBox: (it.sourceLocale || it.sourceLanguage || 'en-us').toLowerCase(),
+          // Get target locales for this submission.
+          const lang = await pdProxy(brokerUrl, brokerKey, 'submissionLanguageSearch.pd', {
+            submissionTicket: it.ticket, folder: 'AVAILABLE_SUBMISSION',
           });
-          const cum = view.body?.additionalData?.cumulativeTmStatistics || null;
-          tmSurvey.push({
+          const langItems = Array.isArray(lang.body?.items) ? lang.body.items
+                          : (lang.body?.languageDirectionPreview ? [lang.body] : []);
+          const targetLocales = langItems
+            .map(l => l?.languageDirectionPreview?.targetLanguage?.locale)
+            .filter(Boolean);
+
+          // Pick a target matching the requested family (default tr); if none, take the first.
+          const targetLoc = targetLocales.find(l => l.toLowerCase().startsWith(TARGET_FAMILY))
+                          || targetLocales[0]
+                          || null;
+
+          const entry = {
             submission_id: it.submissionId,
             submission_name: it.submissionName,
-            view_status: view.status,
-            view_success: view.body?.success,
-            has_cumulativeTmStatistics: !!cum,
-            cumulativeTmStatistics: cum,
-            additionalData_keys: Object.keys(view.body?.additionalData || {}),
-          });
+            available_target_locales: targetLocales,
+            tried_target_locale: targetLoc,
+          };
+
+          if (targetLoc) {
+            const view = await pdProxy(brokerUrl, brokerKey, 'submissionView.pd', {
+              classifier: 'Batch1',
+              folder: 'AVAILABLE_SUBMISSION',
+              submissionTicket: it.ticket,
+              sourceLanguageComboBox: targetLoc.toLowerCase(),
+              index: 0,
+              size: 50,
+            });
+            // PD uses both spellings — check both.
+            const addl = view.body?.additionalData || view.body?.aditionalData || {};
+            const cum = addl.cumulativeTmStatistics || null;
+            entry.view_status = view.status;
+            entry.view_success = view.body?.success;
+            entry.additionalData_keys = Object.keys(addl);
+            entry.has_cumulativeTmStatistics = !!cum;
+            entry.cumulativeTmStatistics = cum;
+          }
+          tmSurvey.push(entry);
         } catch (e) {
           tmSurvey.push({ submission_id: it.submissionId, error: e.message });
         }
       }
       out.globallink.tm_survey = tmSurvey;
-
-      if (items[0]?.ticket) {
-        const view = await pdProxy(brokerUrl, brokerKey, 'submissionView.pd', {
-          classifier: 'Batch1',
-          folder: 'AVAILABLE_SUBMISSION',
-          submissionTicket: items[0].ticket,
-          sourceLanguageComboBox: (items[0].sourceLocale || items[0].sourceLanguage || 'en-us').toLowerCase(),
-        });
-        out.globallink.submissionView_status = view.status;
-        out.globallink.submissionView_first = view.body;
-
-        const lang = await pdProxy(brokerUrl, brokerKey, 'submissionLanguageSearch.pd', {
-          submissionTicket: items[0].ticket, folder: 'AVAILABLE_SUBMISSION',
-        });
-        out.globallink.submissionLanguageSearch_first = lang.body?.items?.[0] || lang.body;
-      }
+      out.globallink.target_family = TARGET_FAMILY;
     } catch (e) {
       out.globallink.error = e.message;
     }
@@ -118,9 +134,6 @@ Deno.serve(async (req) => {
     }
 
     // Ultra-compact output: ONLY key names + selected interesting values.
-    const reqBody = await req.json().catch(() => ({}));
-    const which = reqBody.portal || 'all';
-
     // `full: true` → return the entire raw `out` object so the caller can
     // download it as a JSON file for offline analysis. No key filtering.
     if (reqBody.full) {
@@ -135,18 +148,8 @@ Deno.serve(async (req) => {
     const compact = {};
     if (which === 'all' || which === 'globallink') {
       compact.globallink = {
-        sls_top_keys: Object.keys(sls),
-        sls_subPhases: (sls.subPhaseStatusDataHolders || []).map(p => ({
-          workflow: p.workflow,
-          wordCount: p.wordCount,
-          quoteStatus: p.quoteStatus,
-          phaseStatusData_keys: Object.keys(p.phaseStatusData || {}),
-          phaseStatusData: p.phaseStatusData,
-        })),
-        sls_phaseStatusData_top: sls.phaseStatusData,
-        sls_languageDirectionPreview: sls.languageDirectionPreview,
-        sls_workflow_top: sls.workflow,
-        sls_wordCount: sls.wordCount,
+        target_family: out.globallink.target_family,
+        tm_survey: out.globallink.tm_survey,
         error: out.globallink.error,
       };
     }

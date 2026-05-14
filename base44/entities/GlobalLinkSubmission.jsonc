@@ -1,7 +1,7 @@
 {
   "name": "GlobalLinkSubmission",
   "type": "object",
-  "description": "Available submissions polled from GlobalLink PD. Lifecycle: available \u2192 claimed | skipped. Acts as the staging table before AcceptedTask/Project is created on claim.",
+  "description": "Available submissions polled from GlobalLink PD. One row per (submission_ticket, target_language). Lifecycle: available \u2192 claimed | skipped.",
   "properties": {
     "submission_ticket": {
       "type": "string",
@@ -22,7 +22,7 @@
     },
     "target_language": {
       "type": "string",
-      "description": "Single target locale this row represents (e.g. tr-TR). One submission can spawn multiple rows."
+      "description": "Single target locale this row represents (e.g. tr-TR)."
     },
     "word_count": {
       "type": "number",
@@ -30,7 +30,39 @@
     },
     "weighted_wc": {
       "type": "number",
-      "description": "Weighted Word Count (PD's only leverage signal \u2014 per language, from submissionLanguageSearch.pd \u2192 wordCount)."
+      "description": "WWC computed from 12-band leverage with the standard Reps/fuzzy weights formula. Not provided directly by PD."
+    },
+    "lev_context": {
+      "type": "number",
+      "description": "Context match (inContextMatch) word count for this target locale."
+    },
+    "lev_rep": {
+      "type": "number",
+      "description": "Repetitions word count."
+    },
+    "lev_match100": {
+      "type": "number",
+      "description": "100% match word count."
+    },
+    "lev_9599": {
+      "type": "number",
+      "description": "95-99% fuzzy + Reps95-99% combined."
+    },
+    "lev_8594": {
+      "type": "number",
+      "description": "85-94% fuzzy + Reps85-94% combined."
+    },
+    "lev_7584": {
+      "type": "number",
+      "description": "75-84% fuzzy + Reps75-84% combined."
+    },
+    "lev_5074": {
+      "type": "number",
+      "description": "50-74% fuzzy + Reps50-74% combined."
+    },
+    "lev_no_match": {
+      "type": "number",
+      "description": "No-match word count."
     },
     "due_date": {
       "type": "string",
@@ -39,7 +71,7 @@
     "deadline_at": {
       "type": "string",
       "format": "date-time",
-      "description": "Phase-level deadline from submissionLanguageSearch.pd \u2192 phaseStatusData[0].phaseDueDate. May differ from submission-level due_date."
+      "description": "Phase-level deadline from submissionLanguageSearch.pd \u2192 subPhaseStatusDataHolders[0].phaseStatusData[0].phaseDueDate.date (epoch ms)."
     },
     "phase_name": {
       "type": "string",
@@ -47,14 +79,14 @@
     },
     "workflow_name": {
       "type": "string",
-      "description": "Workflow / step template name from PD (e.g. 'NoDownload_FullPE-autoTransIQ1-Finalize Edit (nobudget) (noTMupdate)')."
+      "description": "Workflow / step template name from PD."
     },
     "vendor_languages": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "Display-name target languages assigned to vendors on this submission (from submissionTargetSearch.pd \u2192 vendorInfos[].targetLanguages, flattened, deduped)."
+      "description": "Display-name target languages assigned to vendors on this submission."
     },
     "status": {
       "type": "string",
@@ -79,7 +111,7 @@
     },
     "raw": {
       "type": "object",
-      "description": "Raw submission payload as received from PD (debug).",
+      "description": "Raw submission payload (debug).",
       "additionalProperties": true
     }
   },

@@ -80,7 +80,7 @@ export default function GlobalLinkPending() {
           </div>
           <h1 className="text-2xl font-bold text-foreground">Available Submissions</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            PD exposes total WC and WWC only — fuzzy band breakdown is not available pre-claim.
+            TM leverage bands fetched per target locale on each poll. WWC computed from the standard formula.
           </p>
         </div>
         <Button
@@ -114,7 +114,14 @@ export default function GlobalLinkPending() {
                 <th className="px-2 py-2 font-medium">Submission ID</th>
                 <th className="px-2 py-2 font-medium">Task Name</th>
                 <th className="px-2 py-2 font-medium">Target</th>
-                <th className="px-2 py-2 font-medium">Workflow</th>
+                <th className="px-2 py-2 font-medium text-right">Context</th>
+                <th className="px-2 py-2 font-medium text-right">100%</th>
+                <th className="px-2 py-2 font-medium text-right">Rep</th>
+                <th className="px-2 py-2 font-medium text-right">95-99</th>
+                <th className="px-2 py-2 font-medium text-right">85-94</th>
+                <th className="px-2 py-2 font-medium text-right">75-84</th>
+                <th className="px-2 py-2 font-medium text-right">50-74</th>
+                <th className="px-2 py-2 font-medium text-right">No Match</th>
                 <th className="px-2 py-2 font-medium text-right">Total WC</th>
                 <th className="px-2 py-2 font-medium text-right">WWC</th>
                 <th className="px-2 py-2 font-medium">TR Deadline</th>
