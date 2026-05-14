@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import FormField from '@/components/ui/FormField';
+import ConditionValueInput from '@/components/rules/ConditionValueInput';
 
 const FIELDS = [
   { value: 'project_name', label: 'Project name' },
@@ -126,11 +127,11 @@ export default function RuleForm({ rule, portals = [], onClose }) {
                 <select className={`${selectSm} w-32`} value={c.operator} onChange={e => updateCondition(idx, 'operator', e.target.value)}>
                   {ops.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
-                <input
-                  className={`${selectSm} flex-1`}
+                <ConditionValueInput
+                  portal={portal}
+                  field={c.field}
                   value={c.value}
-                  onChange={e => updateCondition(idx, 'value', e.target.value)}
-                  placeholder={isNum ? '1000' : 'value'}
+                  onChange={(v) => updateCondition(idx, 'value', v)}
                 />
                 <button onClick={() => removeCondition(idx)} className="inline-flex items-center justify-center h-7 w-7 rounded text-ink-3 hover:bg-danger-soft hover:text-danger transition-colors duration-tab">
                   <Trash2 className="w-3 h-3" />
