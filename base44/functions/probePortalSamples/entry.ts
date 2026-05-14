@@ -43,14 +43,40 @@ Deno.serve(async (req) => {
       if (!brokerUrl || !brokerKey) throw new Error('BROKER_URL/BROKER_KEY missing');
 
       const list = await pdProxy(brokerUrl, brokerKey, 'submissionTargetSearch.pd', {
-        folder: 'AVAILABLE_SUBMISSION', entityTickets: [], parentEntityTickets: [], index: 0, size: 3,
+        folder: 'AVAILABLE_SUBMISSION', entityTickets: [], parentEntityTickets: [], index: 0, size: 5,
       });
       const items = list.body?.items || [];
       out.globallink.available_count = items.length;
       out.globallink.available_first = items[0] || null;
 
+      // Walk first 5 submissions; record cumulativeTmStatistics for each so we
+      // can see whether ANY available submission has a non-NoLev TM breakdown.
+      const tmSurvey = [];
+      for (const it of items.slice(0, 5)) {
+        try {
+          const view = await pdProxy(brokerUrl, brokerKey, 'submissionView.pd', {
+            classifier: 'Batch1',
+            folder: 'AVAILABLE_SUBMISSION',
+            submissionTicket: it.ticket,
+            sourceLanguageComboBox: (it.sourceLocale || it.sourceLanguage || 'en-us').toLowerCase(),
+          });
+          const cum = view.body?.additionalData?.cumulativeTmStatistics || null;
+          tmSurvey.push({
+            submission_id: it.submissionId,
+            submission_name: it.submissionName,
+            view_status: view.status,
+            view_success: view.body?.success,
+            has_cumulativeTmStatistics: !!cum,
+            cumulativeTmStatistics: cum,
+            additionalData_keys: Object.keys(view.body?.additionalData || {}),
+          });
+        } catch (e) {
+          tmSurvey.push({ submission_id: it.submissionId, error: e.message });
+        }
+      }
+      out.globallink.tm_survey = tmSurvey;
+
       if (items[0]?.ticket) {
-        // submissionView: detailed view with cumulativeTmStatistics + pricing lines
         const view = await pdProxy(brokerUrl, brokerKey, 'submissionView.pd', {
           classifier: 'Batch1',
           folder: 'AVAILABLE_SUBMISSION',
@@ -60,7 +86,6 @@ Deno.serve(async (req) => {
         out.globallink.submissionView_status = view.status;
         out.globallink.submissionView_first = view.body;
 
-        // submissionLanguageSearch: target locales + phases
         const lang = await pdProxy(brokerUrl, brokerKey, 'submissionLanguageSearch.pd', {
           submissionTicket: items[0].ticket, folder: 'AVAILABLE_SUBMISSION',
         });
