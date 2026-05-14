@@ -25,7 +25,12 @@
       "description": "Single target locale this row represents (e.g. tr-TR). One submission can spawn multiple rows."
     },
     "word_count": {
-      "type": "number"
+      "type": "number",
+      "description": "Total word count (submission-level from submissionTargetSearch.pd \u2192 wordCount)."
+    },
+    "weighted_wc": {
+      "type": "number",
+      "description": "Weighted Word Count (PD's only leverage signal \u2014 per language, from submissionLanguageSearch.pd \u2192 wordCount)."
     },
     "due_date": {
       "type": "string",
@@ -60,56 +65,6 @@
         "error"
       ],
       "default": "available"
-    },
-    "leverage": {
-      "type": "object",
-      "description": "TM stats from submissionView.pd \u2192 cumulativeTmStatistics. Populated lazily when user opens detail or clicks Approve. Empty fields stay 0 (e.g. NoLev submissions).",
-      "properties": {
-        "context": {
-          "type": "number"
-        },
-        "rep": {
-          "type": "number"
-        },
-        "match100": {
-          "type": "number"
-        },
-        "fuzzy_95_99_tm": {
-          "type": "number"
-        },
-        "fuzzy_95_99_reps": {
-          "type": "number"
-        },
-        "fuzzy_85_94_tm": {
-          "type": "number"
-        },
-        "fuzzy_85_94_reps": {
-          "type": "number"
-        },
-        "fuzzy_75_84_tm": {
-          "type": "number"
-        },
-        "fuzzy_75_84_reps": {
-          "type": "number"
-        },
-        "fuzzy_50_74_tm": {
-          "type": "number"
-        },
-        "fuzzy_50_74_reps": {
-          "type": "number"
-        },
-        "no_match": {
-          "type": "number"
-        },
-        "total_wc": {
-          "type": "number"
-        }
-      },
-      "additionalProperties": true
-    },
-    "leverage_fetched_at": {
-      "type": "string",
-      "format": "date-time"
     },
     "claimed_at": {
       "type": "string",
