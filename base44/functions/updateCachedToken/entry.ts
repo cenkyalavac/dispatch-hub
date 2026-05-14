@@ -2,8 +2,18 @@
 // broker service (e.g. Railway/Playwright) and upserts it into CachedToken.
 // Auth: shared secret header X-Broker-Key must match BROKER_KEY env var.
 // No user auth — broker runs without a Base44 user context.
+//
+// Important: we deliberately do NOT use createClientFromRequest here. That helper
+// tries to resolve a user from the request and logs spurious 401 "Authentication
+// required to view users" errors when the request is anonymous (which broker
+// calls always are). createClient is the pure service-role init — no user lookup.
 
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { createClient } from 'npm:@base44/sdk@0.8.25';
+
+const base44 = createClient({
+  appId: Deno.env.get('BASE44_APP_ID'),
+  requiresAuth: false,
+});
 
 Deno.serve(async (req) => {
   try {
@@ -28,9 +38,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const base44 = createClientFromRequest(req);
-
-    // 3) Upsert by key
+    // 3) Upsert by key — service-role only, no user context needed
     const existing = await base44.asServiceRole.entities.CachedToken.filter({ key });
     const now = new Date().toISOString();
     const payload = {
