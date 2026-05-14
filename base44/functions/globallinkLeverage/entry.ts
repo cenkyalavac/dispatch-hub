@@ -49,6 +49,12 @@ Deno.serve(async (req) => {
       }),
     });
 
+    // 403 "Permission Violation" → vendor hasn't claimed this submission yet,
+    // TP refuses submissionView. Not a true error; return null leverage so the
+    // UI can show "leverage unavailable until claimed".
+    if (res.status === 403) {
+      return Response.json({ success: true, leverage: null, skipped: 'permission_violation' });
+    }
     if (!res.ok) {
       const text = await res.text();
       return Response.json({ success: false, error: `submissionView.pd HTTP ${res.status}: ${text.slice(0, 200)}` }, { status: res.status });

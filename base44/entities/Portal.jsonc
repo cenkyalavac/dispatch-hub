@@ -100,6 +100,30 @@
     "history_function": {
       "type": "string",
       "description": "Backend function that returns completed/approved task history (optional)"
+    },
+    "dropbox_base_path": {
+      "type": "string",
+      "description": "Dropbox root folder for this portal's handoffs. Falls back to global app setting if empty."
+    },
+    "dropbox_folder_template": {
+      "type": "string",
+      "description": "Folder template under base path. Tokens: {account} {project} {task_id} {task_name}. Falls back to global app setting if empty."
+    },
+    "sheets_spreadsheet_id": {
+      "type": "string",
+      "description": "Google Sheets spreadsheet ID where this portal's accepted tasks are logged. Falls back to GOOGLE_SHEETS_SPREADSHEET_ID secret if empty."
+    },
+    "sheets_tab_name": {
+      "type": "string",
+      "description": "Worksheet/tab name within the spreadsheet (e.g. 'Sheet1'). Defaults to the first sheet if empty."
+    },
+    "allowed_language_families": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "ISO 639-1 language code prefixes (e.g. ['tr','ar']). Submission targetLanguage.locale start-with match \u2014 'tr' covers tr-TR, tr_TR, tr-x-foo; 'ar' covers ar-SA, ar-EG, ar-MSA, etc. Empty array = no filter (claim all available). Add a new family to onboard a new language pair without touching code."
     }
   },
   "required": [

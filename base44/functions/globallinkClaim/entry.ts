@@ -1,6 +1,22 @@
 // Pure API wrapper around the GlobalLink claim chain.
 // Three sequential POSTs to task.pd, each chaining the previous processUuid.
 // No DB writes — caller (globallinkApproveOne) handles persistence.
+//
+// Contract:
+//   Input  : { submission_ticket: string, target_languages: string[] }
+//   Output : { success: true, claimed_languages, process_uuid } on commit
+//          | { success: false, error, reasons?, tp_response? } on TP-side fail
+//
+// Critical rules (do not relax):
+//   1. target_languages MUST be a non-empty array of locale strings — empty
+//      array = silent no-op on TP side. Caller is responsible for the locale
+//      intersection logic (see globallinkApproveOne).
+//   2. parentTickets MUST contain the FRESH ticket from a just-fetched
+//      submissionTargetSearch.pd — cached/stale tickets silently no-op.
+//   3. 3 sequential POSTs are required. 1 or 2 calls may return success:true
+//      but do NOT commit the claim. The 3rd is the COMMIT.
+//   4. processUuid lives at d.taskResponse.model.processUuid (nested), not at
+//      the response root.
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
@@ -31,9 +47,16 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { submission_ticket, target_language = 'tr-TR' } = body || {};
+    const { submission_ticket, target_languages } = body || {};
+
     if (!submission_ticket) {
       return Response.json({ success: false, error: 'submission_ticket is required' }, { status: 400 });
+    }
+    if (!Array.isArray(target_languages) || target_languages.length === 0) {
+      return Response.json(
+        { success: false, error: 'target_languages must be a non-empty array of locale strings (e.g. ["tr-TR","ar-SA"])' },
+        { status: 400 }
+      );
     }
 
     const tokenRes = await base44.asServiceRole.functions.invoke('getGlobalLinkToken', {});
@@ -53,43 +76,49 @@ Deno.serve(async (req) => {
       'contextUser': contextUser,
     };
 
-    const jsonTaskData = JSON.stringify({
-      folder: 'AVAILABLE_SUBMISSION',
-      targetLanguages: [target_language],
-    });
+    let processUuid = null;
+    let finalResponse = null;
 
-    // 1st POST — initiate
-    const r1 = await postTask(base, headers, {
-      taskName: 'claim.PostEdit',
-      parentTickets: [submission_ticket],
-      jsonTaskData,
-    });
-    const uuid1 = r1?.processUuid || r1?.uuid;
-    if (!uuid1) throw new Error('claim step 1: missing processUuid in response');
+    for (let i = 0; i < 3; i++) {
+      const jsonTaskData = i === 0
+        ? { folder: 'AVAILABLE_SUBMISSION', targetLanguages: target_languages }
+        : { processUuid, folder: 'AVAILABLE_SUBMISSION', targetLanguages: target_languages };
 
-    // 2nd POST — chain uuid
-    const r2 = await postTask(base, headers, {
-      taskName: 'claim.PostEdit',
-      parentTickets: [submission_ticket],
-      jsonTaskData,
-      processUuid: uuid1,
-    });
-    const uuid2 = r2?.processUuid || r2?.uuid || uuid1;
+      const resp = await postTask(base, headers, {
+        taskName: 'claim.PostEdit',
+        parentTickets: [submission_ticket],
+        jsonTaskData: JSON.stringify(jsonTaskData),
+      });
 
-    // 3rd POST — finalize
-    const r3 = await postTask(base, headers, {
-      taskName: 'claim.PostEdit',
-      parentTickets: [submission_ticket],
-      jsonTaskData,
-      processUuid: uuid2,
-    });
+      if (i === 0) {
+        processUuid = resp?.taskResponse?.model?.processUuid || resp?.processUuid || resp?.uuid || null;
+        if (!processUuid) {
+          return Response.json({
+            success: false,
+            error: 'Claim step 1 failed: no processUuid in taskResponse.model',
+            tp_response: resp,
+          }, { status: 502 });
+        }
+      }
+
+      if (resp?.success === false) {
+        return Response.json({
+          success: false,
+          error: `Claim step ${i + 1} failed`,
+          reasons: resp.reasons || resp.desciption || resp.description || null,
+          tp_response: resp,
+        }, { status: 502 });
+      }
+
+      finalResponse = resp;
+    }
 
     return Response.json({
       success: true,
       submission_ticket,
-      target_language,
-      process_uuid: uuid2,
-      final_response: r3,
+      claimed_languages: target_languages,
+      process_uuid: processUuid,
+      final_response: finalResponse,
     });
   } catch (error) {
     console.error('globallinkClaim error:', error.message);
