@@ -1,4 +1,5 @@
 import { Trash2, Plus, ChevronUp, ChevronDown } from 'lucide-react';
+import ConditionValueInput from '@/components/rules/ConditionValueInput';
 
 const FIELDS = [
   { v: 'project_name', l: 'Project name' },
@@ -27,7 +28,8 @@ const OPERATORS = [
 const fieldCls = 'h-8 px-2 rounded-md border border-line-1 bg-surface-1 text-[12px] outline-none placeholder:text-ink-4';
 
 // One row representing a single SheetRoute in the connector dialog.
-export default function SheetRouteRow({ route, onChange, onRemove, onMove }) {
+// `portal` is the portal key this route belongs to — used to scope value-suggestions.
+export default function SheetRouteRow({ route, onChange, onRemove, onMove, portal }) {
   const update = (k, v) => onChange({ ...route, [k]: v });
   const updateCond = (idx, k, v) => {
     const next = [...(route.conditions || [])];
@@ -94,11 +96,11 @@ export default function SheetRouteRow({ route, onChange, onRemove, onMove }) {
             <select className={fieldCls} value={c.operator} onChange={(e) => updateCond(idx, 'operator', e.target.value)}>
               {OPERATORS.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
             </select>
-            <input
-              className={fieldCls}
+            <ConditionValueInput
+              portal={portal}
+              field={c.field}
               value={c.value || ''}
-              onChange={(e) => updateCond(idx, 'value', e.target.value)}
-              placeholder={c.operator === 'in' ? 'tr, turkish, tr-tr' : 'value'}
+              onChange={(v) => updateCond(idx, 'value', v)}
             />
             <button type="button" onClick={() => removeCond(idx)} className="h-8 w-7 inline-flex items-center justify-center text-ink-3 hover:bg-surface-2 rounded">
               <Trash2 className="w-3 h-3" />

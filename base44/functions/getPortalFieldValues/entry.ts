@@ -30,6 +30,8 @@ const TEXT_FIELDS = new Set([
   'client_name',
   'project_manager_first_name',
   'project_manager_last_name',
+  'matched_rule',
+  'service_tag',
 ]);
 
 Deno.serve(async (req) => {
@@ -65,15 +67,23 @@ Deno.serve(async (req) => {
     }
 
     // 2) Choose record source
+    //    portal_key === '*'  → union across ALL portals (used by FieldMapping where portal is "Any")
+    //    portal_key === 'globallink' → GlobalLinkSubmission staging table
+    //    else → AcceptedTask filtered by portal
     let records = [];
     let source = '';
-    if (portal_key === 'globallink') {
-      // Staging table — every submission ever polled, claimed or not.
+    if (portal_key === '*') {
+      const [accepted, glSubs] = await Promise.all([
+        base44.asServiceRole.entities.AcceptedTask.list('-created_date', MAX_RECORDS),
+        base44.asServiceRole.entities.GlobalLinkSubmission.list('-created_date', MAX_RECORDS),
+      ]);
+      records = [...accepted, ...glSubs];
+      source = 'AcceptedTask+GlobalLinkSubmission';
+    } else if (portal_key === 'globallink') {
       records = await base44.asServiceRole.entities.GlobalLinkSubmission
         .list('-created_date', MAX_RECORDS);
       source = 'GlobalLinkSubmission';
     } else {
-      // AcceptedTask covers symfonie/junction historically accepted tasks.
       records = await base44.asServiceRole.entities.AcceptedTask
         .filter({ portal: portal_key }, '-created_date', MAX_RECORDS);
       source = 'AcceptedTask';

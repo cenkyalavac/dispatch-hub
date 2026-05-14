@@ -111,6 +111,7 @@ export default function PortalSheetRoutes({ portalKey }) {
             <SheetRouteRow
               key={r.id || `new-${idx}`}
               route={r}
+              portal={portalKey}
               onChange={(next) => updateAt(idx, next)}
               onRemove={() => removeAt(idx)}
               onMove={(d) => moveAt(idx, d)}

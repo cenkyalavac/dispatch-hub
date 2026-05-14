@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
+import ConditionValueInput from '@/components/rules/ConditionValueInput';
 
 const FIELDS = [
   { key: 'source_language', label: 'Source language' },
@@ -41,12 +42,15 @@ export default function MappingForm({ portals, onSubmit }) {
         >
           {FIELDS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
         </select>
-        <input
-          value={form.source_value}
-          onChange={(e) => setForm({ ...form, source_value: e.target.value })}
-          placeholder="From (e.g. en-US)"
-          className={input}
-        />
+        {/* Source value is suggested from the actual portal data. */}
+        <div className="self-center">
+          <ConditionValueInput
+            portal={form.portal}
+            field={form.field}
+            value={form.source_value}
+            onChange={(v) => setForm({ ...form, source_value: v })}
+          />
+        </div>
         <input
           value={form.destination_value}
           onChange={(e) => setForm({ ...form, destination_value: e.target.value })}
