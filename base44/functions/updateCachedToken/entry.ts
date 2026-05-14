@@ -3,17 +3,13 @@
 // Auth: shared secret header X-Broker-Key must match BROKER_KEY env var.
 // No user auth — broker runs without a Base44 user context.
 //
-// Important: we deliberately do NOT use createClientFromRequest here. That helper
-// tries to resolve a user from the request and logs spurious 401 "Authentication
-// required to view users" errors when the request is anonymous (which broker
-// calls always are). createClient is the pure service-role init — no user lookup.
+// Implementation note: we use createClientFromRequest because that is the only
+// init that gives us a working asServiceRole inside Base44's runtime (the
+// platform injects the service token via the request context). We never call
+// base44.auth.me() here, so the user-lookup 401 logs do not get triggered —
+// authorization is solely the BROKER_KEY shared-secret check below.
 
-import { createClient } from 'npm:@base44/sdk@0.8.25';
-
-const base44 = createClient({
-  appId: Deno.env.get('BASE44_APP_ID'),
-  requiresAuth: false,
-});
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 Deno.serve(async (req) => {
   try {
@@ -38,7 +34,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 3) Upsert by key — service-role only, no user context needed
+    // 3) Service-role client from the request context (no auth.me() call → no
+    //    spurious "Authentication required to view users" errors).
+    const base44 = createClientFromRequest(req);
+
+    // 4) Upsert by key
     const existing = await base44.asServiceRole.entities.CachedToken.filter({ key });
     const now = new Date().toISOString();
     const payload = {
