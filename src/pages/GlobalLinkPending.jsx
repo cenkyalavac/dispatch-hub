@@ -75,7 +75,10 @@ export default function GlobalLinkPending() {
   const handleApprove = async (row) => {
     setBusy(row.id, 'approve');
     try {
-      const res = await base44.functions.invoke('globallinkApproveOne', { submission_row_id: row.id });
+      const res = await base44.functions.invoke('globallinkApproveOne', {
+        submission_row_id: row.id,
+        submission_ticket: row.submission_ticket,
+      });
       if (res.data?.success) {
         toast.success(`Accepted: ${row.submission_name || row.submission_ticket}`);
         qc.invalidateQueries({ queryKey: ['globallink-submissions'] });

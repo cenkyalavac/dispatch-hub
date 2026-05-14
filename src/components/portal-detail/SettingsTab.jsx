@@ -262,6 +262,7 @@ export default function SettingsTab({ portal, onDeleted }) {
           portalKey={portal.key}
           spreadsheetId={form.sheets_spreadsheet_id}
           tabName={form.sheets_tab_name}
+          savedSpreadsheetId={portal.sheets_spreadsheet_id}
           onChange={(k, v) => set(k, v)}
         />
         <PortalSheetColumns portal={portal} />

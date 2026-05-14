@@ -51,13 +51,28 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { submission_row_id } = body || {};
-    if (!submission_row_id) {
-      return Response.json({ success: false, error: 'submission_row_id is required' }, { status: 400 });
+    const { submission_row_id, submission_ticket: tktFallback } = body || {};
+    if (!submission_row_id && !tktFallback) {
+      return Response.json({ success: false, error: 'submission_row_id or submission_ticket is required' }, { status: 400 });
     }
 
-    const row = await base44.asServiceRole.entities.GlobalLinkSubmission.get(submission_row_id).catch(() => null);
-    if (!row) return Response.json({ success: false, error: 'submission not found' }, { status: 404 });
+    // Primary lookup by row id; if the UI is stale (row deleted), fall back to
+    // ticket-based lookup so the user can still claim.
+    let row = submission_row_id
+      ? await base44.asServiceRole.entities.GlobalLinkSubmission.get(submission_row_id).catch(() => null)
+      : null;
+    if (!row && tktFallback) {
+      const tktRows = await base44.asServiceRole.entities.GlobalLinkSubmission
+        .filter({ submission_ticket: tktFallback })
+        .catch(() => []);
+      row = tktRows.find((r) => r.status === 'available') || tktRows[0] || null;
+    }
+    if (!row) {
+      return Response.json({
+        success: false,
+        error: 'Submission no longer in this hub. The list is out of date — please refresh.',
+      }, { status: 404 });
+    }
     if (row.status === 'claimed') {
       return Response.json({ success: true, already: true, message: 'Already claimed' });
     }

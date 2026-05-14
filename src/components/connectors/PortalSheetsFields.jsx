@@ -8,12 +8,17 @@ const fieldCls = 'w-full h-9 px-3 rounded-md border border-line-1 bg-surface-1 t
 
 // Per-portal Sheets config + a one-click "create header row" helper.
 // portalKey is null while creating a new connector (header button hidden until first save).
-export default function PortalSheetsFields({ portalKey, spreadsheetId, tabName, onChange }) {
+// `savedSpreadsheetId` is the value currently persisted in the DB — needed because the
+// backend reads from the Portal record, so the button must reflect saved state, not
+// in-flight edits.
+export default function PortalSheetsFields({ portalKey, spreadsheetId, tabName, savedSpreadsheetId, onChange }) {
   const [creating, setCreating] = useState(false);
 
   const sheetUrl = spreadsheetId
     ? `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`
     : null;
+
+  const isUnsaved = (spreadsheetId || '') !== (savedSpreadsheetId || '');
 
   const createHeader = async () => {
     if (!portalKey) return;
@@ -61,15 +66,23 @@ export default function PortalSheetsFields({ portalKey, spreadsheetId, tabName, 
       </div>
 
       {portalKey && spreadsheetId && (
-        <button
-          type="button"
-          onClick={createHeader}
-          disabled={creating}
-          className="mt-2 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-line-1 text-[11px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab disabled:opacity-40"
-        >
-          {creating ? <RefreshCw className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
-          Create header row
-        </button>
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={createHeader}
+            disabled={creating || isUnsaved}
+            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-line-1 text-[11px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab disabled:opacity-40 disabled:cursor-not-allowed"
+            title={isUnsaved ? 'Save changes first, then create the header row' : ''}
+          >
+            {creating ? <RefreshCw className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+            Create header row
+          </button>
+          {isUnsaved && (
+            <span className="text-[11px] text-ink-3 italic-editorial">
+              Save changes first.
+            </span>
+          )}
+        </div>
       )}
     </section>
   );

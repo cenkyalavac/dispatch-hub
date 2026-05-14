@@ -80,23 +80,43 @@ Deno.serve(async (req) => {
       const slice = submissions.slice(i, i + BATCH);
       const pairs = await Promise.all(slice.map((s) =>
         pdProxy(brokerUrl, brokerKey, 'submissionLanguageSearch.pd', { submissionTicket: s.ticket, folder: FOLDER })
-          .then((d) => ({ s, items: d?.items || [] }))
+          // Broker now returns a single object with top-level languageDirectionPreview
+          // (one language-pair per response). Old format used items[]; support both.
+          .then((d) => {
+            if (Array.isArray(d?.items) && d.items.length > 0) return { s, items: d.items };
+            if (d?.languageDirectionPreview) return { s, items: [d] };
+            return { s, items: [] };
+          })
           .catch(() => ({ s, items: [] }))
       ));
 
       for (const { s, items } of pairs) {
         const rows = (items && items.length > 0)
-          ? items.map((it) => ({
-              submission_ticket: s.ticket,
-              submission_id: String(s.submissionId ?? ''),
-              submission_name: s.submissionName || '',
-              client_name: s.clientName || s.organizationName || '',
-              source_language: it.sourceLanguage?.locale || s.sourceLocale || '',
-              target_language: it.targetLanguage?.locale || '',
-              word_count: Number(it.wordCount) || Number(s.wordCount) || 0,
-              due_date: it.phaseDueDate || s.dueDate || null,
-              raw: { submission: s, language: it },
-            }))
+          ? items.map((it) => {
+              // Support both nested shapes:
+              //   - legacy: it.sourceLanguage.locale, it.targetLanguage.locale
+              //   - new:    it.languageDirectionPreview.{sourceLanguage,targetLanguage}.locale
+              const ldp = it.languageDirectionPreview || {};
+              const srcLoc = it.sourceLanguage?.locale || ldp.sourceLanguage?.locale || s.sourceLocale || '';
+              const tgtLoc = it.targetLanguage?.locale || ldp.targetLanguage?.locale || '';
+              // phaseDueDate can be a number (epoch ms), an object { date }, or an ISO string.
+              const phaseDue = it.phaseDueDate
+                ?? it.phaseStatusData?.[0]?.phaseDueDate?.date
+                ?? null;
+              const dueIso = typeof phaseDue === 'number' ? new Date(phaseDue).toISOString()
+                          : (phaseDue?.date ? new Date(phaseDue.date).toISOString() : (phaseDue || s.dueDate || null));
+              return {
+                submission_ticket: s.ticket,
+                submission_id: String(s.submissionId ?? ''),
+                submission_name: s.submissionName || '',
+                client_name: s.clientName || s.organizationName || '',
+                source_language: srcLoc,
+                target_language: tgtLoc,
+                word_count: Number(it.wordCount) || Number(s.wordCount) || 0,
+                due_date: dueIso,
+                raw: { submission: s, language: it },
+              };
+            })
           : [{
               submission_ticket: s.ticket,
               submission_id: String(s.submissionId ?? ''),
