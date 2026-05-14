@@ -8,6 +8,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const FOLDER = 'AVAILABLE_SUBMISSION';
 
+// Broker envelope evolved: it now returns { status, redirected, contentType, bodyJson, bodyText }.
+// Older code expected { status, body }. We fall back through both shapes so the hub
+// stays compatible with either broker version.
 async function pdProxy(brokerUrl, brokerKey, endpoint, body) {
   const res = await fetch(`${brokerUrl}/proxy/pd`, {
     method: 'POST',
@@ -19,7 +22,7 @@ async function pdProxy(brokerUrl, brokerKey, endpoint, body) {
   try { payload = JSON.parse(text); } catch { payload = { error: text.slice(0, 200) }; }
   if (!res.ok) throw new Error(`Broker proxy HTTP ${res.status}: ${payload?.error || text.slice(0, 200)}`);
   const pdStatus = payload?.status ?? 200;
-  const pdBody = payload?.body ?? payload;
+  const pdBody = payload?.bodyJson ?? payload?.body ?? payload;
   if (pdStatus >= 400) throw new Error(`PD ${endpoint} HTTP ${pdStatus}: ${pdBody?.description || pdBody?.reasons || JSON.stringify(pdBody).slice(0, 200)}`);
   return pdBody;
 }

@@ -17,7 +17,9 @@ async function pdProxy(brokerUrl, brokerKey, endpoint, body) {
   let payload;
   try { payload = JSON.parse(text); } catch { payload = { error: text.slice(0, 200) }; }
   if (!res.ok) throw new Error(`Broker proxy HTTP ${res.status}: ${payload?.error || text.slice(0, 200)}`);
-  return { status: payload?.status ?? 200, body: payload?.body ?? payload };
+  // Broker envelope evolved to { status, bodyJson, bodyText, ... } — keep
+  // backwards compat with older { status, body } shape.
+  return { status: payload?.status ?? 200, body: payload?.bodyJson ?? payload?.body ?? payload };
 }
 
 Deno.serve(async (req) => {

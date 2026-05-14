@@ -53,9 +53,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Broker dönüşü şu yapıda olmalı: { ok, status, body }
-    // body PD'nin ham cevabı (parsed JSON).
-    const pdBody = payload?.body ?? payload;
+    // Broker envelope: newer version returns { status, bodyJson, bodyText, ... },
+    // older returned { ok, status, body }. Support both.
+    const pdBody = payload?.bodyJson ?? payload?.body ?? payload;
     const pdStatus = payload?.status ?? 200;
     const success = payload?.ok === true || (pdStatus >= 200 && pdStatus < 300 && pdBody?.success !== false);
 

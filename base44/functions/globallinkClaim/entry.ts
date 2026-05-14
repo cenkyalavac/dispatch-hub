@@ -29,7 +29,9 @@ async function pdProxy(brokerUrl, brokerKey, endpoint, body) {
   try { payload = JSON.parse(text); } catch { payload = { error: text.slice(0, 200) }; }
   if (!res.ok) throw new Error(`Broker proxy HTTP ${res.status}: ${payload?.error || text.slice(0, 200)}`);
   const pdStatus = payload?.status ?? 200;
-  const pdBody = payload?.body ?? payload;
+  // Broker envelope evolved to { status, bodyJson, bodyText, ... } — keep
+  // backwards compat with older { status, body } shape.
+  const pdBody = payload?.bodyJson ?? payload?.body ?? payload;
   if (pdStatus >= 400) {
     const detail = typeof pdBody === 'string' ? pdBody.slice(0, 200) : JSON.stringify(pdBody).slice(0, 200);
     throw new Error(`PD ${endpoint} HTTP ${pdStatus}: ${detail}`);
