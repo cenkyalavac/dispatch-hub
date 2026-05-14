@@ -128,43 +128,92 @@ Deno.serve(async (req) => {
       }, { status: 409 });
     }
 
-    // 4) Claim — inline 3-step chain. We used to invoke functions/globallinkClaim
-    // via asServiceRole.functions.invoke, but cross-function service invocation
-    // is rejected by the platform (HTTP 403). Inlining keeps the same contract.
+    // 4) Claim — inline 6-step chain (matches broker-verified flow for claim 0122458).
+    //    Cross-function service invoke is rejected by the platform, so we duplicate
+    //    the chain here. Keep this in sync with functions/globallinkClaim.
+    const FOLDER = 'AVAILABLE_SUBMISSION';
+    const TASK_NAME = 'claim.PostEdit';
+    const SUCCESS_NEXT = 'process linguistic.PostEdit';
     let processUuid = null;
     let claimErr = null;
+    let nextTaskName = null;
+
     try {
-      for (let i = 0; i < 3; i++) {
-        const jsonTaskData = i === 0
-          ? { folder: 'AVAILABLE_SUBMISSION', targetLanguages: claimable }
-          : { processUuid, folder: 'AVAILABLE_SUBMISSION', targetLanguages: claimable };
-        const resp = await pdProxy(brokerUrl, brokerKey, 'task.pd', {
-          taskName: 'claim.PostEdit',
+      // Step 1: submissionLanguageSearch.pd
+      await pdProxy(brokerUrl, brokerKey, 'submissionLanguageSearch.pd', {
+        submissionTicket: freshTicket, folder: FOLDER,
+      });
+
+      // Step 2: taskPost.pd (init) — extract processUuid
+      const s2 = await pdProxy(brokerUrl, brokerKey, 'taskPost.pd', {
+        taskName: TASK_NAME,
+        parentTickets: [freshTicket],
+        jsonTaskData: JSON.stringify({ folder: FOLDER, targetLanguages: claimable }),
+      });
+      processUuid = s2?.taskResponse?.model?.processUuid || s2?.model?.processUuid || s2?.processUuid || null;
+      if (!processUuid) {
+        claimErr = 'Claim step 2 (taskPost.pd init) failed: no processUuid in taskResponse.model';
+      } else if (s2?.success === false) {
+        claimErr = `Claim step 2 failed: ${s2.description || s2.desciption || JSON.stringify(s2.reasons || s2).slice(0, 200)}`;
+      }
+
+      // Step 3: taskPost.pd (continue)
+      if (!claimErr) {
+        const s3 = await pdProxy(brokerUrl, brokerKey, 'taskPost.pd', {
+          taskName: TASK_NAME,
           parentTickets: [freshTicket],
-          jsonTaskData: JSON.stringify(jsonTaskData),
+          jsonTaskData: JSON.stringify({ processUuid, folder: FOLDER, targetLanguages: claimable }),
         });
-        if (i === 0) {
-          processUuid = resp?.taskResponse?.model?.processUuid || resp?.processUuid || resp?.uuid || null;
-          if (!processUuid) {
-            claimErr = 'Claim step 1 failed: no processUuid in taskResponse.model';
-            break;
-          }
+        if (s3?.success === false) {
+          claimErr = `Claim step 3 failed: ${s3.description || s3.desciption || JSON.stringify(s3.reasons || s3).slice(0, 200)}`;
         }
-        if (resp?.success === false) {
-          claimErr = `Claim step ${i + 1} failed: ${resp.description || resp.desciption || JSON.stringify(resp.reasons || resp).slice(0, 200)}`;
-          break;
+      }
+
+      // Step 4: submissionAvailableItemsLookup.pd
+      if (!claimErr) {
+        const s4 = await pdProxy(brokerUrl, brokerKey, 'submissionAvailableItemsLookup.pd', {
+          submissionTicket: freshTicket, folder: FOLDER, processUuid, targetLanguages: claimable,
+        });
+        if (s4?.success === false) {
+          claimErr = `Claim step 4 failed: ${s4.description || s4.desciption || JSON.stringify(s4.reasons || s4).slice(0, 200)}`;
+        }
+      }
+
+      // Step 5: task.pd (init)
+      if (!claimErr) {
+        const s5 = await pdProxy(brokerUrl, brokerKey, 'task.pd', {
+          taskName: TASK_NAME,
+          parentTickets: [freshTicket],
+          jsonTaskData: JSON.stringify({ processUuid, folder: FOLDER, targetLanguages: claimable }),
+        });
+        if (s5?.success === false) {
+          claimErr = `Claim step 5 failed: ${s5.description || s5.desciption || JSON.stringify(s5.reasons || s5).slice(0, 200)}`;
+        }
+      }
+
+      // Step 6: task.pd (commit) — success iff nextTaskName === "process linguistic.PostEdit"
+      if (!claimErr) {
+        const s6 = await pdProxy(brokerUrl, brokerKey, 'task.pd', {
+          taskName: TASK_NAME,
+          parentTickets: [freshTicket],
+          jsonTaskData: JSON.stringify({ processUuid, folder: FOLDER, targetLanguages: claimable }),
+        });
+        nextTaskName = s6?.taskResponse?.model?.nextTaskName || s6?.model?.nextTaskName || null;
+        if (nextTaskName !== SUCCESS_NEXT) {
+          claimErr = `Claim step 6 commit did not succeed: nextTaskName="${nextTaskName}" (expected "${SUCCESS_NEXT}")`;
         }
       }
     } catch (e) {
       claimErr = e.message;
     }
+
     if (claimErr) {
       await base44.asServiceRole.entities.GlobalLinkSubmission.update(row.id, {
         status: 'error', claim_error: claimErr,
       });
       return Response.json({ success: false, error: claimErr }, { status: 502 });
     }
-    const claimData = { success: true, process_uuid: processUuid };
+    const claimData = { success: true, process_uuid: processUuid, next_task_name: nextTaskName };
 
     const acceptedAt = new Date().toISOString();
     const sameSubmissionRows = await base44.asServiceRole.entities.GlobalLinkSubmission
@@ -238,6 +287,7 @@ Deno.serve(async (req) => {
       claimed_languages: claimable,
       created,
       process_uuid: claimData.process_uuid,
+      next_task_name: claimData.next_task_name,
     });
   } catch (error) {
     console.error('globallinkApproveOne error:', error.message);
