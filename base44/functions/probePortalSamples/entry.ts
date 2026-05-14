@@ -95,6 +95,16 @@ Deno.serve(async (req) => {
     // Ultra-compact output: ONLY key names + selected interesting values.
     const reqBody = await req.json().catch(() => ({}));
     const which = reqBody.portal || 'all';
+
+    // `full: true` → return the entire raw `out` object so the caller can
+    // download it as a JSON file for offline analysis. No key filtering.
+    if (reqBody.full) {
+      return Response.json({
+        generated_at: new Date().toISOString(),
+        portal_filter: which,
+        data: which === 'all' ? out : { [which]: out[which] },
+      });
+    }
     const sv = out.globallink.submissionView_first || {};
     const sls = out.globallink.submissionLanguageSearch_first || {};
     const compact = {};
