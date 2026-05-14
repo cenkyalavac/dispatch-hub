@@ -214,17 +214,11 @@ Deno.serve(async (req) => {
       created.push({ accepted_task_id: acceptedTask.id, target_language: claimedLocale });
     }
 
-    // Any same-submission rows whose locale was NOT in the claim → mark skipped
-    // (Cenk doesn't onboard them; submission is gone from Available anyway.)
-    for (const r of sameSubmissionRows) {
-      const loc = (r.target_language || '').toLowerCase();
-      if (loc && !claimedSet.has(loc) && r.status === 'available') {
-        await base44.asServiceRole.entities.GlobalLinkSubmission.update(r.id, {
-          status: 'skipped',
-          claim_error: `Not in allowed_language_families; submission claimed for: ${claimable.join(', ')}`,
-        }).catch(() => null);
-      }
-    }
+    // Non-matching locales stay 'available' in the DB so the user keeps full
+    // visibility. They are NOT auto-skipped — user can manually claim them
+    // later (future UI) or extend Portal.allowed_language_families.
+    // Note: TP-side these rows are gone from Available the moment we claim,
+    // so a subsequent poll will clean them up. That's the source of truth.
 
     console.log(`globallinkApproveOne: claimed submission ${submissionIdRaw} for ${claimable.join(', ')}`);
 
