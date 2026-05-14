@@ -15,7 +15,25 @@ const fieldCls = 'w-full h-9 px-3 rounded-md border border-line-1 bg-surface-1 t
 const selectSm = 'h-8 px-2 rounded border border-line-1 bg-surface-1 text-[12px] outline-none';
 
 export default function DynamicRuleForm({ rule, portal, onClose, onSaved }) {
-  const fields = getFieldsForPortal(portal);
+  const portalFields = getFieldsForPortal(portal);
+  // When editing a rule whose conditions reference field names no longer in the
+  // portal vocabulary (e.g. the user removed `workflow_name` from rule_fields
+  // after a rule was created using it), inject those legacy field names so the
+  // dropdown still shows them and the rule remains editable instead of silently
+  // breaking. Legacy fields default to text + standard text operators.
+  const legacyNames = new Set();
+  (rule?.conditions || []).forEach((c) => {
+    if (c?.field && !portalFields.some((f) => f.name === c.field)) legacyNames.add(c.field);
+  });
+  const fields = [
+    ...portalFields,
+    ...Array.from(legacyNames).map((name) => ({
+      name,
+      label: `${name} (legacy)`,
+      type: 'string',
+      operators: ['contains', 'not_contains', 'equals', 'starts_with'],
+    })),
+  ];
   const firstField = fields[0]?.name || 'project_name';
   const firstOp = fields[0]?.operators?.[0] || 'contains';
 

@@ -74,6 +74,9 @@ export default function Connectors() {
   // If the test fails, flip it back OFF so the UI never claims "active but broken".
   // Turning OFF is a pure persist — no test required.
   const handleToggle = async (portal, nextActive) => {
+    // Cancel any in-flight refetch so it can't stomp our optimistic patch.
+    await qc.cancelQueries({ queryKey: ['portals-all'] });
+
     // OFF → persist, no test, done.
     if (!nextActive) {
       optimisticPatch(portal.id, { is_active: false });

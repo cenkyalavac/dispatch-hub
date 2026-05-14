@@ -63,22 +63,37 @@ export default function PortalDetail() {
 
   // Flipping ON auto-runs the test function; failure flips back to OFF so the
   // UI never shows "active but broken". Flipping OFF is a pure persist.
+  //
+  // Important: cancelQueries before the optimistic patch so an in-flight
+  // refetch can't stomp our optimistic state. We invalidate at the end to
+  // sync against the authoritative server write.
   const handleToggle = async (next) => {
-    // Optimistic UI flip
+    await qc.cancelQueries({ queryKey: ['portal-detail', key] });
     qc.setQueryData(['portal-detail', key], (old) => old ? { ...old, is_active: next } : old);
 
-    if (!next) {
-      await base44.entities.Portal.update(portal.id, { is_active: false });
+    const finalize = () => {
       qc.invalidateQueries({ queryKey: ['portal-detail', key] });
       qc.invalidateQueries({ queryKey: ['portals-all'] });
+    };
+
+    if (!next) {
+      try {
+        await base44.entities.Portal.update(portal.id, { is_active: false });
+      } catch (err) {
+        qc.setQueryData(['portal-detail', key], (old) => old ? { ...old, is_active: true } : old);
+        toast.error('Toggle failed: ' + err.message);
+      } finally { finalize(); }
       return;
     }
 
     if (!portal.test_function) {
-      await base44.entities.Portal.update(portal.id, { is_active: true });
-      qc.invalidateQueries({ queryKey: ['portal-detail', key] });
-      qc.invalidateQueries({ queryKey: ['portals-all'] });
-      toast.warning(`${portal.name} enabled — no test function configured.`);
+      try {
+        await base44.entities.Portal.update(portal.id, { is_active: true });
+        toast.warning(`${portal.name} enabled — no test function configured.`);
+      } catch (err) {
+        qc.setQueryData(['portal-detail', key], (old) => old ? { ...old, is_active: false } : old);
+        toast.error('Toggle failed: ' + err.message);
+      } finally { finalize(); }
       return;
     }
 
@@ -96,20 +111,25 @@ export default function PortalDetail() {
         connection_message: `${baseMessage}${jwtDaysTail}`,
         last_checked_at: new Date().toISOString(),
       });
+      if (!success) {
+        qc.setQueryData(['portal-detail', key], (old) => old ? { ...old, is_active: false } : old);
+      }
       if (success) toast.success(`${portal.name}: enabled & connected`);
       else toast.error(`${portal.name}: ${data?.error || 'test failed'} — disabled`);
     } catch (err) {
-      const detail = err.response?.data?.error || err.message;
-      await base44.entities.Portal.update(portal.id, {
-        is_active: false,
-        connection_status: 'error',
-        connection_message: detail,
-        last_checked_at: new Date().toISOString(),
-      });
+      const detail = err.response?.data?.error || err.response?.data?.message || err.message;
+      qc.setQueryData(['portal-detail', key], (old) => old ? { ...old, is_active: false } : old);
+      try {
+        await base44.entities.Portal.update(portal.id, {
+          is_active: false,
+          connection_status: 'error',
+          connection_message: detail,
+          last_checked_at: new Date().toISOString(),
+        });
+      } catch { /* swallow — best-effort persist */ }
       toast.error(`${portal.name}: ${detail} — disabled`);
     } finally {
-      qc.invalidateQueries({ queryKey: ['portal-detail', key] });
-      qc.invalidateQueries({ queryKey: ['portals-all'] });
+      finalize();
     }
   };
 
