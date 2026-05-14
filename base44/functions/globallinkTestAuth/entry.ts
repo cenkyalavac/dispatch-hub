@@ -1,8 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 // Reference: GlobalLink PD vendor API recipe (2026-05-14).
-// The .pd endpoints require Bearer JWT + 3 "secret" headers (ajaxRequest, appVersion, contextUser)
-// and JSON body. JWT is browser-harvested from localStorage and lives ~15 minutes.
+// JWT lives ~15 minutes and is refreshed by an external broker that pushes
+// into the CachedToken entity (key='globallink_jwt'). We therefore read the
+// JWT via the getGlobalLinkToken helper — NOT from env — so the token always
+// reflects the broker's latest push.
 const DEFAULT_BASE = 'https://gle-prod-eu.transperfect.com/PD';
 
 Deno.serve(async (req) => {
@@ -10,21 +12,20 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     await base44.auth.me().catch(() => null);
 
-    const jwt = Deno.env.get('GLOBALLINK_JWT');
-    const contextUser = Deno.env.get('GLOBALLINK_CONTEXT_USER');
-    const base = (Deno.env.get('GLOBALLINK_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
-
-    if (!jwt || !contextUser) {
-      const missing = [
-        !jwt && 'GLOBALLINK_JWT',
-        !contextUser && 'GLOBALLINK_CONTEXT_USER',
-      ].filter(Boolean);
+    // Pull JWT from CachedToken via helper (broker keeps it fresh).
+    const tokenRes = await base44.asServiceRole.functions.invoke('getGlobalLinkToken', {});
+    if (!tokenRes?.data?.token_value) {
       return Response.json({
         success: false,
         configured: false,
-        error: `Missing secret(s): ${missing.join(', ')}. JWT is harvested from the PD UI's localStorage (~15 min lifetime); contextUser is the vendor org name (e.g. 'VerbatoTrans').`,
-      });
+        error: tokenRes?.data?.error
+          || 'No cached GlobalLink JWT. Is the token broker running and pushing? Check /health on the broker service.',
+        hint: "Broker pushes to CachedToken[key=globallink_jwt] every ~60s. If empty, broker hasn't bootstrapped yet.",
+      }, { status: 503 });
     }
+    const jwt = tokenRes.data.token_value;
+    const contextUser = Deno.env.get('GLOBALLINK_CONTEXT_USER') || 'VerbatoTrans';
+    const base = (Deno.env.get('GLOBALLINK_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
 
     // Decode JWT to surface expiry — useful because the token expires fast.
     let jwtInfo = null;
@@ -69,7 +70,7 @@ Deno.serve(async (req) => {
         success: false,
         api_base: base,
         api_status: res.status,
-        error: `GlobalLink API HTTP ${res.status}. ${res.status === 401 ? 'JWT may be expired (15-min lifetime) — refresh GLOBALLINK_JWT.' : ''}`,
+        error: `GlobalLink API HTTP ${res.status}. ${res.status === 401 ? 'Broker token may be stale — check broker /health.' : ''}`,
         response: body,
         jwt: jwtInfo,
       });
@@ -80,8 +81,12 @@ Deno.serve(async (req) => {
       api_base: base,
       api_status: res.status,
       whoami: { Login: contextUser },
-      available_count: body?.totalCount ?? (Array.isArray(body?.items) ? body.items.length : null),
+      // submissionTargetSearch.pd exposes the grand total under gridContentInfo.totalCount.
+      // Fall back to items.length when the field is missing (older PD builds).
+      available_count: body?.gridContentInfo?.totalCount ?? (Array.isArray(body?.items) ? body.items.length : null),
       jwt: jwtInfo,
+      token_source: 'cached_token_entity',
+      token_last_pushed_at: tokenRes.data.last_pushed_at || null,
     });
   } catch (error) {
     return Response.json({ success: false, error: error.message }, { status: 500 });

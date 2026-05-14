@@ -44,17 +44,19 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     await base44.auth.me().catch(() => null);
 
-    const jwt = Deno.env.get('GLOBALLINK_JWT');
-    const contextUser = Deno.env.get('GLOBALLINK_CONTEXT_USER');
-    const base = (Deno.env.get('GLOBALLINK_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
-
-    if (!jwt || !contextUser) {
+    // Pull JWT from CachedToken (broker-managed) instead of env — same source
+    // the other GlobalLink functions use, so a single broker push fixes them all.
+    const tokenRes = await base44.asServiceRole.functions.invoke('getGlobalLinkToken', {});
+    if (!tokenRes?.data?.token_value) {
       return Response.json({
         success: false,
-        error: 'GLOBALLINK_JWT and GLOBALLINK_CONTEXT_USER must be configured.',
+        error: tokenRes?.data?.error || 'No cached GlobalLink JWT — broker not pushing yet.',
         tasks: [],
-      });
+      }, { status: 503 });
     }
+    const jwt = tokenRes.data.token_value;
+    const contextUser = Deno.env.get('GLOBALLINK_CONTEXT_USER') || 'VerbatoTrans';
+    const base = (Deno.env.get('GLOBALLINK_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
 
     const headers = buildHeaders(jwt, contextUser);
     const submissions = await fetchSubmissions(base, headers);
