@@ -1,7 +1,15 @@
 import { useState, useMemo } from 'react';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { CheckCircle2, ChevronDown, ChevronUp, Calendar, Clock, Layers } from 'lucide-react';
 import { EM, fmtNumber } from '@/lib/format';
+
+// Safe date formatter — returns null if the value is missing or invalid,
+// preventing "RangeError: Invalid time value" from date-fns format().
+function safeFormat(value, pattern) {
+  if (!value) return null;
+  const d = new Date(value);
+  return isValid(d) ? format(d, pattern) : null;
+}
 
 function FinanceRowsTable({ rows }) {
   // Compute footer totals once per `rows` reference instead of twice per render.
@@ -91,7 +99,10 @@ function PoNumbersStrip({ rows }) {
 
 export default function TaskDetailCard({ task, accepting, onAccept, selected, onToggleSelect }) {
   const [expanded, setExpanded] = useState(false);
-  const isOverdue = task.due_date && new Date(task.due_date) < new Date();
+  const dueDateStr = safeFormat(task.due_date, 'dd MMM HH:mm');
+  const createdAtStr = safeFormat(task.created_at, 'dd MMM');
+  const updatedAtStr = safeFormat(task.updated_at, 'dd MMM HH:mm');
+  const isOverdue = dueDateStr && new Date(task.due_date) < new Date();
   const selectable = typeof onToggleSelect === 'function';
 
   return (
@@ -145,16 +156,16 @@ export default function TaskDetailCard({ task, accepting, onAccept, selected, on
                 )}
               </span>
             )}
-            {task.due_date && (
+            {dueDateStr && (
               <span className={`inline-flex items-center gap-1 ${isOverdue ? 'text-danger font-medium' : 'text-ink-3'}`}>
                 <Calendar className="w-3 h-3" />
-                {format(new Date(task.due_date), 'dd MMM HH:mm')}
+                {dueDateStr}
                 {isOverdue && <span className="italic-editorial">overdue</span>}
               </span>
             )}
-            {task.created_at && (
+            {createdAtStr && (
               <span className="text-ink-3 inline-flex items-center gap-1">
-                <Clock className="w-3 h-3" /> {format(new Date(task.created_at), 'dd MMM')}
+                <Clock className="w-3 h-3" /> {createdAtStr}
               </span>
             )}
           </div>
@@ -191,7 +202,7 @@ export default function TaskDetailCard({ task, accepting, onAccept, selected, on
             {task.project_id && <div><p className="text-[10px] uppercase tracking-wider text-ink-3">Project ID</p><p className="font-mono mt-0.5 text-ink-1">{task.project_id}</p></div>}
             {task.project_manager_id && <div><p className="text-[10px] uppercase tracking-wider text-ink-3">PM ID</p><p className="font-mono mt-0.5 text-ink-1">{task.project_manager_id}</p></div>}
             {task.job_id && <div><p className="text-[10px] uppercase tracking-wider text-ink-3">Job ID</p><p className="font-mono mt-0.5 text-ink-1">{task.job_id}</p></div>}
-            {task.updated_at && <div><p className="text-[10px] uppercase tracking-wider text-ink-3">Updated</p><p className="mt-0.5 text-ink-1 tabular-nums">{format(new Date(task.updated_at), 'dd MMM HH:mm')}</p></div>}
+            {updatedAtStr && <div><p className="text-[10px] uppercase tracking-wider text-ink-3">Updated</p><p className="mt-0.5 text-ink-1 tabular-nums">{updatedAtStr}</p></div>}
           </div>
 
           {task.job_name && (
