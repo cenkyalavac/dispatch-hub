@@ -66,13 +66,29 @@ Deno.serve(async (req) => {
     try { body = JSON.parse(text); } catch { body = text.slice(0, 400); }
 
     if (!res.ok) {
+      // Surface the actual PD error message — 401s typically include a
+      // body like {"errorCode":"...","errorMessage":"..."} that explains
+      // whether it's a stale token vs a contextUser mismatch vs scope issue.
+      const detail =
+        (body && typeof body === 'object' && (body.errorMessage || body.message || body.error)) ||
+        (typeof body === 'string' && body.length > 0 ? body : null);
+      const reason = res.status === 401
+        ? (detail
+            ? `PD says: ${detail}`
+            : 'PD rejected the JWT. Likely causes: (a) broker pushed a stale token, (b) contextUser mismatch — JWT sub is not authorized for this vendor org.')
+        : (detail || 'PD rejected the request.');
       return Response.json({
         success: false,
         api_base: base,
         api_status: res.status,
-        error: `GlobalLink API HTTP ${res.status}. ${res.status === 401 ? 'Broker token may be stale — check broker /health.' : ''}`,
+        error: `GlobalLink API HTTP ${res.status}. ${reason}`,
         response: body,
         jwt: jwtInfo,
+        debug: {
+          context_user_used: contextUser,
+          token_last_pushed_at: tokenRes.data.last_pushed_at || null,
+          token_expires_at: tokenRes.data.expires_at || null,
+        },
       });
     }
 
