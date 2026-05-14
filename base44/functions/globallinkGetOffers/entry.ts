@@ -6,8 +6,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const DEFAULT_BASE = 'https://gle-prod-eu.transperfect.com/PD';
 const FOLDER = 'AVAILABLE_SUBMISSION';
 
-function buildHeaders(jwt, contextUser) {
-  return {
+// PD .pd endpoints require BOTH the Bearer JWT and a `csrfToken` header.
+// Broker pushes both into CachedToken (keys: globallink_jwt, globallink_csrf).
+function buildHeaders(jwt, contextUser, csrf) {
+  const h = {
     'Authorization': `Bearer ${jwt}`,
     'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
@@ -15,6 +17,8 @@ function buildHeaders(jwt, contextUser) {
     'appVersion': '11.5.0',
     'contextUser': contextUser,
   };
+  if (csrf) h['csrfToken'] = csrf;
+  return h;
 }
 
 async function fetchSubmissions(base, headers) {
@@ -55,10 +59,11 @@ Deno.serve(async (req) => {
       }, { status: 503 });
     }
     const jwt = tokenRes.data.token_value;
+    const csrf = tokenRes.data.csrf_value || null;
     const contextUser = Deno.env.get('GLOBALLINK_CONTEXT_USER') || 'VerbatoTrans';
     const base = (Deno.env.get('GLOBALLINK_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
 
-    const headers = buildHeaders(jwt, contextUser);
+    const headers = buildHeaders(jwt, contextUser, csrf);
     const submissions = await fetchSubmissions(base, headers);
 
     // Expand each submission into its language pairs. Run in small parallel batches to

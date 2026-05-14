@@ -64,9 +64,11 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error: tokenRes?.data?.error || 'No cached GlobalLink JWT available' }, { status: 503 });
     }
     const jwt = tokenRes.data.token_value;
+    const csrf = tokenRes.data.csrf_value || null;
     const contextUser = Deno.env.get('GLOBALLINK_CONTEXT_USER') || 'VerbatoTrans';
     const base = (Deno.env.get('GLOBALLINK_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
 
+    // PD .pd endpoints require BOTH Bearer JWT and `csrfToken` header.
     const headers = {
       'Authorization': `Bearer ${jwt}`,
       'Content-Type': 'application/json',
@@ -75,6 +77,7 @@ Deno.serve(async (req) => {
       'appVersion': '11.5.0',
       'contextUser': contextUser,
     };
+    if (csrf) headers['csrfToken'] = csrf;
 
     let processUuid = null;
     let finalResponse = null;

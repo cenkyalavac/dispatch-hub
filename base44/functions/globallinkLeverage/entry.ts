@@ -27,20 +27,24 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error: tokenRes?.data?.error || 'No cached GlobalLink JWT available' }, { status: 503 });
     }
     const jwt = tokenRes.data.token_value;
+    const csrf = tokenRes.data.csrf_value || null;
 
     const contextUser = Deno.env.get('GLOBALLINK_CONTEXT_USER') || 'VerbatoTrans';
     const base = (Deno.env.get('GLOBALLINK_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
 
+    // PD .pd endpoints require BOTH Bearer JWT and `csrfToken` header.
+    const reqHeaders = {
+      'Authorization': `Bearer ${jwt}`,
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+      'ajaxRequest': 'true',
+      'appVersion': '11.5.0',
+      'contextUser': contextUser,
+    };
+    if (csrf) reqHeaders['csrfToken'] = csrf;
     const res = await fetch(`${base}/submissionView.pd`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${jwt}`,
-        'Content-Type': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-        'ajaxRequest': 'true',
-        'appVersion': '11.5.0',
-        'contextUser': contextUser,
-      },
+      headers: reqHeaders,
       body: JSON.stringify({
         classifier: 'Batch1',
         folder: 'AVAILABLE_SUBMISSION',

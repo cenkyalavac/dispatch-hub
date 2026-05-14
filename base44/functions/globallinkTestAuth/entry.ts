@@ -24,6 +24,7 @@ Deno.serve(async (req) => {
       }, { status: 503 });
     }
     const jwt = tokenRes.data.token_value;
+    const csrf = tokenRes.data.csrf_value || null;
     const contextUser = Deno.env.get('GLOBALLINK_CONTEXT_USER') || 'VerbatoTrans';
     const base = (Deno.env.get('GLOBALLINK_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
 
@@ -42,16 +43,20 @@ Deno.serve(async (req) => {
     } catch {}
 
     // Lightweight probe: submissionTargetSearch.pd with size=1 — the same call used to list Available.
+    // PD requires BOTH Authorization: Bearer JWT AND a `csrfToken` header on .pd endpoints.
+    // The broker pushes the CSRF alongside the JWT into CachedToken[key=globallink_csrf].
+    const probeHeaders = {
+      'Authorization': `Bearer ${jwt}`,
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+      'ajaxRequest': 'true',
+      'appVersion': '11.5.0',
+      'contextUser': contextUser,
+    };
+    if (csrf) probeHeaders['csrfToken'] = csrf;
     const res = await fetch(`${base}/submissionTargetSearch.pd`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${jwt}`,
-        'Content-Type': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-        'ajaxRequest': 'true',
-        'appVersion': '11.5.0',
-        'contextUser': contextUser,
-      },
+      headers: probeHeaders,
       body: JSON.stringify({
         folder: 'AVAILABLE_SUBMISSION',
         entityTickets: [],
@@ -64,6 +69,25 @@ Deno.serve(async (req) => {
     const text = await res.text();
     let body;
     try { body = JSON.parse(text); } catch { body = text.slice(0, 400); }
+
+    // Diagnostic logging — PD 401s often come back with an EMPTY body and
+    // the real reason lives in headers (WWW-Authenticate) or response status text.
+    // Capture everything so we can see the actual rejection cause from runtime logs.
+    if (!res.ok) {
+      const headerDump = {};
+      res.headers.forEach((v, k) => { headerDump[k] = v; });
+      console.log('[globallinkTestAuth] PD rejected request', {
+        status: res.status,
+        statusText: res.statusText,
+        headers: headerDump,
+        body_raw: text.slice(0, 800),
+        body_length: text.length,
+        context_user: contextUser,
+        api_base: base,
+        jwt_sub: jwtInfo?.sub,
+        jwt_expires_in_minutes: jwtInfo?.expires_in_minutes,
+      });
+    }
 
     if (!res.ok) {
       // Surface the actual PD error message — 401s typically include a
@@ -88,6 +112,8 @@ Deno.serve(async (req) => {
           context_user_used: contextUser,
           token_last_pushed_at: tokenRes.data.last_pushed_at || null,
           token_expires_at: tokenRes.data.expires_at || null,
+          csrf_present: !!csrf,
+          csrf_expires_at: tokenRes.data.csrf_expires_at || null,
         },
       });
     }

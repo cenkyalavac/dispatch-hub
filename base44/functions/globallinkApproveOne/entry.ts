@@ -32,8 +32,9 @@ function filterLocalesByFamilies(locales, families) {
   return locales.filter((loc) => families.some((fam) => localeMatchesFamily(loc, fam)));
 }
 
-function buildHeaders(jwt, contextUser) {
-  return {
+// PD .pd endpoints require BOTH Bearer JWT and `csrfToken` header.
+function buildHeaders(jwt, contextUser, csrf) {
+  const h = {
     'Authorization': `Bearer ${jwt}`,
     'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
@@ -41,6 +42,8 @@ function buildHeaders(jwt, contextUser) {
     'appVersion': '11.5.0',
     'contextUser': contextUser,
   };
+  if (csrf) h['csrfToken'] = csrf;
+  return h;
 }
 
 Deno.serve(async (req) => {
@@ -69,9 +72,10 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error: tokenRes?.data?.error || 'No cached GlobalLink JWT available' }, { status: 503 });
     }
     const jwt = tokenRes.data.token_value;
+    const csrf = tokenRes.data.csrf_value || null;
     const contextUser = Deno.env.get('GLOBALLINK_CONTEXT_USER') || 'VerbatoTrans';
     const base = (Deno.env.get('GLOBALLINK_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
-    const headers = buildHeaders(jwt, contextUser);
+    const headers = buildHeaders(jwt, contextUser, csrf);
 
     // 1) FRESH TICKET — cached/stale tickets silently no-op. Match by submissionId.
     const submissionIdRaw = row.submission_id;
