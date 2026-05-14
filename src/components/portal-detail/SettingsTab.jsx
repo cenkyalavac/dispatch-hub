@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import FormField from '@/components/ui/FormField';
 import PortalDropboxFields from '@/components/connectors/PortalDropboxFields';
 import PortalSheetsFields from '@/components/connectors/PortalSheetsFields';
+import PortalSheetColumns from '@/components/connectors/PortalSheetColumns';
 import { DEFAULT_FIELDS } from '@/lib/portal-fields';
 
 // All editable per-portal config in one place: identity, function bindings,
@@ -261,6 +262,7 @@ export default function SettingsTab({ portal, onDeleted }) {
           tabName={form.sheets_tab_name}
           onChange={(k, v) => set(k, v)}
         />
+        <PortalSheetColumns portal={portal} />
       </section>
 
       {/* Save bar */}
