@@ -148,35 +148,50 @@ Deno.serve(async (req) => {
         submissionTicket: freshTicket, folder: FOLDER,
       });
 
-      // Step 2: taskPost.pd (init) — extract processUuid
+      // Step 2: taskPost.pd (init) — extract processUuid.
+      // Per docs/globallink-api.md §6.6, taskPost.pd returns processUuid under
+      // taskInfos[0].model — NOT taskResponse.model (that one's for task.pd).
+      // jsonTaskData here is minimal ({folder}) per §7.1 — targetLanguages
+      // only appears starting at step 5 (the real task.pd).
       const s2 = await pdProxy(brokerUrl, brokerKey, 'taskPost.pd', {
         taskName: TASK_NAME,
         parentTickets: [freshTicket],
-        jsonTaskData: JSON.stringify({ folder: FOLDER, targetLanguages: claimable }),
+        jsonTaskData: JSON.stringify({ folder: FOLDER }),
       });
-      processUuid = s2?.taskResponse?.model?.processUuid || s2?.model?.processUuid || s2?.processUuid || null;
+      processUuid = s2?.taskInfos?.[0]?.model?.processUuid
+                 || s2?.taskResponse?.model?.processUuid
+                 || s2?.model?.processUuid
+                 || s2?.processUuid
+                 || null;
       if (!processUuid) {
-        claimErr = 'Claim step 2 (taskPost.pd init) failed: no processUuid in taskResponse.model';
+        claimErr = `Claim step 2 (taskPost.pd init) failed: no processUuid in response. body=${JSON.stringify(s2).slice(0, 300)}`;
       } else if (s2?.success === false) {
         claimErr = `Claim step 2 failed: ${s2.description || s2.desciption || JSON.stringify(s2.reasons || s2).slice(0, 200)}`;
       }
 
-      // Step 3: taskPost.pd (continue)
+      // Step 3: taskPost.pd (dialog continue) — per §7.1, body is just
+      // {processUuid, folder} — no targetLanguages yet.
       if (!claimErr) {
         const s3 = await pdProxy(brokerUrl, brokerKey, 'taskPost.pd', {
           taskName: TASK_NAME,
           parentTickets: [freshTicket],
-          jsonTaskData: JSON.stringify({ processUuid, folder: FOLDER, targetLanguages: claimable }),
+          jsonTaskData: JSON.stringify({ processUuid, folder: FOLDER }),
         });
         if (s3?.success === false) {
           claimErr = `Claim step 3 failed: ${s3.description || s3.desciption || JSON.stringify(s3.reasons || s3).slice(0, 200)}`;
         }
       }
 
-      // Step 4: submissionAvailableItemsLookup.pd
+      // Step 4: submissionAvailableItemsLookup.pd — per §6.4 the body must
+      // include taskName + phaseName (NOT processUuid / targetLanguages).
       if (!claimErr) {
         const s4 = await pdProxy(brokerUrl, brokerKey, 'submissionAvailableItemsLookup.pd', {
-          submissionTicket: freshTicket, folder: FOLDER, processUuid, targetLanguages: claimable,
+          folder: FOLDER,
+          submissionTicket: freshTicket,
+          taskName: TASK_NAME,
+          phaseName: 'PostEdit',
+          index: 0,
+          size: 50,
         });
         if (s4?.success === false) {
           claimErr = `Claim step 4 failed: ${s4.description || s4.desciption || JSON.stringify(s4.reasons || s4).slice(0, 200)}`;

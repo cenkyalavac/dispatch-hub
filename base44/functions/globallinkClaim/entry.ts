@@ -52,8 +52,13 @@ async function pdProxy(brokerUrl, brokerKey, endpoint, body) {
   return pdBody;
 }
 
+// PD's two endpoints return processUuid in DIFFERENT envelopes:
+//   - taskPost.pd → resp.taskInfos[0].model.processUuid  (dialog state init)
+//   - task.pd     → resp.taskResponse.model.processUuid  (real commit init)
+// We probe both shapes so callers don't need to know which one they're on.
 function extractProcessUuid(resp) {
-  return resp?.taskResponse?.model?.processUuid
+  return resp?.taskInfos?.[0]?.model?.processUuid
+      || resp?.taskResponse?.model?.processUuid
       || resp?.model?.processUuid
       || resp?.processUuid
       || null;
@@ -74,11 +79,12 @@ export async function runClaimChain({ brokerUrl, brokerKey, submissionTicket, ta
     return { success: false, step: 1, error: 'submissionLanguageSearch failed', tp_response: s1, steps };
   }
 
-  // Step 2: taskPost.pd (init)
+  // Step 2: taskPost.pd (dialog init) — per §6.6/§7.1, processUuid lives at
+  // taskInfos[0].model and the body is minimal ({folder} only — no targetLanguages).
   const s2 = await pdProxy(brokerUrl, brokerKey, 'taskPost.pd', {
     taskName: TASK_NAME,
     parentTickets: [submissionTicket],
-    jsonTaskData: JSON.stringify({ folder: FOLDER, targetLanguages }),
+    jsonTaskData: JSON.stringify({ folder: FOLDER }),
   });
   processUuid = extractProcessUuid(s2);
   steps.push({ step: 2, endpoint: 'taskPost.pd (init)', processUuid, success: s2?.success !== false });
@@ -89,23 +95,26 @@ export async function runClaimChain({ brokerUrl, brokerKey, submissionTicket, ta
     return { success: false, step: 2, error: 'taskPost.pd init failed', tp_response: s2, steps };
   }
 
-  // Step 3: taskPost.pd (continue) — same call, threaded processUuid
+  // Step 3: taskPost.pd (dialog continue) — body is {processUuid, folder} only.
   const s3 = await pdProxy(brokerUrl, brokerKey, 'taskPost.pd', {
     taskName: TASK_NAME,
     parentTickets: [submissionTicket],
-    jsonTaskData: JSON.stringify({ processUuid, folder: FOLDER, targetLanguages }),
+    jsonTaskData: JSON.stringify({ processUuid, folder: FOLDER }),
   });
   steps.push({ step: 3, endpoint: 'taskPost.pd (continue)', success: s3?.success !== false });
   if (s3?.success === false) {
     return { success: false, step: 3, error: 'taskPost.pd continue failed', tp_response: s3, steps };
   }
 
-  // Step 4: submissionAvailableItemsLookup.pd
+  // Step 4: submissionAvailableItemsLookup.pd — per §6.4 body needs
+  // taskName + phaseName (NOT processUuid / targetLanguages).
   const s4 = await pdProxy(brokerUrl, brokerKey, 'submissionAvailableItemsLookup.pd', {
-    submissionTicket,
     folder: FOLDER,
-    processUuid,
-    targetLanguages,
+    submissionTicket,
+    taskName: TASK_NAME,
+    phaseName: 'PostEdit',
+    index: 0,
+    size: 50,
   });
   steps.push({ step: 4, endpoint: 'submissionAvailableItemsLookup.pd', success: s4?.success !== false });
   if (s4?.success === false) {
