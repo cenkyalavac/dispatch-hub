@@ -9,9 +9,20 @@ const SUB_NAVS_API = [
   { to: '/mappings', label: 'Field mappings' },
 ];
 
+// Pending sub-nav: All = the unified /pending page (Symfonie+Junction via
+// fetch_function). GlobalLink has its own entity-backed table — this link
+// jumps straight to it so the user doesn't need to remember the URL.
+const SUB_NAVS_PENDING = [
+  { to: '/pending',             label: 'All portals', end: true },
+  { to: '/globallink/pending',  label: 'GlobalLink' },
+];
+
 function resolveSubNav(pathname) {
   if (pathname.startsWith('/api') || pathname.startsWith('/mappings')) {
     return SUB_NAVS_API;
+  }
+  if (pathname === '/pending' || pathname.startsWith('/globallink/pending')) {
+    return SUB_NAVS_PENDING;
   }
   return [];
 }

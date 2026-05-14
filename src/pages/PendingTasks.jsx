@@ -13,6 +13,10 @@ import ErrorState from '@/components/ui/ErrorState';
 import { fmtNumber, EM } from '@/lib/format';
 import { downloadCsv } from '@/lib/csv';
 
+// GlobalLink portal key — used to force-include it in the selector even though
+// it has no fetch_function (its data is entity-backed from the cron poller).
+const GLOBALLINK_KEY = 'globallink';
+
 const DEFAULT_FILTERS = {
   account: 'all',
   langPair: 'all',
@@ -201,10 +205,17 @@ export default function PendingTasks() {
     return { totalWords: w, totalMaxUsd: max, totalMinUsd: min };
   }, [filtered]);
 
-  const portalOptions = useMemo(
-    () => portals.filter(p => p.is_active && p.fetch_function),
-    [portals]
-  );
+  // GlobalLink has no fetch_function (its data comes from the GlobalLinkSubmission
+  // entity populated by the cron poller), so the generic filter would hide it.
+  // Force-include it whenever a GlobalLink portal row exists and is active.
+  const portalOptions = useMemo(() => {
+    const generic = portals.filter(p => p.is_active && p.fetch_function);
+    const gl = portals.find(p => p.key === GLOBALLINK_KEY && p.is_active);
+    if (gl && !generic.some(p => p.key === GLOBALLINK_KEY)) {
+      return [...generic, gl];
+    }
+    return generic;
+  }, [portals]);
 
   // Pick the first available portal once the list arrives — never leave the
   // user staring at an empty selector on first load.

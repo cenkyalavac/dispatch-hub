@@ -3,12 +3,15 @@ import { NavLink, useLocation, Link } from 'react-router-dom';
 import { Command, Hexagon, Settings } from 'lucide-react';
 import CommandPalette from './CommandPalette';
 
+// Pending tab is the daily-driver — its sub-nav (rendered in AppLayout) shows
+// per-portal shortcuts including GlobalLink, so the user never has to type a
+// URL to reach the leverage hub. Activity (/tasks) and Probe (/probe) are
+// diagnostic surfaces accessible via the Command Palette (⌘K).
 const TABS = [
   { to: '/',          label: 'Overview',   matches: ['/'] },
-  { to: '/pending',   label: 'Pending',    matches: ['/pending'] },
+  { to: '/pending',   label: 'Pending',    matches: ['/pending', '/globallink/pending'] },
   { to: '/issues',    label: 'Issues',     matches: ['/issues'] },
   { to: '/history',   label: 'History',    matches: ['/history'] },
-  { to: '/tasks',     label: 'Activity',   matches: ['/tasks'] },
   { to: '/portals',   label: 'Connectors', matches: ['/portals', '/rules'] },
   { to: '/api',       label: 'API',        matches: ['/api', '/mappings'] },
 ];
