@@ -55,7 +55,25 @@ export default function Connectors() {
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, is_active }) => base44.entities.Portal.update(id, { is_active }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['portals-all'] }),
+    // Optimistic update — flip the switch in the UI immediately so the user
+    // sees the new state without waiting for the server roundtrip.
+    onMutate: async ({ id, is_active }) => {
+      await qc.cancelQueries({ queryKey: ['portals-all'] });
+      const previous = qc.getQueryData(['portals-all']);
+      qc.setQueryData(['portals-all'], (old) =>
+        (old || []).map((p) => (p.id === id ? { ...p, is_active } : p))
+      );
+      return { previous };
+    },
+    onError: (err, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(['portals-all'], ctx.previous);
+      toast.error('Toggle failed: ' + err.message);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['portals-all'] });
+      qc.invalidateQueries({ queryKey: ['portals'] });
+      qc.invalidateQueries({ queryKey: ['portals-sidebar'] });
+    },
   });
 
   const deleteMutation = useMutation({

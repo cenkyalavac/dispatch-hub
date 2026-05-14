@@ -16,6 +16,7 @@ import History from './pages/History.jsx';
 import ApiAccess from './pages/ApiAccess.jsx';
 import Mappings from './pages/Mappings.jsx';
 import Issues from './pages/Issues.jsx';
+import GlobalLinkPending from './pages/GlobalLinkPending.jsx';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -54,6 +55,7 @@ const AuthenticatedApp = () => {
         <Route path="/api" element={<ApiAccess />} />
         <Route path="/mappings" element={<Mappings />} />
         <Route path="/issues" element={<Issues />} />
+        <Route path="/globallink/pending" element={<GlobalLinkPending />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />

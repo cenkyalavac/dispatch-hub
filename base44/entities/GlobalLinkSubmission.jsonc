@@ -1,0 +1,74 @@
+{
+  "name": "GlobalLinkSubmission",
+  "type": "object",
+  "description": "Available submissions polled from GlobalLink PD. Lifecycle: available \u2192 claimed | skipped. Acts as the staging table before AcceptedTask/Project is created on claim.",
+  "properties": {
+    "submission_ticket": {
+      "type": "string",
+      "description": "GlobalLink submission ticket (primary identity key from PD)."
+    },
+    "submission_id": {
+      "type": "string",
+      "description": "Human-readable submission ID shown in the PD UI."
+    },
+    "submission_name": {
+      "type": "string"
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "source_language": {
+      "type": "string"
+    },
+    "target_language": {
+      "type": "string",
+      "description": "Single target locale this row represents (e.g. tr-TR). One submission can spawn multiple rows."
+    },
+    "word_count": {
+      "type": "number"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "available",
+        "claimed",
+        "skipped",
+        "error"
+      ],
+      "default": "available"
+    },
+    "leverage": {
+      "type": "object",
+      "description": "12-band TM breakdown from submissionView.pd \u2192 additionalData.cumulativeTmStatistics. Populated lazily when user opens detail or clicks Approve.",
+      "additionalProperties": true
+    },
+    "leverage_fetched_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "claimed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "claim_error": {
+      "type": "string"
+    },
+    "accepted_task_id": {
+      "type": "string",
+      "description": "FK to AcceptedTask once claim succeeds."
+    },
+    "raw": {
+      "type": "object",
+      "description": "Raw submission payload as received from PD (debug).",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "submission_ticket",
+    "target_language"
+  ]
+}
