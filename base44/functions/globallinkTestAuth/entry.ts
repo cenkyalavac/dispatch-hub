@@ -74,18 +74,21 @@ Deno.serve(async (req) => {
     // the real reason lives in headers (WWW-Authenticate) or response status text.
     // Capture everything so we can see the actual rejection cause from runtime logs.
     if (!res.ok) {
-      const headerDump = {};
-      res.headers.forEach((v, k) => { headerDump[k] = v; });
-      console.log('[globallinkTestAuth] PD rejected request', {
+      // Body FIRST — PD's rejection reason. CSP header dump is huge (~2KB) and
+      // truncates downstream logs, so we surface the body on its own line and
+      // skip headers entirely (only WWW-Authenticate matters and we extract it).
+      const wwwAuth = res.headers.get('www-authenticate') || null;
+      console.log('[globallinkTestAuth] PD body', text.slice(0, 1000));
+      console.log('[globallinkTestAuth] PD meta', {
         status: res.status,
         statusText: res.statusText,
-        headers: headerDump,
-        body_raw: text.slice(0, 800),
         body_length: text.length,
+        www_authenticate: wwwAuth,
         context_user: contextUser,
         api_base: base,
         jwt_sub: jwtInfo?.sub,
         jwt_expires_in_minutes: jwtInfo?.expires_in_minutes,
+        csrf_present: !!csrf,
       });
     }
 
