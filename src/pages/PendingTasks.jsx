@@ -43,7 +43,10 @@ const pendingRow = (t) => [
 
 export default function PendingTasks() {
   const [search, setSearch] = useState('');
-  const [selectedPortal, setSelectedPortal] = useState('symfonie');
+  // Don't hard-code 'symfonie' — when the user later picks GlobalLink we need
+  // to make sure we never fall back to symfonieGetTasks. Initialize empty and
+  // let the first effect below pick the first active portal with a fetch_function.
+  const [selectedPortal, setSelectedPortal] = useState('');
   const [acceptingIds, setAcceptingIds] = useState(new Set());
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -55,8 +58,10 @@ export default function PendingTasks() {
   });
 
   const activePortal = portals.find(p => p.key === selectedPortal);
-  const fetchFn = activePortal?.fetch_function || 'symfonieGetTasks';
-  const acceptFn = activePortal?.accept_function || 'symfonieAcceptTask';
+  // No silent fallback to Symfonie — if a portal is missing fetch/accept_function
+  // that is a config error that should surface, not silently route to Symfonie.
+  const fetchFn = activePortal?.fetch_function || null;
+  const acceptFn = activePortal?.accept_function || null;
   const rejectFn = activePortal?.reject_function || null;
 
   // Rate-limit dostu: 5 dk cache, otomatik refetch yok, 503 olunca cache'i koru.
@@ -74,7 +79,7 @@ export default function PendingTasks() {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     retry: false,
-    enabled: !!activePortal,
+    enabled: !!activePortal && !!fetchFn,
   });
 
   const tasks = data?.tasks || [];
@@ -201,6 +206,12 @@ export default function PendingTasks() {
     [portals]
   );
 
+  // Pick the first available portal once the list arrives — never leave the
+  // user staring at an empty selector on first load.
+  if (!selectedPortal && portalOptions.length > 0) {
+    setSelectedPortal(portalOptions[0].key);
+  }
+
   return (
     <div className="px-8 py-7 max-w-6xl">
       <header className="flex items-end justify-between mb-7 flex-wrap gap-4">
@@ -216,7 +227,7 @@ export default function PendingTasks() {
             onChange={(e) => { setSelectedPortal(e.target.value); setFilters(DEFAULT_FILTERS); }}
             className="h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
           >
-            {portalOptions.length === 0 && <option value="symfonie">Symfonie</option>}
+            {portalOptions.length === 0 && <option value="">No active portal</option>}
             {portalOptions.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
           </select>
           <button
