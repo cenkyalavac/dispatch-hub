@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Activity, ListChecks, ArrowLeftRight, Split, Settings, BarChart3 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import PortalDetailHeader from '@/components/portal-detail/PortalDetailHeader';
@@ -60,20 +61,57 @@ export default function PortalDetail() {
     enabled: !!portal,
   });
 
-  const toggleActive = useMutation({
-    mutationFn: (next) => base44.entities.Portal.update(portal.id, { is_active: next }),
-    onMutate: async (next) => {
-      await qc.cancelQueries({ queryKey: ['portal-detail', key] });
-      const prev = qc.getQueryData(['portal-detail', key]);
-      qc.setQueryData(['portal-detail', key], (old) => old ? { ...old, is_active: next } : old);
-      return { prev };
-    },
-    onError: (_e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(['portal-detail', key], ctx.prev); },
-    onSettled: () => {
+  // Flipping ON auto-runs the test function; failure flips back to OFF so the
+  // UI never shows "active but broken". Flipping OFF is a pure persist.
+  const handleToggle = async (next) => {
+    // Optimistic UI flip
+    qc.setQueryData(['portal-detail', key], (old) => old ? { ...old, is_active: next } : old);
+
+    if (!next) {
+      await base44.entities.Portal.update(portal.id, { is_active: false });
       qc.invalidateQueries({ queryKey: ['portal-detail', key] });
       qc.invalidateQueries({ queryKey: ['portals-all'] });
-    },
-  });
+      return;
+    }
+
+    if (!portal.test_function) {
+      await base44.entities.Portal.update(portal.id, { is_active: true });
+      qc.invalidateQueries({ queryKey: ['portal-detail', key] });
+      qc.invalidateQueries({ queryKey: ['portals-all'] });
+      toast.warning(`${portal.name} enabled — no test function configured.`);
+      return;
+    }
+
+    try {
+      const res = await base44.functions.invoke(portal.test_function, {});
+      const data = res.data || {};
+      const success = !!data.success;
+      const jwtDaysTail = (typeof data?.jwt?.expires_in_days === 'number') ? ` [jwt:${data.jwt.expires_in_days}]` : '';
+      const baseMessage = success
+        ? (data.whoami?.Login || data.jwt?.sub ? `Authenticated as ${data.whoami?.Login || data.jwt?.sub}` : 'Connection successful')
+        : (data?.error || 'Connection failed');
+      await base44.entities.Portal.update(portal.id, {
+        is_active: success,
+        connection_status: success ? 'connected' : 'error',
+        connection_message: `${baseMessage}${jwtDaysTail}`,
+        last_checked_at: new Date().toISOString(),
+      });
+      if (success) toast.success(`${portal.name}: enabled & connected`);
+      else toast.error(`${portal.name}: ${data?.error || 'test failed'} — disabled`);
+    } catch (err) {
+      const detail = err.response?.data?.error || err.message;
+      await base44.entities.Portal.update(portal.id, {
+        is_active: false,
+        connection_status: 'error',
+        connection_message: detail,
+        last_checked_at: new Date().toISOString(),
+      });
+      toast.error(`${portal.name}: ${detail} — disabled`);
+    } finally {
+      qc.invalidateQueries({ queryKey: ['portal-detail', key] });
+      qc.invalidateQueries({ queryKey: ['portals-all'] });
+    }
+  };
 
   const tabs = useMemo(() => ([
     { key: 'overview', label: 'Overview',  icon: BarChart3 },
@@ -110,7 +148,7 @@ export default function PortalDetail() {
 
   return (
     <div className="px-8 py-7 max-w-6xl">
-      <PortalDetailHeader portal={portal} onToggleActive={(v) => toggleActive.mutate(v)} />
+      <PortalDetailHeader portal={portal} onToggleActive={handleToggle} />
       <PortalTabs tabs={tabs} active={tab} onChange={setTab} />
 
       {tab === 'overview' && <OverviewTab portal={portal} />}

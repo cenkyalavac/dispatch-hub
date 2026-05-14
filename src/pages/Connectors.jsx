@@ -76,6 +76,56 @@ export default function Connectors() {
     },
   });
 
+  // When the user flips a portal ON, immediately verify the connection.
+  // If the test fails, flip it back OFF so the UI never claims "active but broken".
+  // Turning OFF is a pure persist — no test required.
+  const handleToggle = async (portal, nextActive) => {
+    if (!nextActive) {
+      toggleMutation.mutate({ id: portal.id, is_active: false });
+      return;
+    }
+    // Optimistic flip ON
+    toggleMutation.mutate({ id: portal.id, is_active: true });
+
+    if (!portal.test_function) {
+      toast.warning(`${portal.name} enabled — no test function configured.`);
+      return;
+    }
+    setTestingKey(portal.key);
+    try {
+      const res = await base44.functions.invoke(portal.test_function, {});
+      const data = res.data || {};
+      const success = !!data.success;
+      const jwtDaysTail = (typeof data?.jwt?.expires_in_days === 'number') ? ` [jwt:${data.jwt.expires_in_days}]` : '';
+      const baseMessage = success
+        ? (data.whoami?.Login || data.jwt?.sub ? `Authenticated as ${data.whoami?.Login || data.jwt?.sub}` : 'Connection successful')
+        : (data?.error || 'Connection failed');
+      await base44.entities.Portal.update(portal.id, {
+        is_active: success, // auto-revert to OFF if test failed
+        connection_status: success ? 'connected' : 'error',
+        connection_message: `${baseMessage}${jwtDaysTail}`,
+        last_checked_at: new Date().toISOString(),
+      });
+      qc.invalidateQueries({ queryKey: ['portals-all'] });
+      qc.invalidateQueries({ queryKey: ['portals'] });
+      qc.invalidateQueries({ queryKey: ['portals-sidebar'] });
+      if (success) toast.success(`${portal.name}: enabled & connected`);
+      else toast.error(`${portal.name}: ${data?.error || 'test failed'} — disabled`);
+    } catch (err) {
+      const detail = err.response?.data?.error || err.response?.data?.message || err.message;
+      await base44.entities.Portal.update(portal.id, {
+        is_active: false,
+        connection_status: 'error',
+        connection_message: detail,
+        last_checked_at: new Date().toISOString(),
+      });
+      qc.invalidateQueries({ queryKey: ['portals-all'] });
+      toast.error(`${portal.name}: ${detail} — disabled`);
+    } finally {
+      setTestingKey(null);
+    }
+  };
+
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.Portal.delete(id),
     onSuccess: () => {
@@ -182,7 +232,7 @@ export default function Connectors() {
               testing={testingKey === p.key}
               missingSecrets={computeMissing(p)}
               onTest={handleTest}
-              onToggle={(portal, v) => toggleMutation.mutate({ id: portal.id, is_active: v })}
+              onToggle={handleToggle}
               onEdit={handleEdit}
               onDelete={handleDelete}
             />
