@@ -198,28 +198,39 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Step 5: task.pd (init)
+      // Step 5: task.pd (REAL claim init — language NOW selected).
+      // Returns processUuid_B which threads into step 6.
+      let processUuidB = null;
       if (!claimErr) {
         const s5 = await pdProxy(brokerUrl, brokerKey, 'task.pd', {
           taskName: TASK_NAME,
           parentTickets: [freshTicket],
-          jsonTaskData: JSON.stringify({ processUuid, folder: FOLDER, targetLanguages: claimable }),
+          jsonTaskData: JSON.stringify({ folder: FOLDER, targetLanguages: claimable }),
         });
+        console.log('globallinkApproveOne step5 response:', JSON.stringify(s5).slice(0, 800));
         if (s5?.success === false) {
-          claimErr = `Claim step 5 failed: ${s5.description || s5.desciption || JSON.stringify(s5.reasons || s5).slice(0, 200)}`;
+          claimErr = `Claim step 5 failed: ${s5.description || s5.desciption || JSON.stringify(s5.reasons || s5).slice(0, 400)}`;
+        } else {
+          // Step 5 returns processUuid_B (per §7.1) — DIFFERENT from step 2's uuid.
+          processUuidB = s5?.taskResponse?.model?.processUuid
+                      || s5?.model?.processUuid
+                      || s5?.taskInfos?.[0]?.model?.processUuid
+                      || processUuid; // fallback: reuse A
         }
       }
 
-      // Step 6: task.pd (commit) — success iff nextTaskName === "process linguistic.PostEdit"
+      // Step 6: task.pd (REAL commit) — threads processUuid_B from step 5.
+      // success iff nextTaskName === "process linguistic.PostEdit"
       if (!claimErr) {
         const s6 = await pdProxy(brokerUrl, brokerKey, 'task.pd', {
           taskName: TASK_NAME,
           parentTickets: [freshTicket],
-          jsonTaskData: JSON.stringify({ processUuid, folder: FOLDER, targetLanguages: claimable }),
+          jsonTaskData: JSON.stringify({ processUuid: processUuidB, folder: FOLDER, targetLanguages: claimable }),
         });
+        console.log('globallinkApproveOne step6 response:', JSON.stringify(s6).slice(0, 800));
         nextTaskName = s6?.taskResponse?.model?.nextTaskName || s6?.model?.nextTaskName || null;
         if (nextTaskName !== SUCCESS_NEXT) {
-          claimErr = `Claim step 6 commit did not succeed: nextTaskName="${nextTaskName}" (expected "${SUCCESS_NEXT}")`;
+          claimErr = `Claim step 6 commit did not succeed: nextTaskName="${nextTaskName}" (expected "${SUCCESS_NEXT}"). body=${JSON.stringify(s6).slice(0, 300)}`;
         }
       }
     } catch (e) {

@@ -121,22 +121,28 @@ export async function runClaimChain({ brokerUrl, brokerKey, submissionTicket, ta
     return { success: false, step: 4, error: 'submissionAvailableItemsLookup failed', tp_response: s4, steps };
   }
 
-  // Step 5: task.pd (init)
+  // Step 5: task.pd (REAL claim init — language NOW selected).
+  // Per §7.1 + Appendix A, body has NO processUuid here, and step 5 returns
+  // a NEW processUuid_B that step 6 must use (NOT step 2's uuid).
   const s5 = await pdProxy(brokerUrl, brokerKey, 'task.pd', {
     taskName: TASK_NAME,
     parentTickets: [submissionTicket],
-    jsonTaskData: JSON.stringify({ processUuid, folder: FOLDER, targetLanguages }),
+    jsonTaskData: JSON.stringify({ folder: FOLDER, targetLanguages }),
   });
-  steps.push({ step: 5, endpoint: 'task.pd (init)', success: s5?.success !== false });
+  const processUuidB = extractProcessUuid(s5);
+  steps.push({ step: 5, endpoint: 'task.pd (init)', processUuid: processUuidB, success: s5?.success !== false });
   if (s5?.success === false) {
     return { success: false, step: 5, error: 'task.pd init failed', tp_response: s5, steps };
   }
+  if (!processUuidB) {
+    return { success: false, step: 5, error: 'task.pd init: no processUuid_B', tp_response: s5, steps };
+  }
 
-  // Step 6: task.pd (commit) — final
+  // Step 6: task.pd (REAL commit) — threads processUuid_B from step 5.
   const s6 = await pdProxy(brokerUrl, brokerKey, 'task.pd', {
     taskName: TASK_NAME,
     parentTickets: [submissionTicket],
-    jsonTaskData: JSON.stringify({ processUuid, folder: FOLDER, targetLanguages }),
+    jsonTaskData: JSON.stringify({ processUuid: processUuidB, folder: FOLDER, targetLanguages }),
   });
   const nextTaskName = s6?.taskResponse?.model?.nextTaskName
                     || s6?.model?.nextTaskName
