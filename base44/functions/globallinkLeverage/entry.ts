@@ -67,10 +67,12 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error: `submissionView.pd HTTP ${status}: ${pdBody?.description || JSON.stringify(pdBody).slice(0, 200)}` }, { status });
     }
 
+    // TP returns 200 with success:false + errorCode:CZCOOP ("Application error")
+    // when the caller isn't allowed to view this submission (i.e. not the claimant).
+    // Treat that the same as a 403.
+    const tpFailed = pdBody?.success === false;
     const tmStats = pdBody?.additionalData?.cumulativeTmStatistics || null;
-    // If TP returned 200 but no TM breakdown, that means leverage isn't
-    // exposed pre-claim for this submission — treat as unavailable.
-    const leverage = tmStats || { _unavailable: true, reason: 'no_tm_statistics' };
+    const leverage = tmStats || { _unavailable: true, reason: tpFailed ? 'view_forbidden' : 'no_tm_statistics' };
 
     for (const row of rows) {
       try {
