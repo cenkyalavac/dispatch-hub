@@ -20,6 +20,7 @@ import Issues from './pages/Issues.jsx';
 import GlobalLinkPending from './pages/GlobalLinkPending.jsx';
 import PortalProbe from './pages/PortalProbe.jsx';
 import Notifications from './pages/Notifications.jsx';
+import Users from './pages/Users.jsx';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -62,6 +63,7 @@ const AuthenticatedApp = () => {
         <Route path="/globallink/pending" element={<GlobalLinkPending />} />
         <Route path="/probe" element={<PortalProbe />} />
         <Route path="/notifications" element={<Notifications />} />
+        <Route path="/users" element={<Users />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
