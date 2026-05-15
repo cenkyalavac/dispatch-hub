@@ -101,7 +101,7 @@ async function resolveHandoffDir(base44, { account, project, task_id, task_name 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const { task_id, task_name, project_name, account_name, project_id } = await req.json();
+    const { task_id, task_name, project_name, account_name, project_id, job_id } = await req.json();
 
     if (!task_id) {
       return Response.json({ error: 'task_id required' }, { status: 400 });
@@ -142,25 +142,20 @@ Deno.serve(async (req) => {
     }
 
     // 3) Her attachment'i indir + Dropbox'a yukle (sirayla, Symfonie rate-limit)
-    const uploaded = [];
-    const failed = [];
-    for (const att of attachments) {
+    // Inner helper — single attachment indirir, Dropbox'a yukler, ProjectAttachment kaydeder.
+    async function downloadOne(att, targetDir, kind) {
       try {
         const dlUrl = `${SYMFONIE_HOST}/${att.DownloadUrl}`;
         const fileRes = await symfonieFetch(dlUrl, symfonieToken, { headers: { 'Accept': '*/*' } });
         if (!fileRes.ok) {
-          failed.push({ id: att.Id, name: att.Name, error: `download ${fileRes.status}` });
           await sleep(400);
-          continue;
+          return { ok: false, id: att.Id, name: att.Name, error: `download ${fileRes.status}` };
         }
         const safeName = sanitizePathSegment(att.Name, 200);
-        const dropboxPath = `${handoffDir}/${safeName}`;
-        // Symfonie response body'sini direkt Dropbox'a stream et — RAM'e yukleme.
+        const dropboxPath = `${targetDir}/${safeName}`;
         const contentLength = fileRes.headers.get('content-length');
         const result = await dropboxUploadStream(dropboxToken, dropboxPath, fileRes.body, contentLength);
-        uploaded.push({ id: att.Id, name: att.Name, path: result.path_display, size: result.size });
 
-        // Faz 2: catalog the attachment for BMS retrieval. Best-effort — never block upload.
         if (project_id) {
           base44.asServiceRole.entities.ProjectAttachment.create({
             tenant_id: 'default',
@@ -170,23 +165,66 @@ Deno.serve(async (req) => {
             size: result.size || 0,
             storage: 'dropbox',
             storage_path: result.path_display,
-            kind: 'handoff',
+            kind,
             uploaded_at: new Date().toISOString(),
           }).catch((e) => console.error('ProjectAttachment create failed:', e.message));
         }
         await sleep(300);
+        return { ok: true, id: att.Id, name: att.Name, path: result.path_display, size: result.size };
       } catch (err) {
-        failed.push({ id: att.Id, name: att.Name, error: err.message });
+        return { ok: false, id: att.Id, name: att.Name, error: err.message };
+      }
+    }
+
+    const uploaded = [];
+    const failed = [];
+    for (const att of attachments) {
+      const r = await downloadOne(att, handoffDir, 'handoff');
+      (r.ok ? uploaded : failed).push(r);
+    }
+
+    // 4) JobAttachments pass — Belazy "RE/" parite. Job seviyesindeki referans
+    // dosyalari (style guide, glossary, vb.) handoff klasoru yanindaki RE/'ye iner.
+    // Job ID yoksa veya bu task'in target dilini hedeflemiyorsa atlanir.
+    const jobUploaded = [];
+    const jobFailed = [];
+    let referenceDir = null;
+    if (job_id) {
+      referenceDir = handoffDir.replace(/\/HO$/, '/RE');
+      if (referenceDir === handoffDir) referenceDir = `${handoffDir}/RE`;
+
+      try {
+        const jobListRes = await symfonieFetch(
+          `${BASE_URL}/JobAttachments?$filter=JobId eq ${job_id}`,
+          symfonieToken,
+        );
+        if (jobListRes.ok) {
+          const jobListData = await jobListRes.json();
+          const jobAttachments = jobListData.value || [];
+          for (const att of jobAttachments) {
+            const r = await downloadOne(att, referenceDir, 'reference');
+            (r.ok ? jobUploaded : jobFailed).push(r);
+          }
+        } else {
+          console.error(`JobAttachments list failed (${jobListRes.status}):`, (await jobListRes.text()).slice(0, 200));
+        }
+      } catch (e) {
+        console.error('JobAttachments pass error:', e.message);
       }
     }
 
     return Response.json({
-      success: failed.length === 0,
+      success: failed.length === 0 && jobFailed.length === 0,
       task_id,
+      job_id: job_id || null,
       handoff_dir: handoffDir,
+      reference_dir: referenceDir,
       attachments_count: attachments.length,
+      job_attachments_count: jobUploaded.length + jobFailed.length,
       uploaded,
       failed,
+      job_uploaded: jobUploaded,
+      job_failed: jobFailed,
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });

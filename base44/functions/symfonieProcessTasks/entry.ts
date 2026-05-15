@@ -358,6 +358,7 @@ Deno.serve(async (req) => {
             project_name: task.project_name || '',
             account_name: task.client_name || 'Symfonie',
             project_id: project?.id || null,
+            job_id: raw.JobId || null,
           });
         } catch (e) {
           console.error(`Handoff failed for task ${taskId}:`, e.message);

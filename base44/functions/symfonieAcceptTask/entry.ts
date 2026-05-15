@@ -189,6 +189,7 @@ Deno.serve(async (req) => {
         project_name: project_name || '',
         account_name: account_name || 'Symfonie',
         project_id: project?.id || null,
+        job_id: jobIdNum,
       });
       handoff = hoRes.data;
     } catch (e) {
