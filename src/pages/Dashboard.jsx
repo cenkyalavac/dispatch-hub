@@ -4,29 +4,19 @@ import { useQuery } from '@tanstack/react-query';
 
 import TodayPanel from '@/components/dashboard/TodayPanel';
 import ActionNeeded from '@/components/dashboard/ActionNeeded';
-import ConnectorHealth from '@/components/dashboard/ConnectorHealth';
 import TopBreakdown from '@/components/dashboard/TopBreakdown';
 import { Skeleton } from '@/components/ui/skeleton';
 
-// Lightweight overview — 4 focused panels:
+// Lightweight overview — 3 focused panels:
 //   1. Today: ops-mode counters (accepted / words / rejected / errors)
-//   2. Action needed: per-portal pending preview (top 5 each, deep-link to full page)
-//   3. Connector health: status + last sync + today's volume, per portal
-//   4. Top clients & language pairs (last 30 days)
+//   2. Connectors: per-portal health + pending preview (top 5 each)
+//   3. Top clients & language pairs (last 30 days)
 //
 // We pull "pending" lists from local entities only (AcceptedTask for skipped
 // rows, GlobalLinkSubmission for available submissions). We deliberately
 // don't hit Symfonie/Junction's pending endpoints here — those are rate-
 // limited; the dashboard auto-loads and we don't want to burn quota every
 // page-view. The detail pages (/pending/:portal) fetch live data on demand.
-function isToday(iso) {
-  if (!iso) return false;
-  const d = new Date(iso);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear()
-    && d.getMonth() === now.getMonth()
-    && d.getDate() === now.getDate();
-}
 
 export default function Dashboard() {
   const { data: portals = [], isLoading: portalsLoading } = useQuery({
@@ -43,16 +33,6 @@ export default function Dashboard() {
     queryKey: ['globallink-pending-overview'],
     queryFn: () => base44.entities.GlobalLinkSubmission.filter({ status: 'available' }, '-created_date', 50),
   });
-
-  const todayCounts = useMemo(() => {
-    const c = {};
-    for (const t of allTasks) {
-      const stamp = t.accepted_at || t.created_date;
-      if (!isToday(stamp)) continue;
-      if (t.status === 'accepted') c[t.portal] = (c[t.portal] || 0) + 1;
-    }
-    return c;
-  }, [allTasks]);
 
   // Per-portal pending buckets for the Action Needed card.
   //  - Symfonie / Junction: AcceptedTask rows that landed with status='skipped'
@@ -96,7 +76,6 @@ export default function Dashboard() {
         <>
           <TodayPanel tasks={allTasks} />
           <ActionNeeded portalBuckets={portalBuckets} />
-          <ConnectorHealth portals={portals} todayCounts={todayCounts} />
           <TopBreakdown tasks={allTasks} />
         </>
       )}
