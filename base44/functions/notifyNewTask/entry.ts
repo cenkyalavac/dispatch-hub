@@ -282,6 +282,14 @@ Deno.serve(async (req) => {
 
     const results = { sent: 0, skipped: 0, errors: 0, deliveries: [] };
 
+    // Resend's free tier caps at 5 requests/second. When symfonieProcessTasks
+    // notifies several unmatched tasks back-to-back (or a rule has multiple
+    // recipients), bursts easily exceed that and a slice of the mails comes
+    // back as 429 'rate_limit_exceeded'. We pace ourselves at ~4 req/sec
+    // (250ms gap) which keeps a comfortable margin under the limit.
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    let isFirstSend = true;
+
     for (const rule of rules) {
       if (!ruleMatches(rule, task_payload)) continue;
       const recipients = Array.isArray(rule.recipients) ? rule.recipients.filter(Boolean) : [];
@@ -291,6 +299,11 @@ Deno.serve(async (req) => {
         const dedupeKey = `${rule.id}::${recipient}`;
         if (alreadySentKey.has(dedupeKey)) { results.skipped++; continue; }
 
+        // Pace successive Resend calls. First send fires immediately; every
+        // subsequent send waits 250ms so we stay under the 5 req/sec ceiling.
+        if (!isFirstSend) await sleep(250);
+        isFirstSend = false;
+
         const token = mintToken();
         // Pretty public URL — APP_PUBLIC_URL already points at the SPA's
         // /accept page which proxies to acceptViaToken under the hood.
@@ -299,25 +312,33 @@ Deno.serve(async (req) => {
         const html = buildEmail({ portal, task: task_payload, acceptUrl, rule });
         const subject = `New ${({ symfonie: 'Symfonie', junction: 'Junction', globallink: 'GlobalLink' })[portal] || portal} task — ${task_payload.task_name || taskIdStr}`;
 
+        // On a 429, back off 1.2s and retry once. That's enough to clear the
+        // 1-second rolling window Resend's free tier uses. Other errors are
+        // not retried — they're either auth / payload bugs (won't fix by
+        // waiting) or temporary upstream issues we'd rather surface fast.
         let resendId = null, sendError = null;
-        try {
-          const r = await fetch(RESEND_API, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ from, to: [recipient], subject, html }),
-          });
-          const text = await r.text();
-          if (!r.ok) {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const r = await fetch(RESEND_API, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ from, to: [recipient], subject, html }),
+            });
+            const text = await r.text();
+            if (r.ok) {
+              try { resendId = JSON.parse(text).id || null; } catch { /* keep null */ }
+              sendError = null;
+              break;
+            }
             sendError = `Resend ${r.status}: ${text.slice(0, 200)}`;
-            results.errors++;
-          } else {
-            try { resendId = JSON.parse(text).id || null; } catch { /* keep null */ }
-            results.sent++;
+            if (r.status === 429 && attempt === 0) { await sleep(1200); continue; }
+            break;
+          } catch (e) {
+            sendError = e.message;
+            break;
           }
-        } catch (e) {
-          sendError = e.message;
-          results.errors++;
         }
+        if (sendError) results.errors++; else results.sent++;
 
         try {
           const row = await base44.asServiceRole.entities.NotificationDelivery.create({
