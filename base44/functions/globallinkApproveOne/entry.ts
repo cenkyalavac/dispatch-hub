@@ -256,6 +256,11 @@ Deno.serve(async (req) => {
         (r) => (r.target_language || '').toLowerCase() === claimedLocale.toLowerCase()
       ) || row;
 
+      // Copy GlobalLink-specific fields (12-band leverage, WWC, phase, workflow,
+      // deadline, submission identity) onto the AcceptedTask so the Sheets sync
+      // — which reads exclusively from AcceptedTask — can write them out as
+      // configurable columns. Anything missing on the source row becomes a
+      // null/zero on the destination; downstream code already handles that.
       const acceptedTask = await base44.asServiceRole.entities.AcceptedTask.create({
         portal: 'globallink',
         task_id: Number(matchRow.submission_id) || matchRow.submission_ticket,
@@ -271,6 +276,21 @@ Deno.serve(async (req) => {
         matched_rule: 'manual:approve',
         status: 'accepted',
         sheets_synced: false,
+        // GlobalLink-specific payload
+        submission_id: matchRow.submission_id || '',
+        submission_ticket: matchRow.submission_ticket || '',
+        weighted_wc: matchRow.weighted_wc ?? 0,
+        lev_context:  matchRow.lev_context  ?? 0,
+        lev_rep:      matchRow.lev_rep      ?? 0,
+        lev_match100: matchRow.lev_match100 ?? 0,
+        lev_9599:     matchRow.lev_9599     ?? 0,
+        lev_8594:     matchRow.lev_8594     ?? 0,
+        lev_7584:     matchRow.lev_7584     ?? 0,
+        lev_5074:     matchRow.lev_5074     ?? 0,
+        lev_no_match: matchRow.lev_no_match ?? 0,
+        deadline_at:  matchRow.deadline_at  || null,
+        phase_name:   matchRow.phase_name   || '',
+        workflow_name: matchRow.workflow_name || '',
       });
 
       await base44.asServiceRole.entities.GlobalLinkSubmission.update(matchRow.id, {

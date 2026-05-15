@@ -4,7 +4,7 @@
   "properties": {
     "portal": {
       "type": "string",
-      "description": "Kaynak portal (symfonie, protemos, vs.)",
+      "description": "Kaynak portal (symfonie, junction, globallink, ...)",
       "default": "symfonie"
     },
     "task_id": {
@@ -33,7 +33,7 @@
     },
     "word_count": {
       "type": "number",
-      "description": "Kelime say\u0131s\u0131"
+      "description": "Toplam kelime say\u0131s\u0131 (submission-level)"
     },
     "price": {
       "type": "number",
@@ -66,6 +66,63 @@
       "type": "boolean",
       "default": false,
       "description": "Google Sheets'e kaydedildi mi?"
+    },
+    "weighted_wc": {
+      "type": "number",
+      "description": "GlobalLink: 12-bant leverage'dan hesaplanm\u0131\u015f weighted word count (WWC)."
+    },
+    "lev_context": {
+      "type": "number",
+      "description": "GlobalLink leverage band: in-context match."
+    },
+    "lev_rep": {
+      "type": "number",
+      "description": "GlobalLink leverage band: repetitions."
+    },
+    "lev_match100": {
+      "type": "number",
+      "description": "GlobalLink leverage band: 100% match."
+    },
+    "lev_9599": {
+      "type": "number",
+      "description": "GlobalLink leverage band: 95-99% fuzzy + reps."
+    },
+    "lev_8594": {
+      "type": "number",
+      "description": "GlobalLink leverage band: 85-94% fuzzy + reps."
+    },
+    "lev_7584": {
+      "type": "number",
+      "description": "GlobalLink leverage band: 75-84% fuzzy + reps."
+    },
+    "lev_5074": {
+      "type": "number",
+      "description": "GlobalLink leverage band: 50-74% fuzzy + reps."
+    },
+    "lev_no_match": {
+      "type": "number",
+      "description": "GlobalLink leverage band: no-match words."
+    },
+    "deadline_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "GlobalLink: phase-level deadline (PD subPhaseStatusDataHolders)."
+    },
+    "phase_name": {
+      "type": "string",
+      "description": "GlobalLink: claimed phase (PostEdit, Translate, Review)."
+    },
+    "workflow_name": {
+      "type": "string",
+      "description": "GlobalLink / Symfonie: workflow / step template name."
+    },
+    "submission_id": {
+      "type": "string",
+      "description": "GlobalLink: human-readable submission ID from PD UI."
+    },
+    "submission_ticket": {
+      "type": "string",
+      "description": "GlobalLink: PD submission ticket (primary key in PD)."
     }
   },
   "required": [
