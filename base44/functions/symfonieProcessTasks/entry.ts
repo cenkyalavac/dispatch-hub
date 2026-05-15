@@ -163,26 +163,51 @@ Deno.serve(async (req) => {
     const rawTasks = await fetchAllPages(url, token);
     console.log(`Found ${rawTasks.length} tasks in Order state`);
 
-    // Faz 2: Resolve Customer/Account names via the Projects endpoint (Customer is inline on Projects, NOT on Tasks).
-    // Without this, client_name on Project records stays empty and FieldMapping never gets a chance to fire.
+    // Belazy parity enrichment — resolve in 3 batched lookups (Projects, Jobs, Users).
+    // Skipped silently on failure so a transient Symfonie 5xx never blocks acceptance.
     const projectIds = [...new Set(rawTasks.map(t => t.Project?.Id).filter(Boolean))];
-    const customerByProject = new Map();
-    if (projectIds.length > 0) {
+    const jobIds = [...new Set(rawTasks.map(t => t.JobId).filter(Boolean))];
+
+    const projectById = new Map(); // Project.Id → { Customer.Name, Code, ProjectManagerId }
+    const jobById = new Map();     // Job.Id → { Identifier, ExternalId }
+    const userById = new Map();    // User.Id → { FirstName, LastName }
+
+    async function batchFetch(collection, ids, selectFields) {
+      if (ids.length === 0) return [];
       const chunks = [];
-      for (let i = 0; i < projectIds.length; i += 20) chunks.push(projectIds.slice(i, i + 20));
-      try {
-        const batches = await Promise.all(chunks.map(async (chunk) => {
-          const filter = chunk.map(id => `Id eq ${id}`).join(' or ');
-          return fetchAllPages(
-            `${BASE_URL}/Projects?$filter=${encodeURIComponent(filter)}&$top=${chunk.length}`,
-            token
-          );
-        }));
-        batches.flat().forEach(p => { if (p.Customer?.Name) customerByProject.set(p.Id, p.Customer.Name); });
-      } catch (e) {
-        // Don't block automation if customer resolution fails — just log and continue with empty client_name.
-        console.error('Customer resolution failed:', e.message);
-      }
+      for (let i = 0; i < ids.length; i += 20) chunks.push(ids.slice(i, i + 20));
+      const batches = await Promise.all(chunks.map(async (chunk) => {
+        const filter = chunk.map(id => `Id eq ${id}`).join(' or ');
+        const selectClause = selectFields ? `&$select=${selectFields}` : '';
+        return fetchAllPages(
+          `${BASE_URL}/${collection}?$filter=${encodeURIComponent(filter)}${selectClause}&$top=${chunk.length}`,
+          token
+        );
+      }));
+      return batches.flat();
+    }
+
+    try {
+      const projects = await batchFetch('Projects', projectIds);
+      projects.forEach(p => projectById.set(p.Id, p));
+    } catch (e) {
+      console.error('Project enrichment failed:', e.message);
+    }
+
+    try {
+      const jobs = await batchFetch('Jobs', jobIds, 'Id,Identifier,ExternalId');
+      jobs.forEach(j => jobById.set(j.Id, j));
+    } catch (e) {
+      console.error('Job enrichment failed:', e.message);
+    }
+
+    // PM lookup — only resolve PMs we actually need (de-duped, valid IDs).
+    const pmIds = [...new Set([...projectById.values()].map(p => p.ProjectManagerId).filter(Boolean))];
+    try {
+      const users = await batchFetch('Users', pmIds, 'Id,FirstName,LastName');
+      users.forEach(u => userById.set(u.Id, u));
+    } catch (e) {
+      console.error('User (PM) enrichment failed:', e.message);
     }
 
     // 4. Get already-processed task IDs to avoid re-processing
@@ -212,12 +237,15 @@ Deno.serve(async (req) => {
       const wordCount = Number(wordRow?.Quantity) || 0;
       const totalPrice = financeRows.reduce((sum, r) => sum + (Number(r.MaxUsd) || 0), 0);
 
-      const clientName = (raw.Project?.Id && customerByProject.get(raw.Project.Id)) || '';
+      const projectInfo = raw.Project?.Id ? projectById.get(raw.Project.Id) : null;
+      const jobInfo = raw.JobId ? jobById.get(raw.JobId) : null;
+      const pm = projectInfo?.ProjectManagerId ? userById.get(projectInfo.ProjectManagerId) : null;
+
       const task = {
         task_id: taskId,
         task_name: raw.Name || '',
         project_name: raw.Project?.Name || raw.JobName || raw.ProjectName || '',
-        client_name: clientName,
+        client_name: projectInfo?.Customer?.Name || '',
         source_language: raw.SourceLanguageCode || '',
         target_language: raw.TargetLanguageCode || '',
         word_count: wordCount,
@@ -230,13 +258,15 @@ Deno.serve(async (req) => {
         sheets_synced: false,
         service_tag: raw.ServiceTag || '',
         workflow_name: raw.WorkflowName || '',
-        // PM name is NOT available on the Task or ProjectSimpleViewModel — the
-        // Projects endpoint only exposes `ProjectManagerId` (integer). To get
-        // first/last name we'd need an extra /Users(id) lookup per unique PM.
-        // Until that's wired up these stay empty, so PM-based rules will not
-        // match unless the user is filtering on the empty string.
-        project_manager_first_name: '',
-        project_manager_last_name: '',
+        project_manager_first_name: pm?.FirstName || '',
+        project_manager_last_name: pm?.LastName || '',
+        // Belazy parity fields
+        symfonie_code: projectInfo?.Code || '',
+        symfonie_link: raw.JobId ? `https://projects.moravia.com/Jobs/Detail/${raw.JobId}#task-${taskId}` : '',
+        order_date: raw.OrderDate || null,
+        job_id: raw.JobId || null,
+        job_identifier: jobInfo?.Identifier || '',
+        project_id: raw.Project?.Id || null,
       };
 
       // Find first matching rule (rules sorted by priority asc)
@@ -270,6 +300,25 @@ Deno.serve(async (req) => {
         }
 
         console.log(`Task ${taskId} "${raw.Name}" accepted via rule "${matchedRule.name}"`);
+
+        // Belazy parity: pull the latest WordCountAnalysis and stamp the leverage
+        // bands onto this task BEFORE we persist + sheet-sync. Failure here is
+        // non-fatal — bands stay zero and the task still gets recorded.
+        try {
+          const aRes = await base44.asServiceRole.functions.invoke('symfonieGetTaskAnalysis', { task_id: taskId });
+          const a = aRes?.data;
+          if (a && a.analysis_found) {
+            Object.assign(task, {
+              lev_context: a.lev_context, lev_rep: a.lev_rep, lev_match100: a.lev_match100,
+              lev_9599: a.lev_9599, lev_8594: a.lev_8594, lev_7584: a.lev_7584,
+              lev_5074: a.lev_5074, lev_no_match: a.lev_no_match,
+              parser_type: a.parser_type || '',
+            });
+          }
+        } catch (e) {
+          console.error(`WordCountAnalyses fetch failed for ${taskId}:`, e.message);
+        }
+
         const saved = await base44.asServiceRole.entities.AcceptedTask.create(task);
 
         // Faz 1/2 BMS pipeline: every accepted task MUST get a Project record + webhook fire,

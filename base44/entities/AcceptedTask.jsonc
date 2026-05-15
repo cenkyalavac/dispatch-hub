@@ -77,31 +77,31 @@
     },
     "lev_context": {
       "type": "number",
-      "description": "GlobalLink leverage band: in-context match (pure)."
+      "description": "Leverage band: in-context / context-TM match (pure)."
     },
     "lev_rep": {
       "type": "number",
-      "description": "GlobalLink leverage band: pure repetitions (cross-segment)."
+      "description": "Leverage band: pure repetitions (cross-segment)."
     },
     "lev_match100": {
       "type": "number",
-      "description": "GlobalLink leverage band: 100% match (pure)."
+      "description": "Leverage band: 100% match (pure)."
     },
     "lev_9599": {
       "type": "number",
-      "description": "GlobalLink leverage band: 95-99% fuzzy (PURE \u2014 does NOT include Reps95-99). Use lev_rep_9599 for the reps slice."
+      "description": "Leverage band: 95-99% fuzzy (PURE \u2014 does NOT include Reps95-99). Use lev_rep_9599 for the reps slice."
     },
     "lev_8594": {
       "type": "number",
-      "description": "GlobalLink leverage band: 85-94% fuzzy (PURE \u2014 does NOT include Reps85-94)."
+      "description": "Leverage band: 85-94% fuzzy (PURE \u2014 does NOT include Reps85-94)."
     },
     "lev_7584": {
       "type": "number",
-      "description": "GlobalLink leverage band: 75-84% fuzzy (PURE \u2014 does NOT include Reps75-84)."
+      "description": "Leverage band: 75-84% fuzzy (PURE \u2014 does NOT include Reps75-84)."
     },
     "lev_5074": {
       "type": "number",
-      "description": "GlobalLink leverage band: 50-74% fuzzy (PURE \u2014 does NOT include Reps50-74)."
+      "description": "Leverage band: 50-74% fuzzy (PURE \u2014 does NOT include Reps50-74)."
     },
     "lev_rep_9599": {
       "type": "number",
@@ -121,7 +121,7 @@
     },
     "lev_no_match": {
       "type": "number",
-      "description": "GlobalLink leverage band: no-match words."
+      "description": "Leverage band: no-match words."
     },
     "deadline_at": {
       "type": "string",
@@ -143,6 +143,43 @@
     "submission_ticket": {
       "type": "string",
       "description": "GlobalLink: PD submission ticket (primary key in PD)."
+    },
+    "symfonie_link": {
+      "type": "string",
+      "description": "Symfonie: deep link to the task in the Moravia Projects web UI (https://projects.moravia.com/Jobs/Detail/{JobId}#task-{TaskId})."
+    },
+    "symfonie_code": {
+      "type": "string",
+      "description": "Symfonie: short Project.Code (max 20 chars). Belazy 'Symfonie Code' column."
+    },
+    "parser_type": {
+      "type": "string",
+      "description": "Symfonie: ParserType of the WordCountAnalysis the leverage bands came from (e.g. MemSource, TradosStudio, MemoQ, XTM). Empty when no analysis is attached."
+    },
+    "order_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Symfonie: Task.OrderDate \u2014 when the task was ordered to us (distinct from accepted_at)."
+    },
+    "job_id": {
+      "type": "integer",
+      "description": "Symfonie: parent Job.Id. Used to build deep links and for downstream BMS correlation."
+    },
+    "job_identifier": {
+      "type": "string",
+      "description": "Symfonie: Job.Identifier (ERP identifier) \u2014 stable cross-system reference."
+    },
+    "project_id": {
+      "type": "integer",
+      "description": "Symfonie: parent Project.Id (Symfonie's own internal ID, not our BMS Project entity)."
+    },
+    "project_manager_first_name": {
+      "type": "string",
+      "description": "Project manager first name (resolved via /Users(ProjectManagerId))."
+    },
+    "project_manager_last_name": {
+      "type": "string",
+      "description": "Project manager last name (resolved via /Users(ProjectManagerId))."
     }
   },
   "required": [

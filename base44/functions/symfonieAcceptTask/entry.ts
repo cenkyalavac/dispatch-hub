@@ -69,22 +69,78 @@ Deno.serve(async (req) => {
       return Response.json({ error: `Accept failed: ${responseText.substring(0, 200)}` }, { status: 400 });
     }
 
+    // Belazy parity enrichment — pull the live Task (incl. JobId, OrderDate),
+    // then chain Project → Job → User → WordCountAnalyses. All failures are
+    // non-fatal: we never roll back a successful Accept just because metadata
+    // couldn't be resolved.
+    async function getJson(url) {
+      const r = await fetch(url, { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' } });
+      if (!r.ok) return null;
+      return r.json().catch(() => null);
+    }
+
+    let symfonieTask = null;
+    try { symfonieTask = await getJson(`${BASE_URL}/Tasks(${taskIdNum})`); } catch (e) { console.error('Task fetch failed:', e.message); }
+
+    const projectIdNum = symfonieTask?.Project?.Id || null;
+    const jobIdNum = symfonieTask?.JobId || null;
+
+    let projectInfo = null;
+    let jobInfo = null;
+    let pm = null;
+    if (projectIdNum) {
+      try { projectInfo = await getJson(`${BASE_URL}/Projects(${projectIdNum})`); } catch (e) { console.error('Project fetch failed:', e.message); }
+    }
+    if (jobIdNum) {
+      try { jobInfo = await getJson(`${BASE_URL}/Jobs(${jobIdNum})?$select=Id,Identifier,ExternalId`); } catch (e) { console.error('Job fetch failed:', e.message); }
+    }
+    if (projectInfo?.ProjectManagerId) {
+      try { pm = await getJson(`${BASE_URL}/Users(${projectInfo.ProjectManagerId})?$select=Id,FirstName,LastName`); } catch (e) { console.error('PM fetch failed:', e.message); }
+    }
+
+    // Leverage bands — delegate to the shared helper.
+    let bands = {};
+    try {
+      const aRes = await base44.asServiceRole.functions.invoke('symfonieGetTaskAnalysis', { task_id: taskIdNum });
+      const a = aRes?.data;
+      if (a && a.analysis_found) {
+        bands = {
+          lev_context: a.lev_context, lev_rep: a.lev_rep, lev_match100: a.lev_match100,
+          lev_9599: a.lev_9599, lev_8594: a.lev_8594, lev_7584: a.lev_7584,
+          lev_5074: a.lev_5074, lev_no_match: a.lev_no_match,
+          parser_type: a.parser_type || '',
+        };
+      }
+    } catch (e) {
+      console.error('WordCountAnalyses fetch failed:', e.message);
+    }
+
     // Save to AcceptedTask
     const taskRecord = {
       portal: 'symfonie',
       task_id: taskIdNum,
-      task_name: task_name || '',
-      project_name: project_name || '',
-      client_name: account_name || '',
-      source_language: source_language || '',
-      target_language: target_language || '',
+      task_name: task_name || symfonieTask?.Name || '',
+      project_name: project_name || symfonieTask?.Project?.Name || '',
+      client_name: account_name || projectInfo?.Customer?.Name || '',
+      source_language: source_language || symfonieTask?.SourceLanguageCode || '',
+      target_language: target_language || symfonieTask?.TargetLanguageCode || '',
       word_count: word_count || 0,
       price: price || 0,
-      due_date: due_date || null,
+      due_date: due_date || symfonieTask?.DueDate || null,
       accepted_at: new Date().toISOString(),
       matched_rule: 'Manual',
       status: 'accepted',
       sheets_synced: false,
+      workflow_name: symfonieTask?.WorkflowName || '',
+      project_manager_first_name: pm?.FirstName || '',
+      project_manager_last_name: pm?.LastName || '',
+      symfonie_code: projectInfo?.Code || '',
+      symfonie_link: jobIdNum ? `https://projects.moravia.com/Jobs/Detail/${jobIdNum}#task-${taskIdNum}` : '',
+      order_date: symfonieTask?.OrderDate || null,
+      job_id: jobIdNum,
+      job_identifier: jobInfo?.Identifier || '',
+      project_id: projectIdNum,
+      ...bands,
     };
 
     const saved = await base44.asServiceRole.entities.AcceptedTask.create(taskRecord);

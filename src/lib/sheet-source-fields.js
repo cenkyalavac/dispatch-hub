@@ -39,6 +39,17 @@ export const STANDARD_FIELDS = [
   { name: 'submission_id',   label: 'Submission ID' },
   { name: 'submission_ticket', label: 'Submission ticket' },
   { name: 'account_id',      label: 'Account ID' },
+  // Symfonie-specific enrichment (populated by symfonieProcessTasks /
+  // symfonieAcceptTask via /WordCountAnalyses + /Jobs + /Projects + /Users).
+  { name: 'symfonie_link',   label: 'Symfonie link' },
+  { name: 'symfonie_code',   label: 'Symfonie code' },
+  { name: 'parser_type',     label: 'Parser type (CAT)' },
+  { name: 'order_date',      label: 'Order date' },
+  { name: 'job_id',          label: 'Job ID' },
+  { name: 'job_identifier',  label: 'Job identifier (ERP)' },
+  { name: 'project_id',      label: 'Project ID (Symfonie)' },
+  { name: 'project_manager_first_name', label: 'PM first name' },
+  { name: 'project_manager_last_name',  label: 'PM last name' },
 ];
 
 // Returns the full picker list for a given portal — standard + that portal's
