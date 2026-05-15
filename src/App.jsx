@@ -13,6 +13,7 @@ import SettingsPage from './pages/SettingsPage';
 import Connectors from './pages/Connectors.jsx';
 import PortalDetail from './pages/PortalDetail.jsx';
 import PendingTasks from './pages/PendingTasks.jsx';
+import PendingPortalRedirect from './pages/PendingPortalRedirect.jsx';
 import History from './pages/History.jsx';
 import ApiAccess from './pages/ApiAccess.jsx';
 import Mappings from './pages/Mappings.jsx';
@@ -55,7 +56,8 @@ const AuthenticatedApp = () => {
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/portals" element={<Connectors />} />
         <Route path="/portals/:key" element={<PortalDetail />} />
-        <Route path="/pending" element={<PendingTasks />} />
+        <Route path="/pending" element={<PendingPortalRedirect />} />
+        <Route path="/pending/:portalKey" element={<PendingTasks />} />
         <Route path="/history" element={<History />} />
         <Route path="/api" element={<ApiAccess />} />
         <Route path="/mappings" element={<Mappings />} />

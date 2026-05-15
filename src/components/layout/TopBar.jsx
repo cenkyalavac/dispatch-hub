@@ -1,30 +1,44 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation, Link } from 'react-router-dom';
-import { Command, Hexagon, Settings, Bell, Users as UsersIcon } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { Command, Hexagon, Settings, Bell, Users as UsersIcon, ChevronDown } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import CommandPalette from './CommandPalette';
 
-// Pending tab is the daily-driver — its sub-nav (rendered in AppLayout) shows
-// per-portal shortcuts including GlobalLink, so the user never has to type a
-// URL to reach the leverage hub. Activity (/tasks) and Probe (/probe) are
-// diagnostic surfaces accessible via the Command Palette (⌘K).
-// Issues + History are reachable via ⌘K search — kept off the primary nav
-// because daily use is low (used for forensics, not workflow).
+// Pending is a dropdown — one item per active portal. Clicking opens that
+// portal's dedicated pending page (/pending/:key, or /globallink/pending for
+// GlobalLink which has its own entity-backed data shape).
 const TABS = [
   { to: '/',          label: 'Overview',   matches: ['/'] },
-  { to: '/pending',   label: 'Pending',    matches: ['/pending', '/globallink/pending'] },
   { to: '/portals',   label: 'Connectors', matches: ['/portals', '/rules'] },
   { to: '/api',       label: 'API',        matches: ['/api', '/mappings'] },
 ];
+
+function pendingHref(portal) {
+  return portal.key === 'globallink' ? '/globallink/pending' : `/pending/${portal.key}`;
+}
 
 export default function TopBar() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { pathname } = useLocation();
 
-  // Sheet destinations live per-connector now — see ConnectorCard's SheetRoutesSummary.
+  const { data: portals = [] } = useQuery({
+    queryKey: ['portals-all'],
+    queryFn: () => base44.entities.Portal.list(),
+  });
+  const activePortals = portals.filter((p) => p.is_active);
+
   const isActive = (tab) => {
     if (tab.to === '/') return pathname === '/';
     return tab.matches.some(m => pathname === m || pathname.startsWith(m + '/'));
   };
+  const pendingActive = pathname.startsWith('/pending') || pathname.startsWith('/globallink/pending');
 
   useEffect(() => {
     const onKey = (e) => {
@@ -57,7 +71,45 @@ export default function TopBar() {
         </Link>
 
         <nav className="flex items-center gap-1">
-          {TABS.map(t => {
+          {/* Overview */}
+          <NavLink
+            to="/"
+            className={`relative h-8 px-3 inline-flex items-center text-[13px] font-medium rounded-md transition-colors duration-tab
+              ${isActive(TABS[0]) ? 'text-ink-1' : 'text-ink-3 hover:text-ink-1 hover:bg-surface-2'}`}
+          >
+            Overview
+            {isActive(TABS[0]) && <span className="absolute -bottom-[13px] left-2 right-2 h-[2px] bg-accent rounded-full" />}
+          </NavLink>
+
+          {/* Pending — dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={`relative h-8 px-3 inline-flex items-center gap-1 text-[13px] font-medium rounded-md transition-colors duration-tab outline-none
+                  ${pendingActive ? 'text-ink-1' : 'text-ink-3 hover:text-ink-1 hover:bg-surface-2'}`}
+              >
+                Pending
+                <ChevronDown className="w-3 h-3 opacity-70" />
+                {pendingActive && <span className="absolute -bottom-[13px] left-2 right-2 h-[2px] bg-accent rounded-full" />}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[180px]">
+              {activePortals.length === 0 ? (
+                <DropdownMenuItem disabled>No active portals</DropdownMenuItem>
+              ) : (
+                activePortals.map((p) => (
+                  <DropdownMenuItem key={p.key} asChild>
+                    <Link to={pendingHref(p)} className="cursor-pointer w-full">
+                      {p.name}
+                    </Link>
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Other primary tabs */}
+          {TABS.slice(1).map(t => {
             const active = isActive(t);
             return (
               <NavLink
@@ -67,9 +119,7 @@ export default function TopBar() {
                   ${active ? 'text-ink-1' : 'text-ink-3 hover:text-ink-1 hover:bg-surface-2'}`}
               >
                 {t.label}
-                {active && (
-                  <span className="absolute -bottom-[13px] left-2 right-2 h-[2px] bg-accent rounded-full" />
-                )}
+                {active && <span className="absolute -bottom-[13px] left-2 right-2 h-[2px] bg-accent rounded-full" />}
               </NavLink>
             );
           })}

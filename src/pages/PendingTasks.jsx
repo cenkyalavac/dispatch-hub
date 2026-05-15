@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, Search, Download } from 'lucide-react';
@@ -45,11 +46,14 @@ const pendingRow = (t) => [
 ];
 
 export default function PendingTasks() {
+  // Route param is now the source of truth — /pending/:portalKey. The portal
+  // dropdown in the header pushes a new URL instead of mutating local state,
+  // so deep-links from the TopBar menu and the PortalDetail "Open full list"
+  // shortcut land on the correct connector immediately.
+  const { portalKey } = useParams();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  // Don't hard-code 'symfonie' — when the user later picks GlobalLink we need
-  // to make sure we never fall back to symfonieGetTasks. Initialize empty and
-  // let the first effect below pick the first active portal with a fetch_function.
-  const [selectedPortal, setSelectedPortal] = useState('');
+  const selectedPortal = portalKey || '';
   const [acceptingIds, setAcceptingIds] = useState(new Set());
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -223,15 +227,14 @@ export default function PendingTasks() {
     [portals]
   );
 
-  // Pick the first available portal once the list arrives — never leave the
-  // user staring at an empty selector on first load. MUST run inside useEffect:
-  // calling setState directly during render schedules an immediate re-render
-  // and React warns ("Cannot update a component while rendering a different one").
+  // If the URL has no portalKey (bookmarked /pending), redirect to the first
+  // active portal with a fetch_function. PendingPortalRedirect also handles
+  // bare /pending, but this is a safety net for direct navigation.
   useEffect(() => {
     if (!selectedPortal && portalOptions.length > 0) {
-      setSelectedPortal(portalOptions[0].key);
+      navigate(`/pending/${portalOptions[0].key}`, { replace: true });
     }
-  }, [selectedPortal, portalOptions]);
+  }, [selectedPortal, portalOptions, navigate]);
 
   return (
     <div className="px-8 py-7 max-w-6xl">
@@ -245,7 +248,7 @@ export default function PendingTasks() {
         <div className="flex items-center gap-2">
           <select
             value={selectedPortal}
-            onChange={(e) => { setSelectedPortal(e.target.value); setFilters(DEFAULT_FILTERS); }}
+            onChange={(e) => { setFilters(DEFAULT_FILTERS); navigate(`/pending/${e.target.value}`); }}
             className="h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
           >
             {portalOptions.length === 0 && <option value="">No active portal</option>}
