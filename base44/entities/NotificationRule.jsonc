@@ -1,0 +1,74 @@
+{
+  "name": "NotificationRule",
+  "type": "object",
+  "description": "When a new task arrives and no auto-accept Rule matches it, NotificationRule decides who gets an email about it. A rule fires when its portal + AND-combined conditions match the incoming task. Multiple rules can fire for the same task; recipients are de-duplicated across rules.",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human label shown in the UI."
+    },
+    "portal": {
+      "type": "string",
+      "description": "Source portal key (symfonie, junction, globallink). Use '*' to match any portal."
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "priority": {
+      "type": "integer",
+      "default": 1,
+      "description": "Lower number runs first when multiple rules match (kept for UI ordering \u2014 all matching rules fire, not just the first)."
+    },
+    "recipients": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Email addresses to notify when this rule matches. Each address gets a separate email with its own single-use accept token."
+    },
+    "conditions": {
+      "type": "array",
+      "description": "AND-combined conditions evaluated against the incoming task. Empty array = always matches (every task on this portal).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "project_name",
+              "task_name",
+              "workflow_name",
+              "source_language",
+              "target_language",
+              "client_name",
+              "word_count",
+              "price"
+            ]
+          },
+          "operator": {
+            "type": "string",
+            "enum": [
+              "contains",
+              "not_contains",
+              "equals",
+              "starts_with",
+              "greater_than",
+              "less_than",
+              "greater_equal",
+              "less_equal"
+            ]
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "name",
+    "portal",
+    "recipients"
+  ]
+}

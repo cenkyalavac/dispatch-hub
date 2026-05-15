@@ -135,6 +135,13 @@ Deno.serve(async (req) => {
       if (!matched) {
         summary.skipped++;
         details.skipped.push({ id: offer.id, name: task.task_name, source_language: task.source_language, target_language: task.target_language, project_name: task.project_name });
+        // Fire a notification for human review (one-click accept link in email).
+        // Fire-and-forget — notification failure never blocks the poll.
+        base44.asServiceRole.functions.invoke('notifyNewTask', {
+          portal: 'junction',
+          task_id: offer.id,
+          task_payload: task,
+        }).catch((e) => console.error('notifyNewTask failed:', e.message));
         continue;
       }
 

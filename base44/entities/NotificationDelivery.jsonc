@@ -1,0 +1,73 @@
+{
+  "name": "NotificationDelivery",
+  "type": "object",
+  "description": "One row per (task, rule, recipient) email actually sent. Provides idempotency (same task+rule+recipient won't be re-emailed) and carries the single-use accept_token that powers the one-click 'Accept' button in the email.",
+  "properties": {
+    "portal": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Source-portal task identifier as a string (Symfonie/Junction integer IDs and GlobalLink submission_ticket coexist here)."
+    },
+    "task_name": {
+      "type": "string"
+    },
+    "rule_id": {
+      "type": "string",
+      "description": "NotificationRule.id that triggered this email."
+    },
+    "rule_name": {
+      "type": "string"
+    },
+    "recipient": {
+      "type": "string",
+      "format": "email"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resend_id": {
+      "type": "string",
+      "description": "Resend's message id (for support/debug)."
+    },
+    "accept_token": {
+      "type": "string",
+      "description": "Opaque single-use token embedded in the email's Accept button. Cleared once consumed."
+    },
+    "consumed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the token was successfully used to accept the task. Null while pending."
+    },
+    "consumed_by_ip": {
+      "type": "string"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "sent",
+        "accepted",
+        "send_failed",
+        "accept_failed",
+        "expired"
+      ],
+      "default": "sent"
+    },
+    "error": {
+      "type": "string"
+    },
+    "task_payload": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Snapshot of the task fields at notification time \u2014 used to reconstruct the accept call without re-fetching the upstream portal."
+    }
+  },
+  "required": [
+    "portal",
+    "task_id",
+    "rule_id",
+    "recipient"
+  ]
+}

@@ -323,9 +323,17 @@ Deno.serve(async (req) => {
       }
 
       if (!matchedRule) {
-        // No rule matched — skip (don't touch the task)
+        // No rule matched — skip (don't touch the task). Fire a notification
+        // so a human gets a one-click accept link by email if any
+        // NotificationRule matches this task. Fire-and-forget: notification
+        // failure must NEVER block the run.
         results.skipped.push({ id: taskId, name: raw.Name, project_name: task.project_name, source_language: task.source_language, target_language: task.target_language });
         console.log(`Task ${taskId} "${raw.Name}": no matching rule, skipped`);
+        base44.asServiceRole.functions.invoke('notifyNewTask', {
+          portal: 'symfonie',
+          task_id: taskId,
+          task_payload: task,
+        }).catch((e) => console.error('notifyNewTask failed:', e.message));
         continue;
       }
 

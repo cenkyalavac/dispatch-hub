@@ -1,0 +1,250 @@
+// notifyNewTask
+// ─────────────────────────────────────────────────────────────────────────────
+// Sends a Resend-powered email for a single incoming task that did NOT match
+// any auto-accept Rule. Called fire-and-forget from the three process
+// functions (symfonieProcessTasks, junctionProcessOffers, globallinkPoll).
+//
+// Inputs (POST JSON):
+//   portal:         'symfonie' | 'junction' | 'globallink'
+//   task_id:        provider task id as string (we coerce everything to string
+//                   so Symfonie's integers and GlobalLink's tickets share one
+//                   key space)
+//   task_payload:   snapshot of the task — task_name, project_name, client_name,
+//                   source_language, target_language, word_count, price,
+//                   due_date, workflow_name. Whatever the caller has handy.
+//                   Used for (1) condition matching, (2) email body, and
+//                   (3) replaying the upstream accept call when the user
+//                   clicks the Accept button.
+//
+// Behaviour:
+//   1. Loads active NotificationRule rows for portal=incoming OR portal='*'.
+//   2. Evaluates AND-combined conditions per rule.
+//   3. For every matching rule × recipient pair:
+//        - Skip if a NotificationDelivery row already exists (idempotent).
+//        - Mint a single-use accept_token.
+//        - Send Resend email with one-click Accept link.
+//        - Log NotificationDelivery row.
+//
+// Authentication: ADMIN ONLY. Called only by other backend functions (service
+// role) or scheduled tasks. End users never hit this directly.
+
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
+const RESEND_API = 'https://api.resend.com/emails';
+
+// Default sender — Resend's onboarding sandbox is safe out of the box.
+// Override per app via the RESEND_FROM secret once a verified domain is set up.
+const FROM_DEFAULT = 'Dispatch Hub <onboarding@resend.dev>';
+
+function evaluateCondition(value, operator, target) {
+  const s = String(value ?? '').toLowerCase();
+  const t = String(target ?? '').toLowerCase();
+  const n = Number(value), nt = Number(target);
+  switch (operator) {
+    case 'contains':       return s.includes(t);
+    case 'not_contains':   return !s.includes(t);
+    case 'equals':         return s === t;
+    case 'starts_with':    return s.startsWith(t);
+    case 'greater_than':   return n > nt;
+    case 'less_than':      return n < nt;
+    case 'greater_equal':  return n >= nt;
+    case 'less_equal':     return n <= nt;
+    default: return false;
+  }
+}
+
+function ruleMatches(rule, task) {
+  // Empty conditions array = catch-all on this portal.
+  if (!Array.isArray(rule.conditions) || rule.conditions.length === 0) return true;
+  return rule.conditions.every((c) => evaluateCondition(task[c.field], c.operator, c.value));
+}
+
+// Crypto-strong opaque token. 32 bytes → 64 hex chars. Single-use; we clear
+// `accept_token` on the delivery row once consumed.
+function mintToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function fmtNum(n) {
+  if (n == null || n === '') return '—';
+  return Number(n).toLocaleString('en-US');
+}
+function fmtMoney(n) {
+  if (!n || Number(n) === 0) return '—';
+  return '$' + Number(n).toFixed(2);
+}
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }); }
+  catch { return iso; }
+}
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Compact, mail-client-safe HTML. Inline styles only — Gmail/Outlook strip
+// <style> blocks. No external CSS, no web fonts.
+function buildEmail({ portal, task, acceptUrl, rule }) {
+  const portalLabel = ({ symfonie: 'Symfonie', junction: 'Junction', globallink: 'GlobalLink' })[portal] || portal;
+  const rows = [
+    ['Task',         task.task_name],
+    ['Project',      task.project_name],
+    ['Client',       task.client_name],
+    ['Languages',    [task.source_language, task.target_language].filter(Boolean).join(' → ')],
+    ['Word count',   fmtNum(task.word_count)],
+    ['Price',        fmtMoney(task.price)],
+    ['Due',          fmtDate(task.due_date)],
+    ['Workflow',     task.workflow_name],
+  ].filter(([, v]) => v && v !== '—');
+
+  const rowsHtml = rows.map(([k, v]) => `
+    <tr>
+      <td style="padding:8px 12px;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;border-bottom:1px solid #f3f4f6;">${esc(k)}</td>
+      <td style="padding:8px 12px;color:#111827;font-size:14px;border-bottom:1px solid #f3f4f6;">${esc(v)}</td>
+    </tr>`).join('');
+
+  return `<!doctype html>
+<html><body style="margin:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f9fafb;padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="560" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <tr><td style="padding:24px 28px 8px;">
+          <p style="margin:0;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:.08em;">New task — ${esc(portalLabel)}</p>
+          <h1 style="margin:6px 0 0;color:#111827;font-size:20px;font-weight:600;line-height:1.3;">${esc(task.task_name || 'Untitled task')}</h1>
+        </td></tr>
+        <tr><td style="padding:12px 16px 8px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">${rowsHtml}</table>
+        </td></tr>
+        <tr><td align="center" style="padding:20px 28px 28px;">
+          <a href="${esc(acceptUrl)}"
+             style="display:inline-block;padding:12px 28px;background:#4f46e5;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;border-radius:8px;">
+            Accept this task
+          </a>
+          <p style="margin:14px 0 0;color:#9ca3af;font-size:11px;">One click. No login required. Single-use link.</p>
+        </td></tr>
+        <tr><td style="padding:14px 28px;background:#f9fafb;border-top:1px solid #f3f4f6;">
+          <p style="margin:0;color:#9ca3af;font-size:11px;">Notification rule: <strong style="color:#6b7280;">${esc(rule.name)}</strong></p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+Deno.serve(async (req) => {
+  try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    // Soft auth: allow service-role/scheduled callers (no user) and admins.
+    if (user !== null && user?.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
+
+    const apiKey = Deno.env.get('RESEND_KEY');
+    if (!apiKey) {
+      return Response.json({ success: false, error: 'RESEND_KEY not configured' }, { status: 503 });
+    }
+    const from = Deno.env.get('RESEND_FROM') || FROM_DEFAULT;
+
+    const body = await req.json().catch(() => ({}));
+    const { portal, task_id, task_payload } = body || {};
+    if (!portal || task_id == null || !task_payload) {
+      return Response.json({ success: false, error: 'portal, task_id, task_payload required' }, { status: 400 });
+    }
+    const taskIdStr = String(task_id);
+
+    // Load matching rules (portal-specific + wildcard '*').
+    const [portalRules, wildcardRules] = await Promise.all([
+      base44.asServiceRole.entities.NotificationRule.filter({ portal, is_active: true }, 'priority', 100),
+      base44.asServiceRole.entities.NotificationRule.filter({ portal: '*', is_active: true }, 'priority', 100),
+    ]);
+    const rules = [...portalRules, ...wildcardRules];
+    if (rules.length === 0) {
+      return Response.json({ success: true, skipped: true, reason: 'No notification rules' });
+    }
+
+    // Already-sent rows for this task → idempotency lookup.
+    const existing = await base44.asServiceRole.entities.NotificationDelivery
+      .filter({ portal, task_id: taskIdStr })
+      .catch(() => []);
+    const alreadySentKey = new Set(existing.map((d) => `${d.rule_id}::${d.recipient}`));
+
+    // Determine the public origin for the Accept link. We prefer the request's
+    // own origin (so the link works for whatever domain Dispatch Hub is served
+    // on), and fall back to APP_PUBLIC_URL when the request came in via an
+    // internal channel that doesn't preserve the original host.
+    const reqUrl = new URL(req.url);
+    const publicOrigin = Deno.env.get('APP_PUBLIC_URL') || `${reqUrl.protocol}//${reqUrl.host}`;
+
+    const results = { sent: 0, skipped: 0, errors: 0, deliveries: [] };
+
+    for (const rule of rules) {
+      if (!ruleMatches(rule, task_payload)) continue;
+      const recipients = Array.isArray(rule.recipients) ? rule.recipients.filter(Boolean) : [];
+      if (recipients.length === 0) continue;
+
+      for (const recipient of recipients) {
+        const dedupeKey = `${rule.id}::${recipient}`;
+        if (alreadySentKey.has(dedupeKey)) { results.skipped++; continue; }
+
+        const token = mintToken();
+        // Accept URL points to the public acceptViaToken function. Functions
+        // are hosted under the app's same origin at /functions/<name>.
+        const acceptUrl = `${publicOrigin}/functions/acceptViaToken?token=${token}`;
+
+        const html = buildEmail({ portal, task: task_payload, acceptUrl, rule });
+        const subject = `New ${({ symfonie: 'Symfonie', junction: 'Junction', globallink: 'GlobalLink' })[portal] || portal} task — ${task_payload.task_name || taskIdStr}`;
+
+        let resendId = null, sendError = null;
+        try {
+          const r = await fetch(RESEND_API, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from, to: [recipient], subject, html }),
+          });
+          const text = await r.text();
+          if (!r.ok) {
+            sendError = `Resend ${r.status}: ${text.slice(0, 200)}`;
+            results.errors++;
+          } else {
+            try { resendId = JSON.parse(text).id || null; } catch { /* keep null */ }
+            results.sent++;
+          }
+        } catch (e) {
+          sendError = e.message;
+          results.errors++;
+        }
+
+        try {
+          const row = await base44.asServiceRole.entities.NotificationDelivery.create({
+            portal,
+            task_id: taskIdStr,
+            task_name: task_payload.task_name || '',
+            rule_id: rule.id,
+            rule_name: rule.name,
+            recipient,
+            sent_at: new Date().toISOString(),
+            resend_id: resendId,
+            accept_token: sendError ? null : token,
+            outcome: sendError ? 'send_failed' : 'sent',
+            error: sendError,
+            task_payload,
+          });
+          results.deliveries.push({ id: row.id, recipient, ok: !sendError });
+        } catch (e) {
+          console.error('NotificationDelivery insert failed:', e.message);
+          results.errors++;
+        }
+      }
+    }
+
+    return Response.json({ success: true, ...results });
+  } catch (error) {
+    console.error('notifyNewTask error:', error.message);
+    return Response.json({ success: false, error: error.message }, { status: 500 });
+  }
+});
