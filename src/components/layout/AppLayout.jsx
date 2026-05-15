@@ -3,18 +3,26 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { Search, Command } from 'lucide-react';
 import CommandPalette from './CommandPalette.jsx';
 
-const NAV = [
-  { to: '/',            label: 'Overview', end: true },
-  { to: '/pending',     label: 'Pending' },
-  { to: '/issues',      label: 'Issues' },
-  { to: '/history',     label: 'History' },
-  { to: '/tasks',       label: 'Activity' },
-  { to: '/portals',     label: 'Connectors' },
-  { to: '/rules',       label: 'Rules' },
-  { to: '/notifications', label: 'Notifications' },
-  { to: '/api',         label: 'API' },
-  { to: '/settings',    label: 'Settings' },
+// Two semantic groups separated by a hairline divider — operational first
+// (what you do every day), then configuration (set up once, change rarely).
+const NAV_OPS = [
+  { to: '/',         label: 'Overview', end: true },
+  { to: '/pending',  label: 'Pending' },
+  { to: '/issues',   label: 'Issues' },
+  { to: '/history',  label: 'History' },
+  { to: '/tasks',    label: 'Activity' },
 ];
+const NAV_CONFIG = [
+  { to: '/portals',       label: 'Connectors' },
+  { to: '/rules',         label: 'Rules' },
+  { to: '/notifications', label: 'Notifications' },
+  { to: '/api',           label: 'API' },
+  { to: '/settings',      label: 'Settings' },
+];
+
+const linkCls = ({ isActive }) =>
+  `h-7 px-2.5 inline-flex items-center text-[12px] font-medium rounded transition-colors duration-tab whitespace-nowrap
+  ${isActive ? 'text-ink-1 bg-surface-2' : 'text-ink-3 hover:text-ink-1 hover:bg-surface-2'}`;
 
 export default function AppLayout() {
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -34,20 +42,17 @@ export default function AppLayout() {
     <div className="min-h-screen bg-bg">
       <header
         style={{ height: 52 }}
-        className="sticky top-0 z-40 bg-surface-1 border-b border-line-1 flex items-center px-5 gap-6"
+        className="sticky top-0 z-40 bg-surface-1 border-b border-line-1 flex items-center px-5 gap-5"
       >
-        <div className="text-[13px] font-semibold text-ink-1 tracking-tight">Dispatch</div>
         <nav className="flex items-center gap-0.5 overflow-x-auto flex-1">
-          {NAV.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              end={n.end}
-              className={({ isActive }) =>
-                `h-7 px-2.5 inline-flex items-center text-[12px] font-medium rounded transition-colors duration-tab whitespace-nowrap
-                ${isActive ? 'text-ink-1 bg-surface-2' : 'text-ink-3 hover:text-ink-1 hover:bg-surface-2'}`
-              }
-            >
+          {NAV_OPS.map((n) => (
+            <NavLink key={n.to} to={n.to} end={n.end} className={linkCls}>
+              {n.label}
+            </NavLink>
+          ))}
+          <span className="mx-2 h-4 w-px bg-line-2 flex-shrink-0" aria-hidden />
+          {NAV_CONFIG.map((n) => (
+            <NavLink key={n.to} to={n.to} className={linkCls}>
               {n.label}
             </NavLink>
           ))}
