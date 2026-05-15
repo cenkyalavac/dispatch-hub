@@ -7,6 +7,15 @@ import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EM, fmtNumber } from '@/lib/format';
 import PendingTaskRow from './PendingTaskRow';
+import SymfonieTaskDetail from '@/components/pending/SymfonieTaskDetail';
+import JunctionTaskDetailPanel from '@/components/pending/JunctionTaskDetailPanel';
+
+// Per-portal detail component map. Each connector is fully isolated — adding a
+// new portal means adding one entry here, no cross-imports inside detail files.
+const DETAIL_BY_PORTAL = {
+  symfonie: SymfonieTaskDetail,
+  junction: JunctionTaskDetailPanel,
+};
 
 // Per-portal pending list inside PortalDetail. This IS the pending list now —
 // no separate /pending/:key page to bounce to.
@@ -43,7 +52,7 @@ function GLRow({ task }) {
 // Header is always rendered so Refresh is reachable even while loading —
 // previously the Refresh button only appeared after the first successful fetch,
 // which is exactly the case where users most want to retry.
-function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComponent, onAccept, acceptingId }) {
+function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComponent, onAccept, acceptingId, DetailComponent }) {
   return (
     <section className="bg-surface-1 border border-line-1 rounded-md">
       <header className="flex items-center justify-between px-4 py-2.5 border-b border-line-1">
@@ -91,6 +100,7 @@ function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComp
               portalKey={portal.key}
               onAccept={onAccept}
               isAccepting={onAccept && acceptingId === it.id}
+              DetailComponent={DetailComponent}
             />
           ))}
         </div>
@@ -177,6 +187,7 @@ function FetchFnPending({ portal }) {
       RowComponent={PendingTaskRow}
       onAccept={handleAccept}
       acceptingId={acceptingId}
+      DetailComponent={DETAIL_BY_PORTAL[portal.key]}
     />
   );
 }

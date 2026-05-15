@@ -2,8 +2,6 @@ import { useState } from 'react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { Clock, User, Lock, Briefcase, ExternalLink, ChevronDown, ChevronRight, Check, Loader2 } from 'lucide-react';
 import { EM, fmtNumber } from '@/lib/format';
-import SymfonieTaskDetail from '@/components/pending/SymfonieTaskDetail';
-import JunctionTaskDetail from '@/components/pending/JunctionTaskDetail';
 
 // Format USD compactly — Symfonie sometimes returns 0 (no SO yet), we then hide it.
 function fmtMoney(v) {
@@ -40,7 +38,10 @@ function dueBadge(due) {
 // Expand toggle reveals a portal-specific detail panel:
 //   Symfonie → leverage breakdown + finance + people + custom fields + attachments
 //   Junction → notes/instructions + assets
-export default function PendingTaskRow({ task, portalKey, onAccept, isAccepting }) {
+// Row is portal-agnostic: it does NOT know about Symfonie or Junction internals.
+// The caller (PendingTab) decides which detail component to render via
+// `DetailComponent` — keeps connectors fully isolated from each other.
+export default function PendingTaskRow({ task, portalKey, onAccept, isAccepting, DetailComponent }) {
   const [expanded, setExpanded] = useState(false);
 
   const name = task.name || task.task_name || EM;
@@ -60,10 +61,6 @@ export default function PendingTaskRow({ task, portalKey, onAccept, isAccepting 
   const symfonieLink = (portalKey === 'symfonie' && task.job_id && task.id)
     ? `https://projects.moravia.com/Jobs/Detail/${task.job_id}#task-${task.id}`
     : null;
-
-  // Junction's detail panel needs the *task id* (not the offer id). For Symfonie
-  // task.id is already the task id.
-  const detailTaskId = portalKey === 'junction' ? task.task_id : task.id;
 
   return (
     <div>
@@ -166,13 +163,8 @@ export default function PendingTaskRow({ task, portalKey, onAccept, isAccepting 
         </div>
       </div>
 
-      {/* Expandable detail — portal-specific component, lazy-mounted */}
-      {expanded && portalKey === 'symfonie' && <SymfonieTaskDetail task={task} />}
-      {expanded && portalKey === 'junction' && (
-        <div className="px-4 py-4 bg-surface-2/40 border-t border-line-1">
-          <JunctionTaskDetail taskId={detailTaskId} />
-        </div>
-      )}
+      {/* Expandable detail — caller supplies the portal-specific component */}
+      {expanded && DetailComponent && <DetailComponent task={task} />}
     </div>
   );
 }
