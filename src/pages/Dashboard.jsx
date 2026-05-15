@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { Play, RefreshCw, ArrowRight, TableProperties, ThumbsUp } from 'lucide-react';
+import { Play, RefreshCw, ArrowRight, TableProperties, ThumbsUp, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import Metric from '@/components/dashboard/Metric';
@@ -23,6 +23,9 @@ export default function Dashboard() {
   const [lastResult, setLastResult] = useState(null);
   const [selectedPortal, setSelectedPortal] = useState('all');
   const [acceptingIds, setAcceptingIds] = useState(new Set());
+  // Scroll target so the user is taken to the run result immediately after the
+  // automation finishes — the panel previously sat far below the metrics grid.
+  const lastRunRef = useRef(null);
 
   const { data: portals = [], isLoading: portalsLoading } = useQuery({
     queryKey: ['portals-all'],
@@ -89,6 +92,9 @@ export default function Dashboard() {
       const res = await base44.functions.invoke(selectedPortalObj.process_function, {});
       const result = res.data;
       setLastResult(result);
+      // Smooth-scroll the user to the result panel — they were watching the
+      // header button, the panel lives several sections down.
+      requestAnimationFrame(() => lastRunRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
       if (result.success) {
         toast.success(`${result.summary.accepted} accepted · ${result.summary.rejected} rejected`);
         refetch();
@@ -296,8 +302,23 @@ export default function Dashboard() {
 
       {/* Last run result */}
       {lastResult && (
-        <section className="border border-line-1 bg-surface-1 rounded-md p-5 mb-7">
-          <h2 className="text-[14px] font-semibold text-ink-1">Last run</h2>
+        <section
+          ref={lastRunRef}
+          className="border border-accent/30 bg-accent-soft/40 rounded-md p-5 mb-7 animate-slide-down"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-[14px] font-semibold text-ink-1 inline-flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-success" /> Last run
+              <span className="font-normal text-ink-3 italic-editorial">· {selectedPortalObj?.name || ''}</span>
+            </h2>
+            <button
+              type="button"
+              onClick={() => setLastResult(null)}
+              className="text-[11px] text-ink-3 hover:text-ink-1 transition-colors duration-tab"
+            >
+              Dismiss
+            </button>
+          </div>
           <div className="flex flex-wrap items-center gap-5 mt-2 text-[13px]">
             <span className="text-success">✓ {lastResult.summary?.accepted || 0} accepted</span>
             <span className="text-danger">✗ {lastResult.summary?.rejected || 0} rejected</span>

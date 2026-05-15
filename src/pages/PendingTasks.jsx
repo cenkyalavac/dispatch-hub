@@ -54,6 +54,9 @@ export default function PendingTasks() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  // Live progress for the sequential bulk runner so the user sees "3 of 12, 1 failed"
+  // ticking forward instead of a frozen button.
+  const [bulkProgress, setBulkProgress] = useState(null);
 
   const { data: portals = [] } = useQuery({
     queryKey: ['portals-all'],
@@ -169,17 +172,22 @@ export default function PendingTasks() {
     const targets = filtered.filter(t => selectedIds.has(t.id));
     if (targets.length === 0) return;
     setBulkBusy(true);
+    setBulkProgress({ current: 0, total: targets.length, ok: 0, fail: 0 });
     // Sequential — Symfonie throttles concurrent command calls. Slow but reliable.
     let ok = 0, fail = 0;
-    for (const t of targets) {
+    for (let i = 0; i < targets.length; i++) {
+      const t = targets[i];
       try {
         const res = await base44.functions.invoke(fnName, buildPayload(t));
         if (res.data?.success) ok++; else fail++;
       } catch { fail++; }
+      // Update after each item so the progress strip ticks visibly.
+      setBulkProgress({ current: i + 1, total: targets.length, ok, fail });
     }
     toast[fail === 0 ? 'success' : 'warning'](`${label}: ${ok} ok${fail ? `, ${fail} failed` : ''}`);
     setSelectedIds(new Set());
     setBulkBusy(false);
+    setBulkProgress(null);
     refetch();
   };
 
@@ -307,6 +315,7 @@ export default function PendingTasks() {
       <BulkActionBar
         count={selectedIds.size}
         busy={bulkBusy}
+        progress={bulkProgress}
         onAccept={() => runBulk(acceptFn, 'Accepted')}
         onReject={() => runBulk(rejectFn, 'Rejected')}
         onClear={() => setSelectedIds(new Set())}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Languages, AlertTriangle, Plus, X, Trash2, Plug, Code } from 'lucide-react';
+import { Save, Languages, AlertTriangle, Plus, X, Trash2, Plug, Code, CheckCircle2, RotateCcw, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import FormField from '@/components/ui/FormField';
 import PortalDropboxFields from '@/components/connectors/PortalDropboxFields';
@@ -19,6 +19,9 @@ export default function SettingsTab({ portal, onDeleted }) {
   const qc = useQueryClient();
   const [form, setForm] = useState(() => normalize(portal));
   const [familyInput, setFamilyInput] = useState('');
+  // Track the most-recent save so the bottom bar can confirm "Saved · 12:04:15" instead
+  // of relying on the toast alone (which the user may miss while scrolling).
+  const [savedAt, setSavedAt] = useState(null);
 
   // If the underlying portal changes externally (e.g. test-connection updates),
   // re-sync the form. We only re-sync identity-level fields; in-flight user
@@ -36,11 +39,14 @@ export default function SettingsTab({ portal, onDeleted }) {
     mutationFn: (data) => base44.entities.Portal.update(portal.id, data),
     onSuccess: () => {
       toast.success('Settings saved');
+      setSavedAt(Date.now());
       qc.invalidateQueries({ queryKey: ['portal-detail', portal.key] });
       qc.invalidateQueries({ queryKey: ['portals-all'] });
     },
     onError: (e) => toast.error('Save failed: ' + e.message),
   });
+
+  const discard = () => setForm(normalize(portal));
 
   const deleteMutation = useMutation({
     mutationFn: () => base44.entities.Portal.delete(portal.id),
@@ -268,19 +274,46 @@ export default function SettingsTab({ portal, onDeleted }) {
         <PortalSheetColumns portal={portal} />
       </section>
 
-      {/* Save bar */}
-      <div className="sticky bottom-0 bg-surface-1 border border-line-1 rounded-md p-3 flex items-center justify-between shadow-sm">
-        <span className="text-[12px] text-ink-3">
-          {dirty ? <span className="italic-editorial">Unsaved changes.</span> : 'All changes saved.'}
+      {/* Save bar — sticky to viewport bottom so it's always reachable while editing long forms. */}
+      <div
+        className={`sticky bottom-3 z-20 rounded-md p-3 flex items-center justify-between shadow-md backdrop-blur-sm transition-colors duration-tab border ${
+          dirty
+            ? 'bg-warning-soft/90 border-warning/30'
+            : 'bg-surface-1/95 border-line-1'
+        }`}
+      >
+        <span className="text-[12px] inline-flex items-center gap-1.5">
+          {saveMutation.isPending ? (
+            <><Loader2 className="w-3.5 h-3.5 animate-spin text-ink-2" /><span className="text-ink-2">Saving…</span></>
+          ) : dirty ? (
+            <span className="text-ink-1 italic-editorial">Unsaved changes.</span>
+          ) : (
+            <><CheckCircle2 className="w-3.5 h-3.5 text-success" />
+              <span className="text-ink-2">
+                {savedAt ? `Saved at ${new Date(savedAt).toLocaleTimeString()}` : 'All changes saved.'}
+              </span>
+            </>
+          )}
         </span>
-        <button
-          type="button"
-          onClick={save}
-          disabled={!dirty || saveMutation.isPending}
-          className="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-accent text-white text-[13px] font-medium hover:bg-[var(--accent-hover)] transition-colors duration-tab disabled:opacity-40"
-        >
-          <Save className="w-3.5 h-3.5" /> {saveMutation.isPending ? 'Saving…' : 'Save changes'}
-        </button>
+        <div className="flex items-center gap-2">
+          {dirty && !saveMutation.isPending && (
+            <button
+              type="button"
+              onClick={discard}
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[12px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab"
+            >
+              <RotateCcw className="w-3 h-3" /> Discard
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={save}
+            disabled={!dirty || saveMutation.isPending}
+            className="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-accent text-white text-[13px] font-medium hover:bg-[var(--accent-hover)] transition-colors duration-tab disabled:opacity-40"
+          >
+            <Save className="w-3.5 h-3.5" /> {saveMutation.isPending ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
       </div>
 
       {/* Danger zone */}
