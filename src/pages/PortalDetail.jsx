@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Activity, ListChecks, ArrowLeftRight, Split, Settings, BarChart3, Webhook, Inbox } from 'lucide-react';
@@ -23,7 +23,25 @@ export default function PortalDetail() {
   const { key } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [tab, setTab] = useState('overview');
+  // Tab is URL-driven so TopBar's "Pending" dropdown can deep-link straight
+  // into /portals/:key?tab=pending. We keep a local mirror to avoid re-reading
+  // the query string on every render, and sync it both ways.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') || 'overview';
+  const [tab, setTab] = useState(initialTab);
+
+  // External nav (e.g. clicking TopBar's Pending dropdown from another portal's
+  // detail page) only changes the query string — keep local state in sync.
+  useEffect(() => {
+    const next = searchParams.get('tab') || 'overview';
+    if (next !== tab) setTab(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const handleTabChange = (next) => {
+    setTab(next);
+    setSearchParams(next === 'overview' ? {} : { tab: next }, { replace: true });
+  };
 
   const { data: portal, isLoading, error } = useQuery({
     queryKey: ['portal-detail', key],
@@ -173,7 +191,7 @@ export default function PortalDetail() {
   return (
     <div className="px-8 py-7 max-w-6xl">
       <PortalDetailHeader portal={portal} onToggleActive={handleToggle} />
-      <PortalTabs tabs={tabs} active={tab} onChange={setTab} />
+      <PortalTabs tabs={tabs} active={tab} onChange={handleTabChange} />
 
       {tab === 'overview' && <OverviewTab portal={portal} />}
       {tab === 'pending'  && <PendingTab portal={portal} />}

@@ -1,23 +1,17 @@
-import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, Inbox, RefreshCw } from 'lucide-react';
+import { Inbox, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EM, fmtNumber } from '@/lib/format';
 
-// Per-portal pending preview inside PortalDetail. Acts as a shortcut to the
-// portal's dedicated /pending page.
+// Per-portal pending list inside PortalDetail. This IS the pending list now —
+// no separate /pending/:key page to bounce to.
 //   - GlobalLink: GlobalLinkSubmission rows in status='available' (local entity).
-//   - Symfonie / Junction: cached pending via the portal's fetch_function.
-//     The backend caches for 5min via CachedSnapshot, so opening this tab
-//     repeatedly doesn't re-hit upstream.
+//   - Symfonie / Junction: live via the portal's fetch_function, cached 5min
+//     server-side via CachedSnapshot so repeated tab opens are cheap.
 
-function pendingHref(portalKey) {
-  return portalKey === 'globallink' ? '/globallink/pending' : `/pending/${portalKey}`;
-}
-
-function Row({ task, portalKey }) {
+function Row({ task }) {
   // GlobalLinkSubmission fields differ from AcceptedTask/Symfonie pending —
   // normalise just enough to show one consistent row.
   const name = task.submission_name || task.task_name || task.name || EM;
@@ -26,10 +20,7 @@ function Row({ task, portalKey }) {
   const wc = task.word_count || 0;
   const stamp = task.created_date || task.created_at;
   return (
-    <Link
-      to={pendingHref(portalKey)}
-      className="flex items-center gap-3 px-3 py-2 hover:bg-surface-2 transition-colors duration-tab"
-    >
+    <div className="flex items-center gap-3 px-3 py-2 hover:bg-surface-2 transition-colors duration-tab">
       <div className="min-w-0 flex-1">
         <p className="text-[12px] font-medium text-ink-1 truncate">{name}</p>
         <p className="text-[11px] text-ink-3 truncate font-mono">
@@ -41,7 +32,7 @@ function Row({ task, portalKey }) {
       <span className="text-[11px] text-ink-4 flex-shrink-0 w-24 text-right">
         {stamp ? formatDistanceToNow(new Date(stamp), { addSuffix: true }) : EM}
       </span>
-    </Link>
+    </div>
   );
 }
 
@@ -56,21 +47,13 @@ function Body({ items, portal, isLoading, refetch, isFetching, errorMsg }) {
           <span className="text-[13px] font-semibold text-ink-1">Pending</span>
           <span className="text-[11px] text-ink-3 tabular-nums">{items.length}</span>
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="inline-flex items-center gap-1 h-7 px-2 rounded text-[11px] text-ink-3 hover:bg-surface-2 hover:text-ink-1 transition-colors duration-tab disabled:opacity-40"
-          >
-            <RefreshCw className={`w-3 h-3 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
-          </button>
-          <Link
-            to={pendingHref(portal.key)}
-            className="inline-flex items-center gap-1 h-7 px-2 rounded text-[11px] text-ink-3 hover:bg-surface-2 hover:text-ink-1 transition-colors duration-tab"
-          >
-            Open full list <ArrowRight className="w-3 h-3" />
-          </Link>
-        </div>
+        <button
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="inline-flex items-center gap-1 h-7 px-2 rounded text-[11px] text-ink-3 hover:bg-surface-2 hover:text-ink-1 transition-colors duration-tab disabled:opacity-40"
+        >
+          <RefreshCw className={`w-3 h-3 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
+        </button>
       </header>
       {errorMsg ? (
         <div className="px-4 py-5 text-center">
@@ -83,8 +66,8 @@ function Body({ items, portal, isLoading, refetch, isFetching, errorMsg }) {
         </div>
       ) : (
         <div className="divide-y divide-line-1">
-          {items.slice(0, 25).map((it) => (
-            <Row key={it.id} task={it} portalKey={portal.key} />
+          {items.map((it) => (
+            <Row key={it.id} task={it} />
           ))}
         </div>
       )}
