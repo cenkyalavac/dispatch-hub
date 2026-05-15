@@ -53,9 +53,12 @@ async function rejectOffer(apiBase, jwt, apiKey, offerId, reason = 'capacity') {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    // Soft auth: Base44 SDK occasionally returns 401 from auth.me() even for valid sessions.
-    // This route is admin-gated by the app's UI; we proceed even if me() fails.
-    await base44.auth.me().catch(() => null);
+    // Admin gate: allow admin users and scheduled/system calls (no user context).
+    // Reject regular users — this endpoint accepts/rejects offers, very sensitive.
+    const user = await base44.auth.me().catch(() => null);
+    if (user !== null && user?.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
 
     const jwt = Deno.env.get('JUNCTION_JWT');
     const apiKey = Deno.env.get('JUNCTION_API_KEY');

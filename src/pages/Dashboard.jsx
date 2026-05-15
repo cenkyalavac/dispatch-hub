@@ -109,8 +109,15 @@ export default function Dashboard() {
   };
 
   const handleManualAccept = async (task) => {
-    const portal = portals.find(p => p.key === task.portal) || portals.find(p => p.key === 'symfonie');
-    const acceptFn = portal?.accept_function || 'symfonieAcceptTask';
+    // Skipped tasks from a process run don't carry a `portal` field — the run
+    // is portal-scoped (selectedPortalObj). Fall back to the selected portal
+    // when the task itself is unlabeled. Never silently default to Symfonie.
+    const portal = portals.find(p => p.key === task.portal) || selectedPortalObj;
+    const acceptFn = portal?.accept_function;
+    if (!acceptFn) {
+      toast.error(`No accept function for portal "${task.portal || selectedPortal || 'unknown'}".`);
+      return;
+    }
     setAcceptingIds(prev => new Set([...prev, task.id]));
     try {
       // symfonieAcceptTask expects `account_name`; junctionAcceptOffer accepts both. Send both so

@@ -56,9 +56,12 @@ async function symfonieFetch(url, token, init = {}, maxRetries = 4) {
 
 Deno.serve(async (req) => {
   try {
+    // Admin gate: this endpoint proxies raw task attachments (PII/IP).
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (user !== null && user?.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
 
     let body = {};
     try { body = await req.json(); } catch { body = {}; }

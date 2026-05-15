@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, Search, Download } from 'lucide-react';
@@ -27,7 +27,10 @@ const DAY_OPTIONS = [7, 14, 30];
 export default function History() {
   const [days, setDays] = useState(30);
   const [search, setSearch] = useState('');
-  const [selectedPortal, setSelectedPortal] = useState('symfonie');
+  // Don't hard-code 'symfonie' — initialize empty and pick the first portal
+  // that actually exposes a history_function. Avoids the "History not available"
+  // dead-state when Symfonie isn't configured or is paused.
+  const [selectedPortal, setSelectedPortal] = useState('');
 
   // Only portals that declare a history_function show up in the picker.
   const { data: portals = [] } = useQuery({
@@ -38,6 +41,13 @@ export default function History() {
     () => portals.filter(p => p.is_active && p.history_function),
     [portals],
   );
+
+  // Auto-pick first portal with a history_function once the list arrives.
+  useEffect(() => {
+    if (!selectedPortal && historyPortals.length > 0) {
+      setSelectedPortal(historyPortals[0].key);
+    }
+  }, [selectedPortal, historyPortals]);
 
   const activePortal = portals.find(p => p.key === selectedPortal);
   const historyFn = activePortal?.history_function;
@@ -85,7 +95,7 @@ export default function History() {
             onChange={(e) => setSelectedPortal(e.target.value)}
             className="h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
           >
-            {historyPortals.length === 0 && <option value="symfonie">Symfonie</option>}
+            {historyPortals.length === 0 && <option value="">No history portals</option>}
             {historyPortals.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
           </select>
           <select

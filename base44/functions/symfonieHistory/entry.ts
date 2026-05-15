@@ -37,11 +37,12 @@ async function fetchWithRetry(url, token, maxRetries = 4) {
 
 Deno.serve(async (req) => {
   try {
-    // Auth gate: exposes Symfonie history (financials, PII). UI-only consumers
-    // must be authenticated app users.
+    // Admin gate: exposes Symfonie history (financials, PII).
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (user !== null && user?.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
 
     const { days = 30 } = await req.json().catch(() => ({}));
     const token = await getToken();

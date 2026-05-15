@@ -76,12 +76,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 Deno.serve(async (req) => {
   try {
     // Auth gate: this endpoint exposes raw Symfonie task data (financials, PII).
-    // Require an authenticated app user — scheduled/system calls go through the
-    // dedicated symfonieProcessTasks function, not here.
+    // Require admin role — scheduled/system calls (no user context) are also OK.
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (user !== null && user?.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
     const token = await getToken();

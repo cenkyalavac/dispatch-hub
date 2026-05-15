@@ -47,8 +47,12 @@ function normAsset(a) {
 
 Deno.serve(async (req) => {
   try {
+    // Admin gate: returns Junction task notes + asset URLs (sensitive).
     const base44 = createClientFromRequest(req);
-    await base44.auth.me().catch(() => null); // soft auth, same pattern as junctionGetOffers
+    const user = await base44.auth.me().catch(() => null);
+    if (user !== null && user?.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
 
     // req.url may be relative in Deno deploy; supply a base so URL() doesn't throw.
     const url = new URL(req.url, 'http://localhost');
