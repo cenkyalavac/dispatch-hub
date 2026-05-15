@@ -10,6 +10,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    // Auth gate: returns a live OAuth token. Only admins and scheduled/system
+    // calls (no user context) are allowed — reject regular users so a leaked
+    // function URL can't be used to exfiltrate the JWT.
+    const user = await base44.auth.me().catch(() => null);
+    if (user !== null && user?.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
 
     // Broker pushes TWO tokens — globallink_jwt (Authorization: Bearer) AND
     // globallink_csrf (PD requires it as the `csrfToken` header on .pd endpoints).

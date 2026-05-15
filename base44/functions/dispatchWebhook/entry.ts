@@ -16,6 +16,13 @@ async function hmacSha256(secret, message) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    // Internal endpoint — invoked by other backend functions (asServiceRole)
+    // and never directly by app users. Reject unauthenticated/non-admin callers
+    // so a leaked URL can't be used to spam downstream BMS webhooks.
+    const user = await base44.auth.me().catch(() => null);
+    if (user !== null && user?.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
     const { tenant_id = 'default', event, project_id } = await req.json();
     if (!event || !project_id) {
       return Response.json({ error: 'event and project_id are required' }, { status: 400 });

@@ -1,7 +1,9 @@
 // Son N gün içindeki Completed + Approved task'ları çek.
 // Sheet'e YAZMAZ — sadece UI için historical view.
 // Symfonie 503'leri için retry-with-backoff var.
-const TENANT_ID = Deno.env.get('SYMFONIE_TENANT_ID');
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
+const TENANT_ID = Deno.env.get('SYMFONIE_TENANT_ID') || 'ead220ab-1743-4c57-83ae-e055f3401f19';
 const SCOPE = 'api://c2e8870d-faef-45ea-919c-b603f97bd0cc/.default';
 const BASE_URL = 'https://projects.moravia.com/Api/V5';
 
@@ -35,6 +37,12 @@ async function fetchWithRetry(url, token, maxRetries = 4) {
 
 Deno.serve(async (req) => {
   try {
+    // Auth gate: exposes Symfonie history (financials, PII). UI-only consumers
+    // must be authenticated app users.
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
     const { days = 30 } = await req.json().catch(() => ({}));
     const token = await getToken();
 

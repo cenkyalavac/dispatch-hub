@@ -60,7 +60,9 @@ Deno.serve(async (req) => {
     const jwt = Deno.env.get('JUNCTION_JWT');
     const apiKey = Deno.env.get('JUNCTION_API_KEY');
     const apiBase = PROD_BASE;
-    if (!jwt) return Response.json({ success: false, error: 'JUNCTION_JWT not configured' });
+    // Surface real HTTP status so the scheduler / UI can distinguish
+    // "misconfigured" from "ran successfully but did nothing".
+    if (!jwt) return Response.json({ success: false, error: 'JUNCTION_JWT not configured' }, { status: 503 });
 
     // Kill switch: if the Junction portal is toggled off in the UI, do nothing.
     const junctionPortalRows = await base44.asServiceRole.entities.Portal.filter({ key: 'junction' });
@@ -76,7 +78,10 @@ Deno.serve(async (req) => {
     });
     if (!offersRes.ok) {
       const text = await offersRes.text();
-      return Response.json({ success: false, error: `Junction HTTP ${offersRes.status}: ${text.slice(0, 200)}` });
+      return Response.json(
+        { success: false, error: `Junction HTTP ${offersRes.status}: ${text.slice(0, 200)}` },
+        { status: 502 }
+      );
     }
     const offersData = await offersRes.json();
     const offers = Array.isArray(offersData) ? offersData : (offersData?.data || []);

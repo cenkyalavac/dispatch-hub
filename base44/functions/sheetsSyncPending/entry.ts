@@ -67,6 +67,12 @@ function colLetter(n) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    // Auth gate: allows admin (manual sync from UI) and scheduled/system runs
+    // (no user context). Rejects regular users — they can't write to sheets.
+    const user = await base44.auth.me().catch(() => null);
+    if (user !== null && user?.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
 
     const { accessToken } = await base44.asServiceRole.connectors.getConnection('googlesheets');
     if (!accessToken) {

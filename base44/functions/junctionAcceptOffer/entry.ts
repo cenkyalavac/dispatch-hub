@@ -31,7 +31,10 @@ Deno.serve(async (req) => {
     const jwt = Deno.env.get('JUNCTION_JWT');
     const apiKey = Deno.env.get('JUNCTION_API_KEY');
     const apiBase = PROD_BASE;
-    if (!jwt) return Response.json({ success: false, error: 'JUNCTION_JWT not configured' });
+    // 503 (Service Unavailable) is the correct status for "we can't reach the
+    // upstream because we're not configured" — 200-with-error was masking real
+    // failures in the UI's success-detection.
+    if (!jwt) return Response.json({ success: false, error: 'JUNCTION_JWT not configured' }, { status: 503 });
 
     // Defensive: send x-api-key when configured (Welocalize UI sends it; not yet enforced).
     const headers = { 'x-pantheon-auth': jwt, 'Content-Type': 'application/json' };
@@ -45,7 +48,10 @@ Deno.serve(async (req) => {
 
     if (!r.ok) {
       const text = await r.text();
-      return Response.json({ success: false, error: `Junction returned HTTP ${r.status}: ${text.slice(0, 200)}` });
+      return Response.json(
+        { success: false, error: `Junction returned HTTP ${r.status}: ${text.slice(0, 200)}` },
+        { status: 502 }
+      );
     }
 
     const acceptedAt = new Date().toISOString();

@@ -2,7 +2,7 @@
 // Klasor yapisi: /{Account}/{Project}/{TaskId_TaskName}/HO/{filename}
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const TENANT_ID = Deno.env.get('SYMFONIE_TENANT_ID');
+const TENANT_ID = Deno.env.get('SYMFONIE_TENANT_ID') || 'ead220ab-1743-4c57-83ae-e055f3401f19';
 const SCOPE = 'api://c2e8870d-faef-45ea-919c-b603f97bd0cc/.default';
 const BASE_URL = 'https://projects.moravia.com/Api/V5';
 const SYMFONIE_HOST = 'https://projects.moravia.com/Api';
@@ -10,10 +10,13 @@ const SYMFONIE_HOST = 'https://projects.moravia.com/Api';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 async function getSymfonieToken() {
+  const clientId = Deno.env.get('SYMFONIE_CLIENT_ID');
+  const clientSecret = Deno.env.get('SYMFONIE_CLIENT_SECRET');
+  if (!clientId || !clientSecret) throw new Error('SYMFONIE_CLIENT_ID or SYMFONIE_CLIENT_SECRET missing');
   const params = new URLSearchParams();
   params.append('grant_type', 'client_credentials');
-  params.append('client_id', Deno.env.get('SYMFONIE_CLIENT_ID'));
-  params.append('client_secret', Deno.env.get('SYMFONIE_CLIENT_SECRET'));
+  params.append('client_id', clientId);
+  params.append('client_secret', clientSecret);
   params.append('scope', SCOPE);
   const r = await fetch(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`, {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString()

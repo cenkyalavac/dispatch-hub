@@ -69,8 +69,21 @@ const BILLING_UNIT_NAMES = {
   Hours: 'Hours', Minutes: 'Minutes', Segments: 'Segments', Files: 'Files',
 };
 
+// Lazy SDK import — only loaded on the request path so the file still compiles
+// if the platform ever resolves imports at boot. We also keep auth guarding here.
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
 Deno.serve(async (req) => {
   try {
+    // Auth gate: this endpoint exposes raw Symfonie task data (financials, PII).
+    // Require an authenticated app user — scheduled/system calls go through the
+    // dedicated symfonieProcessTasks function, not here.
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const token = await getToken();
 
     // Expand:
