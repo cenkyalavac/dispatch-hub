@@ -173,12 +173,13 @@ Deno.serve(async (req) => {
       .catch(() => []);
     const alreadySentKey = new Set(existing.map((d) => `${d.rule_id}::${d.recipient}`));
 
-    // Determine the public origin for the Accept link. We prefer the request's
-    // own origin (so the link works for whatever domain Dispatch Hub is served
-    // on), and fall back to APP_PUBLIC_URL when the request came in via an
-    // internal channel that doesn't preserve the original host.
+    // Build the base for the Accept link. APP_PUBLIC_URL is the canonical
+    // public landing page for one-click accepts (e.g. https://hub.eltur.co/accept).
+    // When it's set we use it verbatim and just append ?token=…; when it's
+    // not, we fall back to the request's own origin plus the /accept route
+    // served by the SPA.
     const reqUrl = new URL(req.url);
-    const publicOrigin = Deno.env.get('APP_PUBLIC_URL') || `${reqUrl.protocol}//${reqUrl.host}`;
+    const acceptBase = Deno.env.get('APP_PUBLIC_URL') || `${reqUrl.protocol}//${reqUrl.host}/accept`;
 
     const results = { sent: 0, skipped: 0, errors: 0, deliveries: [] };
 
@@ -192,9 +193,9 @@ Deno.serve(async (req) => {
         if (alreadySentKey.has(dedupeKey)) { results.skipped++; continue; }
 
         const token = mintToken();
-        // Accept URL points to the public acceptViaToken function. Functions
-        // are hosted under the app's same origin at /functions/<name>.
-        const acceptUrl = `${publicOrigin}/functions/acceptViaToken?token=${token}`;
+        // Pretty public URL — APP_PUBLIC_URL already points at the SPA's
+        // /accept page which proxies to acceptViaToken under the hood.
+        const acceptUrl = `${acceptBase}?token=${token}`;
 
         const html = buildEmail({ portal, task: task_payload, acceptUrl, rule });
         const subject = `New ${({ symfonie: 'Symfonie', junction: 'Junction', globallink: 'GlobalLink' })[portal] || portal} task — ${task_payload.task_name || taskIdStr}`;

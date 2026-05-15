@@ -19,9 +19,21 @@ import Issues from './pages/Issues.jsx';
 import PortalProbe from './pages/PortalProbe.jsx';
 import Notifications from './pages/Notifications.jsx';
 import Users from './pages/Users.jsx';
+import AcceptToken from './pages/AcceptToken.jsx';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+
+  // Public bypass: the /accept page is reached from one-click email links
+  // where the recipient has no app token and may not even have an account.
+  // Render it BEFORE the auth gate so it works in an incognito tab.
+  if (typeof window !== 'undefined' && window.location.pathname === '/accept') {
+    return (
+      <Routes>
+        <Route path="/accept" element={<AcceptToken />} />
+      </Routes>
+    );
+  }
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     // Doctrine: Skeleton primitive, never spinner.
