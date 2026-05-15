@@ -160,8 +160,8 @@ Deno.serve(async (req) => {
         break;
       }
 
-      case 'TaskCanceled':
-      case 'TaskAssignmentChanged': {
+      case 'TaskCanceled': {
+        // Hard cancel from Symfonie — always reflect as rejected on our side.
         if (!taskId) { action = 'no task id in payload'; break; }
         const tasks = await base44.asServiceRole.entities.AcceptedTask
           .filter({ portal: PORTAL_KEY, task_id: Number(taskId) }).catch(() => []);
@@ -170,8 +170,19 @@ Deno.serve(async (req) => {
             .update(t.id, { status: 'rejected' }).catch(() => {});
         }
         action = tasks.length
-          ? `marked ${tasks.length} AcceptedTask row(s) as rejected`
+          ? `marked ${tasks.length} AcceptedTask row(s) as rejected (canceled by source)`
           : `no AcceptedTask matched task_id=${taskId}`;
+        break;
+      }
+
+      case 'TaskAssignmentChanged': {
+        // AssignmentChanged fires for assign/reassign/unassign. We MUST NOT
+        // blanket-reject — the task may still be assigned to us (e.g. someone
+        // was added to the assignees, or a different vendor was removed).
+        // Without a reliable "is-this-still-us?" signal in the payload, log
+        // only. The next TaskOrdered/TaskCanceled event drives state changes;
+        // history pull reconciles the rest.
+        action = `logged (assignment changed for task_id=${taskId || 'unknown'} — no automatic state flip)`;
         break;
       }
 

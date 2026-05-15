@@ -183,15 +183,28 @@ Deno.serve(async (req) => {
       (r.ok ? uploaded : failed).push(r);
     }
 
-    // 4) JobAttachments pass — Belazy "RE/" parite. Job seviyesindeki referans
-    // dosyalari (style guide, glossary, vb.) handoff klasoru yanindaki RE/'ye iner.
-    // Job ID yoksa veya bu task'in target dilini hedeflemiyorsa atlanir.
+    // 4) JobAttachments pass — Belazy "RE/" parite. Job-level reference dosyalari
+    // (style guide, glossary, brief) her task'in HO/'sunun YANINA degil, task
+    // klasorunun KARDESI olarak RE/'ye iner. Reference dosyalari job genelinde
+    // ortak — her task icin tekrar indirmek hem disk israfi hem rate-limit cezasi.
+    //
+    // Klasor matematigi: handoffDir = .../{task_id}_{task_name}/HO
+    //                    referenceDir = .../{task_id}_{task_name}/RE  (kardes)
+    // Boylece "task surrogate" altinda HO ve RE birlikte yasar; Belazy davranisi.
     const jobUploaded = [];
     const jobFailed = [];
     let referenceDir = null;
     if (job_id) {
-      referenceDir = handoffDir.replace(/\/HO$/, '/RE');
-      if (referenceDir === handoffDir) referenceDir = `${handoffDir}/RE`;
+      // Replace trailing "/HO" with "/RE". If template doesn't end with HO,
+      // place RE as a sibling of the last segment.
+      if (/\/HO$/.test(handoffDir)) {
+        referenceDir = handoffDir.replace(/\/HO$/, '/RE');
+      } else {
+        // Strip last segment, append /RE
+        const parts = handoffDir.split('/');
+        parts[parts.length - 1] = 'RE';
+        referenceDir = parts.join('/');
+      }
 
       try {
         const jobListRes = await symfonieFetch(

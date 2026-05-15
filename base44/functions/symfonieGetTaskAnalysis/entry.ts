@@ -17,6 +17,8 @@
 // output: a flat `{ lev_*, parser_type }` object per task. The caller is
 // responsible for stitching this back onto the AcceptedTask row.
 
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
 const TENANT_ID = Deno.env.get('SYMFONIE_TENANT_ID') || 'ead220ab-1743-4c57-83ae-e055f3401f19';
 const SCOPE = 'api://c2e8870d-faef-45ea-919c-b603f97bd0cc/.default';
 const BASE_URL = 'https://projects.moravia.com/Api/V5';
@@ -120,6 +122,15 @@ async function fetchAnalysisForTask(taskId, token) {
 
 Deno.serve(async (req) => {
   try {
+    // Admin gate — exposes raw analysis data (financial signals).
+    // Allow scheduled/system calls (no user context) so processTasks/acceptTask
+    // can invoke it via base44.asServiceRole.functions.invoke().
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    if (user !== null && user?.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
+
     const body = await req.json().catch(() => ({}));
     const { task_id, task_ids } = body;
     const ids = task_id ? [Number(task_id)] : (Array.isArray(task_ids) ? task_ids.map(Number) : []);

@@ -256,7 +256,6 @@ Deno.serve(async (req) => {
         status: 'skipped',
         portal: 'symfonie',
         sheets_synced: false,
-        service_tag: raw.ServiceTag || '',
         workflow_name: raw.WorkflowName || '',
         project_manager_first_name: pm?.FirstName || '',
         project_manager_last_name: pm?.LastName || '',
