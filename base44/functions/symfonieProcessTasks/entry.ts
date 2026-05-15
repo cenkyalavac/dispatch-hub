@@ -155,13 +155,18 @@ Deno.serve(async (req) => {
     const token = await getToken();
     console.log('Azure AD token acquired');
 
-    // 3. Fetch tasks in 'Order' state (awaiting acceptance) with Project and FinanceRows expanded
-    // State eq 'Order' = TaskStates.Order (value=3) = "Ordered task" = tasks assigned to us, awaiting our Accept/Reject
-    // Note: 'Project' is NOT a navigation property on TaskViewModel — removed from $expand
-    // Use JobName/ProjectName fields directly on the task for project name
-    const url = `${BASE_URL}/Tasks?$filter=State eq 'Order'&$expand=FinanceRows&$orderby=CreatedAt asc&$top=200`;
+    // 3. Fetch tasks in 'Order' state (awaiting acceptance) with FinanceRows expanded.
+    // BeLazy parity filter — exclude locked tasks and anything older than ~1 month.
+    // Locked tasks reject Accept commands at the API layer; pulling them just
+    // generates noisy `status='error'` AcceptedTask rows. Stale orders (>30d) are
+    // virtually always cancelled upstream — Symfonie itself hides them in its UI.
+    const oneMonthAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const filter = encodeURIComponent(
+      `State eq 'Order' and LockState eq 'Unlocked' and OrderDate ge ${oneMonthAgoIso}`
+    );
+    const url = `${BASE_URL}/Tasks?$filter=${filter}&$expand=FinanceRows&$orderby=CreatedAt asc&$top=200`;
     const rawTasks = await fetchAllPages(url, token);
-    console.log(`Found ${rawTasks.length} tasks in Order state`);
+    console.log(`Found ${rawTasks.length} tasks in Order state (unlocked, ≤30d)`);
 
     // Belazy parity enrichment — resolve in 3 batched lookups (Projects, Jobs, Users).
     // Skipped silently on failure so a transient Symfonie 5xx never blocks acceptance.

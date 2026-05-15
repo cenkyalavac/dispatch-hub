@@ -17,8 +17,13 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
+    // NOTE on parameter naming: the frontend sends `task_id` for legacy reasons,
+    // but the value is actually the Junction OFFER ID (`o.id` from /v2/offer/me),
+    // which is what `/v1/offer/accept-bulk` expects. The Welocalize docs use
+    // "task ids" loosely — endpoint is offer-scoped, so offer IDs are correct.
     const { task_id, task_name, project_name, client_name, account_name, source_language, target_language, word_count, price, due_date } = await req.json();
     if (!task_id) return Response.json({ success: false, error: 'task_id is required' }, { status: 400 });
+    const offerId = Number(task_id);
     const resolvedClient = client_name || account_name || '';
 
     // Kill switch: paused connector must not be bypassed by manual accept.
@@ -39,11 +44,18 @@ Deno.serve(async (req) => {
     const headers = { 'x-pantheon-auth': jwt, 'Content-Type': 'application/json' };
     if (apiKey) headers['x-api-key'] = apiKey;
 
-    const r = await fetch(`${apiBase}/v1/offer/accept-bulk`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({ ids: [Number(task_id)] }),
-    });
+    // Rate-limit aware retry — Junction default budget is 500/min but bulk-accept
+    // can be hammered when the user clicks Accept on a list of 20+ offers in
+    // quick succession. 429/5xx → exponential backoff (capped 8s, max 3 retries).
+    const acceptUrl = `${apiBase}/v1/offer/accept-bulk`;
+    const body = JSON.stringify({ ids: [offerId] });
+    let r;
+    for (let attempt = 0; attempt <= 3; attempt++) {
+      r = await fetch(acceptUrl, { method: 'PUT', headers, body });
+      if (r.ok) break;
+      if (![429, 502, 503, 504].includes(r.status) || attempt === 3) break;
+      await new Promise((res) => setTimeout(res, Math.min(1000 * 2 ** attempt, 8000)));
+    }
 
     if (!r.ok) {
       const text = await r.text();
@@ -57,7 +69,7 @@ Deno.serve(async (req) => {
 
     const savedTask = await base44.asServiceRole.entities.AcceptedTask.create({
       portal: 'junction',
-      task_id: Number(task_id),
+      task_id: offerId,
       task_name: task_name || `Offer #${task_id}`,
       project_name: project_name || '',
       client_name: resolvedClient,
@@ -79,7 +91,7 @@ Deno.serve(async (req) => {
         tenant_id: 'default',
         accepted_task_id: savedTask.id,
         portal: 'junction',
-        external_id: `junction:${task_id}`,
+        external_id: `junction:${offerId}`,
         state: 'accepted',
         name: task_name || `Offer #${task_id}`,
         client_name: resolvedClient,

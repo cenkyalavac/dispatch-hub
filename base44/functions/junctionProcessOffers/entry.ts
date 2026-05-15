@@ -32,8 +32,20 @@ function authHeaders(jwt, apiKey, withContentType = false) {
   return h;
 }
 
+// Junction rate-limit policy: default 500/min on most endpoints. The scheduler
+// can burst-accept dozens of offers in a single tick — wrap mutating calls in
+// exponential backoff so a transient 429/5xx doesn't poison the run.
+async function jFetchRetry(url, init) {
+  for (let attempt = 0; attempt <= 3; attempt++) {
+    const r = await fetch(url, init);
+    if (r.ok) return r;
+    if (![429, 502, 503, 504].includes(r.status) || attempt === 3) return r;
+    await new Promise((res) => setTimeout(res, Math.min(1000 * 2 ** attempt, 8000)));
+  }
+}
+
 async function acceptOffer(apiBase, jwt, apiKey, offerId) {
-  const r = await fetch(`${apiBase}/v1/offer/accept-bulk`, {
+  const r = await jFetchRetry(`${apiBase}/v1/offer/accept-bulk`, {
     method: 'PUT',
     headers: authHeaders(jwt, apiKey, true),
     body: JSON.stringify({ ids: [Number(offerId)] }),
@@ -42,7 +54,10 @@ async function acceptOffer(apiBase, jwt, apiKey, offerId) {
 }
 
 async function rejectOffer(apiBase, jwt, apiKey, offerId, reason = 'capacity') {
-  const r = await fetch(`${apiBase}/v1/offer/${offerId}/reject`, {
+  // Doc allows reason categories: schedule (UTC date required), capacity,
+  // specialty, other (free-text note required). "capacity" is the safest
+  // automated default — no extra context demanded by the API.
+  const r = await jFetchRetry(`${apiBase}/v1/offer/${offerId}/reject`, {
     method: 'PUT',
     headers: authHeaders(jwt, apiKey, true),
     body: JSON.stringify({ reasons: [{ reasonCategory: reason, reasonExplanation: null }] }),
