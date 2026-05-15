@@ -22,7 +22,9 @@ export default function GlobalLinkPending() {
       if (res?.data?.skipped) {
         toast.warning('GlobalLink portal is disabled — toggle it on in Connectors.');
       } else if (summary) {
-        toast.success(`Polled: ${summary.created} new, ${summary.updated} updated`);
+        const parts = [`${summary.created} new`, `${summary.updated} updated`];
+        if (summary.retired) parts.push(`${summary.retired} retired`);
+        toast.success(`Refreshed: ${parts.join(', ')}`);
       }
       qc.invalidateQueries({ queryKey: ['globallink-submissions'] });
     },
@@ -90,7 +92,7 @@ export default function GlobalLinkPending() {
           className="gap-2"
         >
           {pollMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          Poll now
+          Refresh
         </Button>
       </div>
 

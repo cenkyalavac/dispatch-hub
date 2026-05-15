@@ -116,7 +116,14 @@ Deno.serve(async (req) => {
       existing.map((r) => [`${r.submission_ticket}::${r.target_language || ''}`, r])
     );
 
-    const summary = { upserted: 0, created: 0, updated: 0, errors: 0 };
+    const summary = { upserted: 0, created: 0, updated: 0, errors: 0, retired: 0 };
+
+    // Reconciliation set — every (submission_ticket, target_language) we see in
+    // *this* poll. Anything currently `available` in the DB that's NOT in this
+    // set was either claimed by someone else, expired, or pulled by GlobalLink.
+    // We mark those rows `skipped` so the Available Submissions table reflects
+    // ground truth instead of a growing log.
+    const seenKeys = new Set();
 
     // Expand language pairs in small parallel batches
     const BATCH = 5;
@@ -218,6 +225,7 @@ Deno.serve(async (req) => {
         for (const row of rows) {
           if (!row.target_language) continue;
           const key = `${row.submission_ticket}::${row.target_language}`;
+          seenKeys.add(key);
           const prior = existingKey.get(key);
           try {
             if (prior) {
@@ -237,11 +245,30 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Reconcile: retire rows that used to be available but aren't in this poll.
+    // We only touch status='available' — claimed/skipped/error rows stay as-is.
+    const retiredAt = new Date().toISOString();
+    for (const r of existing) {
+      if (r.status !== 'available') continue;
+      const key = `${r.submission_ticket}::${r.target_language || ''}`;
+      if (seenKeys.has(key)) continue;
+      try {
+        await base44.asServiceRole.entities.GlobalLinkSubmission.update(r.id, {
+          status: 'skipped',
+          claim_error: `Auto-retired: not in available pool at ${retiredAt}`,
+        });
+        summary.retired++;
+      } catch (e) {
+        console.error('Retire failed for', r.id, e.message);
+        summary.errors++;
+      }
+    }
+
     if (portal?.id) {
       await base44.asServiceRole.entities.Portal.update(portal.id, { last_sync_at: new Date().toISOString() }).catch(() => null);
     }
 
-    console.log(`globallinkPoll done: created=${summary.created} updated=${summary.updated} errors=${summary.errors}`);
+    console.log(`globallinkPoll done: created=${summary.created} updated=${summary.updated} retired=${summary.retired} errors=${summary.errors}`);
     return Response.json({ success: true, summary, total_submissions: submissions.length });
   } catch (error) {
     console.error('globallinkPoll error:', error.message);
