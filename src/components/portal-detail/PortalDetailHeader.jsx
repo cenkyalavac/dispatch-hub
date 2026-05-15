@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, AlertCircle, XCircle, Globe, Building2, Network, Plug, Boxes, Briefcase, Cloud } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
+import PortalDocsMenu from './PortalDocsMenu';
 
 const ICON_MAP = { Globe, Building2, Network, Plug, Boxes, Briefcase, Cloud };
 
@@ -42,6 +43,7 @@ export default function PortalDetailHeader({ portal, onToggleActive }) {
         </div>
 
         <div className="flex items-center gap-3 flex-shrink-0">
+          <PortalDocsMenu portal={portal} />
           <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-medium ${status.tone}`}>
             <StatusIcon className="w-3.5 h-3.5" />
             {status.label}
