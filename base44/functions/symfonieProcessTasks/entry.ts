@@ -201,11 +201,14 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Extract price: sum of MaxUsd from FinanceRows (most meaningful cost indicator)
-      // Word count: find the FinanceRow with BillingUnit = 'Words' (= 1)
+      // Extract price: sum of MaxUsd from FinanceRows (most meaningful cost indicator).
+      // Word count: pick the FinanceRow whose BillingUnit is "Word".
+      // BillingUnits enum (Symfonie V5): 0=Hour, 1=Page, 2=Piece, 3=Segment, 4=Word, 5=Percentage,
+      // 6=Character, 7=Minute, 8=Other, 9=Line. Source: /Api/help/V5/enum/BillingUnits
+      // The previous code matched value `1` thinking it was Words — but `1` is `Page`, so
+      // word_count was always 0 and word-count-based rules never fired.
       const financeRows = raw.FinanceRows || [];
-      // BillingUnit comes as either a numeric code (1 = Words) or a string ("Words"/"Word").
-      const wordRow = financeRows.find(r => r.BillingUnit === 1 || r.BillingUnit === 'Words' || r.BillingUnit === 'Word');
+      const wordRow = financeRows.find(r => r.BillingUnit === 4 || r.BillingUnit === 'Word');
       const wordCount = Number(wordRow?.Quantity) || 0;
       const totalPrice = financeRows.reduce((sum, r) => sum + (Number(r.MaxUsd) || 0), 0);
 
@@ -227,8 +230,13 @@ Deno.serve(async (req) => {
         sheets_synced: false,
         service_tag: raw.ServiceTag || '',
         workflow_name: raw.WorkflowName || '',
-        project_manager_first_name: raw.ProjectManager?.FirstName || raw.ProjectManagerFirstName || '',
-        project_manager_last_name: raw.ProjectManager?.LastName || raw.ProjectManagerLastName || '',
+        // PM name is NOT available on the Task or ProjectSimpleViewModel — the
+        // Projects endpoint only exposes `ProjectManagerId` (integer). To get
+        // first/last name we'd need an extra /Users(id) lookup per unique PM.
+        // Until that's wired up these stay empty, so PM-based rules will not
+        // match unless the user is filtering on the empty string.
+        project_manager_first_name: '',
+        project_manager_last_name: '',
       };
 
       // Find first matching rule (rules sorted by priority asc)

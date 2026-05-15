@@ -44,20 +44,34 @@ const MANIFEST = {
   Parameters: [],
 };
 
-// Pull a task/job id from whatever shape Symfonie sends.  Their contracts
-// differ across event types (TaskOrdered → Task.Id; TaskTransition → JobId),
-// so probe the most common keys and stop at the first hit.
+// Pull a task/job id from whatever shape Symfonie sends.
+//
+// Per V5 contracts (e.g. TaskOrdered, TaskCanceled, TaskAssignmentChanged) the
+// `TaskId` field is NOT a scalar — it's a `Moravia.Symfonie.Core.EntityIdentifier`
+// which serialises as an object with an `Id` integer inside. So `body.TaskId`
+// is `{ Id: 12345, ... }`, not `12345`. The previous code took the raw object
+// and called `String()` on it, producing "[object Object]" — every webhook
+// row in WebhookInbound had a bogus task_id and never matched AcceptedTask.
+//
+// Probe both shapes: `.Id` on the object, then fall back to the scalar form
+// in case Symfonie ever changes the wire format.
 function extractTaskId(body) {
   if (!body || typeof body !== 'object') return null;
-  return (
-    body?.Task?.Id ??
-    body?.TaskId ??
-    body?.JobId ??
-    body?.Job?.Id ??
-    body?.Id ??
-    body?.entity?.id ??
-    null
-  );
+  const candidates = [
+    body?.TaskId?.Id, body?.TaskId,
+    body?.Task?.Id,
+    body?.JobId?.Id, body?.JobId,
+    body?.Job?.Id,
+    body?.Id?.Id,    body?.Id,
+    body?.entity?.id,
+  ];
+  for (const c of candidates) {
+    if (c == null) continue;
+    // Reject objects that slipped through — only accept primitives.
+    if (typeof c === 'object') continue;
+    return c;
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
