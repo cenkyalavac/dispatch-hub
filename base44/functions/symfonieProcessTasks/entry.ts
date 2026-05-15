@@ -224,35 +224,42 @@ Deno.serve(async (req) => {
     const results = { accepted: [], rejected: [], skipped: [], errors: [] };
 
     // Pre-resolve leverage bands in ONE batch instead of N sequential invokes.
-    // Old path: for each accepted task we'd `base44.functions.invoke('symfonieGetTaskAnalysis', {task_id})`.
-    // 50 accepts = 50 cross-function invokes + 50 separate Azure AD token rounds.
-    // New path: pre-filter the tasks that will match an accept rule, call the
-    // helper once with `task_ids=[...]`, stash the result, and stitch bands
-    // onto each saved AcceptedTask inline. Bands are still optional — helper
-    // failure is non-fatal, tasks just save with band=0.
-    const candidateAcceptIds = [];
+    // Two callers need bands per run:
+    //   1. accept path → stitched onto the AcceptedTask row,
+    //   2. notify path → embedded in the unmatched-task email body so the
+    //      recipient sees the full word-count breakdown without clicking
+    //      through to the portal. (Previously notify mails carried only
+    //      project/client/WC and no leverage detail.)
+    // Both paths share a single batched invoke of symfonieGetTaskAnalysis.
+    // Helper failure is non-fatal — accepts save with band=0, mails ship
+    // without the leverage grid section.
+    const candidateAnalysisIds = [];
     for (const raw of rawTasks) {
       const id = Number(raw.Id);
       if (existingIds.has(id)) continue;
-      // Cheap match: only check the accept-rule(s). We re-run the full rule
-      // chain per task below, but pre-checking accept-action rules is enough
-      // to know if this task COULD need bands.
       const previewTask = {
         project_name: raw.Project?.Name || '',
         task_name: raw.Name || '',
         source_language: raw.SourceLanguageCode || '',
         target_language: raw.TargetLanguageCode || '',
       };
-      if (rules.some(r => r.action === 'accept' && matchesRule(r, previewTask))) {
-        candidateAcceptIds.push(id);
-      }
+      // Accept candidate: rule chain might consume it.
+      const isAcceptCandidate = rules.some(r => r.action === 'accept' && matchesRule(r, previewTask));
+      // Notify candidate: NO rule matches at all → goes to notifyNewTask.
+      // (We can't perfectly predict numeric-field rules without bands, but
+      // those rules don't influence whether bands are NEEDED — the matcher
+      // ignores undefined fields.)
+      const willNotify = !rules.some(r => matchesRule(r, previewTask));
+      if (isAcceptCandidate || willNotify) candidateAnalysisIds.push(id);
     }
 
     const bandsByTaskId = {};
-    if (candidateAcceptIds.length > 0) {
+    if (candidateAnalysisIds.length > 0) {
       try {
-        const aRes = await base44.asServiceRole.functions.invoke('symfonieGetTaskAnalysis', {
-          task_ids: candidateAcceptIds,
+        // Use the calling user's context (admin / scheduled). asServiceRole.functions.invoke
+        // surfaces a synthetic 'service+...' user the downstream admin gate rejects with 403.
+        const aRes = await base44.functions.invoke('symfonieGetTaskAnalysis', {
+          task_ids: candidateAnalysisIds,
         });
         const analysisResults = aRes?.data?.results || {};
         for (const [id, payload] of Object.entries(analysisResults)) {
@@ -262,6 +269,15 @@ Deno.serve(async (req) => {
         console.error('Batch WordCountAnalyses fetch failed:', e.message);
       }
     }
+
+    // MTPE-aligned weighted WC. Symfonie has no Reps* bands (pure-fuzzy only),
+    // so the formula collapses to: 95-99*0.2 + 85-94*0.35 + 75-84*0.45 + (50-74 + no-match)*0.6.
+    // Context / Rep / 100% carry zero weight.
+    const computeWeightedWc = (b) =>
+      (Number(b.lev_9599) || 0) * 0.2 +
+      (Number(b.lev_8594) || 0) * 0.35 +
+      (Number(b.lev_7584) || 0) * 0.45 +
+      ((Number(b.lev_5074) || 0) + (Number(b.lev_no_match) || 0)) * 0.6;
 
     for (const raw of rawTasks) {
       const taskId = Number(raw.Id);
@@ -329,10 +345,27 @@ Deno.serve(async (req) => {
         // failure must NEVER block the run.
         results.skipped.push({ id: taskId, name: raw.Name, project_name: task.project_name, source_language: task.source_language, target_language: task.target_language });
         console.log(`Task ${taskId} "${raw.Name}": no matching rule, skipped`);
-        base44.asServiceRole.functions.invoke('notifyNewTask', {
+
+        // Enrich the notify payload with leverage bands + weighted WC so the
+        // email body shows the full word-count breakdown grid. Pulled from
+        // the shared batched analysis above; if the analysis was missing
+        // upstream we simply ship the mail without the grid.
+        const notifyPayload = { ...task };
+        const a = bandsByTaskId[taskId];
+        if (a) {
+          Object.assign(notifyPayload, {
+            lev_context: a.lev_context, lev_rep: a.lev_rep, lev_match100: a.lev_match100,
+            lev_9599: a.lev_9599, lev_8594: a.lev_8594, lev_7584: a.lev_7584,
+            lev_5074: a.lev_5074, lev_no_match: a.lev_no_match,
+            parser_type: a.parser_type || '',
+            weighted_wc: computeWeightedWc(a),
+          });
+        }
+
+        base44.functions.invoke('notifyNewTask', {
           portal: 'symfonie',
           task_id: taskId,
-          task_payload: task,
+          task_payload: notifyPayload,
         }).catch((e) => console.error('notifyNewTask failed:', e.message));
         continue;
       }
@@ -362,6 +395,7 @@ Deno.serve(async (req) => {
             lev_9599: a.lev_9599, lev_8594: a.lev_8594, lev_7584: a.lev_7584,
             lev_5074: a.lev_5074, lev_no_match: a.lev_no_match,
             parser_type: a.parser_type || '',
+            weighted_wc: computeWeightedWc(a),
           });
         }
 

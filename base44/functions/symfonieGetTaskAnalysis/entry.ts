@@ -127,7 +127,11 @@ Deno.serve(async (req) => {
     // can invoke it via base44.asServiceRole.functions.invoke().
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
-    if (user !== null && user?.role !== 'admin') {
+    // Allow admin users + service-role callers (processTasks/acceptTask invoke
+    // this via base44.asServiceRole.functions.invoke, which surfaces as a
+    // synthetic 'service+...' user). Reject only authenticated non-admin users.
+    const isService = !user || (typeof user.email === 'string' && user.email.startsWith('service+'));
+    if (!isService && user?.role !== 'admin') {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 

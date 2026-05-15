@@ -252,8 +252,11 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
-    // Soft auth: allow service-role/scheduled callers (no user) and admins.
-    if (user !== null && user?.role !== 'admin') {
+    // Soft auth: allow admin users + service-role callers (asServiceRole.functions.invoke
+    // surfaces a synthetic 'service+...' user with role!='admin' — treat it as elevated).
+    // Reject anonymous app users only.
+    const isService = !user || (typeof user.email === 'string' && user.email.startsWith('service+'));
+    if (!isService && user?.role !== 'admin') {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
@@ -315,11 +318,16 @@ Deno.serve(async (req) => {
       friendly_workflow_name: friendlyLookup('workflow', task_payload),
     };
 
-    // Already-sent rows for this task → idempotency lookup.
+    // Already-sent rows for this task → idempotency lookup. Only `outcome:'sent'`
+    // counts as "delivered" — failed sends (rate-limit, transient SMTP) should be
+    // retryable on the next process run, otherwise Resend 429 bursts permanently
+    // suppress mails for whichever tasks happened to land in the over-quota slice.
     const existing = await base44.asServiceRole.entities.NotificationDelivery
       .filter({ portal, task_id: taskIdStr })
       .catch(() => []);
-    const alreadySentKey = new Set(existing.map((d) => `${d.rule_id}::${d.recipient}`));
+    const alreadySentKey = new Set(
+      existing.filter((d) => d.outcome === 'sent').map((d) => `${d.rule_id}::${d.recipient}`)
+    );
 
     // Build the base for the Accept link. APP_PUBLIC_URL is the canonical
     // public landing page for one-click accepts (e.g. https://hub.eltur.co/accept).
