@@ -7,11 +7,11 @@ import CommandPalette from './CommandPalette';
 // per-portal shortcuts including GlobalLink, so the user never has to type a
 // URL to reach the leverage hub. Activity (/tasks) and Probe (/probe) are
 // diagnostic surfaces accessible via the Command Palette (⌘K).
+// Issues + History are reachable via ⌘K search — kept off the primary nav
+// because daily use is low (used for forensics, not workflow).
 const TABS = [
   { to: '/',          label: 'Overview',   matches: ['/'] },
   { to: '/pending',   label: 'Pending',    matches: ['/pending', '/globallink/pending'] },
-  { to: '/issues',    label: 'Issues',     matches: ['/issues'] },
-  { to: '/history',   label: 'History',    matches: ['/history'] },
   { to: '/portals',   label: 'Connectors', matches: ['/portals', '/rules'] },
   { to: '/api',       label: 'API',        matches: ['/api', '/mappings'] },
 ];
