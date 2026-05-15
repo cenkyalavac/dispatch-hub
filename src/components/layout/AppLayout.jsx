@@ -1,80 +1,43 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
-import { Search, Command } from 'lucide-react';
-import CommandPalette from './CommandPalette.jsx';
+import { Outlet, useLocation } from 'react-router-dom';
+import TopBar from './TopBar';
+import SubNav from './SubNav';
 
-// Two semantic groups separated by a hairline divider — operational first
-// (what you do every day), then configuration (set up once, change rarely).
-const NAV_OPS = [
-  { to: '/',         label: 'Overview', end: true },
-  { to: '/pending',  label: 'Pending' },
-  { to: '/issues',   label: 'Issues' },
-  { to: '/history',  label: 'History' },
-  { to: '/tasks',    label: 'Activity' },
-];
-const NAV_CONFIG = [
-  { to: '/portals',       label: 'Connectors' },
-  { to: '/rules',         label: 'Rules' },
-  { to: '/notifications', label: 'Notifications' },
-  { to: '/api',           label: 'API' },
-  { to: '/settings',      label: 'Settings' },
+// Connectors no longer needs a sub-nav: Rules/Diagnostics live elsewhere
+// (Rules under a portal's own tab, Diagnostics in TopBar/Settings).
+const SUB_NAVS_API = [
+  { to: '/api',      label: 'Keys & webhooks', end: true },
+  { to: '/mappings', label: 'Field mappings' },
 ];
 
-const linkCls = ({ isActive }) =>
-  `h-7 px-2.5 inline-flex items-center text-[12px] font-medium rounded transition-colors duration-tab whitespace-nowrap
-  ${isActive ? 'text-ink-1 bg-surface-2' : 'text-ink-3 hover:text-ink-1 hover:bg-surface-2'}`;
+// Pending sub-nav: All = the unified /pending page (Symfonie+Junction via
+// fetch_function). GlobalLink has its own entity-backed table — this link
+// jumps straight to it so the user doesn't need to remember the URL.
+const SUB_NAVS_PENDING = [
+  { to: '/pending',             label: 'All portals', end: true },
+  { to: '/globallink/pending',  label: 'GlobalLink' },
+];
+
+function resolveSubNav(pathname) {
+  if (pathname.startsWith('/api') || pathname.startsWith('/mappings')) {
+    return SUB_NAVS_API;
+  }
+  if (pathname === '/pending' || pathname.startsWith('/globallink/pending')) {
+    return SUB_NAVS_PENDING;
+  }
+  return [];
+}
 
 export default function AppLayout() {
-  const [paletteOpen, setPaletteOpen] = useState(false);
-
-  useEffect(() => {
-    const onKey = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setPaletteOpen(true);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  const { pathname } = useLocation();
+  const subNav = resolveSubNav(pathname);
 
   return (
-    <div className="min-h-screen bg-bg">
-      <header
-        style={{ height: 52 }}
-        className="sticky top-0 z-40 bg-surface-1 border-b border-line-1 flex items-center px-5 gap-5"
-      >
-        <nav className="flex items-center gap-0.5 overflow-x-auto flex-1">
-          {NAV_OPS.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.end} className={linkCls}>
-              {n.label}
-            </NavLink>
-          ))}
-          <span className="mx-2 h-4 w-px bg-line-2 flex-shrink-0" aria-hidden />
-          {NAV_CONFIG.map((n) => (
-            <NavLink key={n.to} to={n.to} className={linkCls}>
-              {n.label}
-            </NavLink>
-          ))}
-        </nav>
-        <button
-          onClick={() => setPaletteOpen(true)}
-          className="inline-flex items-center gap-2 h-7 px-2.5 text-[11px] text-ink-3 hover:text-ink-1 hover:bg-surface-2 rounded transition-colors duration-tab"
-          title="Jump to…"
-        >
-          <Search className="w-3 h-3" />
-          <span>Jump to</span>
-          <kbd className="font-mono text-[10px] text-ink-4 inline-flex items-center gap-0.5">
-            <Command className="w-2.5 h-2.5" />K
-          </kbd>
-        </button>
-      </header>
-
-      <main>
+    <div className="min-h-screen bg-background">
+      <TopBar />
+      <SubNav items={subNav} />
+      <main className="min-h-[calc(100vh-52px)]">
         <Outlet />
       </main>
-
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   );
 }
