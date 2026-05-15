@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Activity, ListChecks, ArrowLeftRight, Split, Settings, BarChart3, Webhook } from 'lucide-react';
+import { Activity, ListChecks, ArrowLeftRight, Split, Settings, BarChart3, Webhook, Inbox } from 'lucide-react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
@@ -13,6 +13,7 @@ import RulesTab from '@/components/portal-detail/RulesTab';
 import MappingsTab from '@/components/portal-detail/MappingsTab';
 import RoutingTab from '@/components/portal-detail/RoutingTab';
 import ActivityTab from '@/components/portal-detail/ActivityTab';
+import PendingTab from '@/components/portal-detail/PendingTab';
 import SettingsTab from '@/components/portal-detail/SettingsTab';
 import WebhooksTab from '@/components/portal-detail/WebhooksTab';
 
@@ -136,6 +137,7 @@ export default function PortalDetail() {
 
   const tabs = useMemo(() => ([
     { key: 'overview', label: 'Overview',  icon: BarChart3 },
+    { key: 'pending',  label: 'Pending',   icon: Inbox },
     { key: 'rules',    label: 'Rules',     icon: ListChecks,    count: ruleCount },
     { key: 'mappings', label: 'Mappings',  icon: ArrowLeftRight, count: mappingCount },
     { key: 'routing',  label: 'Routing',   icon: Split,         count: routeCount },
@@ -174,6 +176,7 @@ export default function PortalDetail() {
       <PortalTabs tabs={tabs} active={tab} onChange={setTab} />
 
       {tab === 'overview' && <OverviewTab portal={portal} />}
+      {tab === 'pending'  && <PendingTab portal={portal} />}
       {tab === 'rules'    && <RulesTab portal={portal} />}
       {tab === 'mappings' && <MappingsTab portal={portal} />}
       {tab === 'routing'  && <RoutingTab portal={portal} />}

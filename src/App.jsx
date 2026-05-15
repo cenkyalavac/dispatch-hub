@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import AppLayout from '@/components/layout/AppLayout';
 import Dashboard from './pages/Dashboard.jsx';
+import PendingPortalRedirect from './pages/PendingPortalRedirect.jsx';
 import Rules from './pages/Rules';
 import Tasks from './pages/Tasks';
 import SettingsPage from './pages/SettingsPage';
@@ -55,7 +56,8 @@ const AuthenticatedApp = () => {
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/portals" element={<Connectors />} />
         <Route path="/portals/:key" element={<PortalDetail />} />
-        <Route path="/pending" element={<PendingTasks />} />
+        <Route path="/pending" element={<PendingPortalRedirect />} />
+        <Route path="/pending/:portalKey" element={<PendingTasks />} />
         <Route path="/history" element={<History />} />
         <Route path="/api" element={<ApiAccess />} />
         <Route path="/mappings" element={<Mappings />} />
