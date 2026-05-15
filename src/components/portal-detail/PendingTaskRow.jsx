@@ -31,10 +31,10 @@ function dueBadge(due) {
   );
 }
 
-// Rich row for live-fetched portal tasks (Symfonie, Junction). Tries to display
-// the most signal-dense fields the API actually returns, without overflowing.
+// Rich row for live-fetched portal tasks (Symfonie, Junction). GlobalLink uses
+// its own narrower row in PendingTab (different entity, different field names).
 export default function PendingTaskRow({ task, portalKey }) {
-  const name = task.name || task.task_name || task.submission_name || EM;
+  const name = task.name || task.task_name || EM;
   const src = task.source_language || EM;
   const tgt = task.target_language || EM;
   const wc = Number(task.word_count) || 0;
