@@ -16,8 +16,12 @@ function colLetter(n) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) {
+      return Response.json({
+        error: 'Your session has expired. Please refresh the page and sign in again before retrying.',
+      }, { status: 401 });
+    }
 
     const { portal_key } = await req.json().catch(() => ({}));
     if (!portal_key) {
