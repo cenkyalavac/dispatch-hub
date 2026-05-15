@@ -39,7 +39,7 @@
     },
     "weighted_wc": {
       "type": "number",
-      "description": "WWC computed from 12-band leverage with the standard Reps/fuzzy weights formula. Not provided directly by PD."
+      "description": "MTPE-aligned WWC. Formula: (95-99 + Reps95-99)*0.2 + (85-94 + Reps85-94)*0.35 + (75-84 + Reps75-84)*0.45 + (50-74 + Reps50-74 + noMatch)*0.6. Computed client-side; not returned by PD."
     },
     "lev_context": {
       "type": "number",
@@ -47,7 +47,7 @@
     },
     "lev_rep": {
       "type": "number",
-      "description": "Repetitions word count."
+      "description": "Pure cross-segment repetitions word count."
     },
     "lev_match100": {
       "type": "number",
@@ -55,19 +55,35 @@
     },
     "lev_9599": {
       "type": "number",
-      "description": "95-99% fuzzy + Reps95-99% combined."
+      "description": "95-99% fuzzy (PURE \u2014 Reps95-99 lives in lev_rep_9599)."
     },
     "lev_8594": {
       "type": "number",
-      "description": "85-94% fuzzy + Reps85-94% combined."
+      "description": "85-94% fuzzy (PURE)."
     },
     "lev_7584": {
       "type": "number",
-      "description": "75-84% fuzzy + Reps75-84% combined."
+      "description": "75-84% fuzzy (PURE)."
     },
     "lev_5074": {
       "type": "number",
-      "description": "50-74% fuzzy + Reps50-74% combined."
+      "description": "50-74% fuzzy (PURE)."
+    },
+    "lev_rep_9599": {
+      "type": "number",
+      "description": "Reps95-99% \u2014 repetitions falling into the 95-99 fuzzy band."
+    },
+    "lev_rep_8594": {
+      "type": "number",
+      "description": "Reps85-94%."
+    },
+    "lev_rep_7584": {
+      "type": "number",
+      "description": "Reps75-84%."
+    },
+    "lev_rep_5074": {
+      "type": "number",
+      "description": "Reps50-74%."
     },
     "lev_no_match": {
       "type": "number",

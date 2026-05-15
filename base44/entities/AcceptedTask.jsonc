@@ -73,35 +73,51 @@
     },
     "weighted_wc": {
       "type": "number",
-      "description": "GlobalLink: 12-bant leverage'dan hesaplanm\u0131\u015f weighted word count (WWC)."
+      "description": "GlobalLink: MTPE-aligned WWC. Formula: (95-99 + Reps95-99)*0.2 + (85-94 + Reps85-94)*0.35 + (75-84 + Reps75-84)*0.45 + (50-74 + Reps50-74 + noMatch)*0.6. Context/rep/100% bands carry zero weight."
     },
     "lev_context": {
       "type": "number",
-      "description": "GlobalLink leverage band: in-context match."
+      "description": "GlobalLink leverage band: in-context match (pure)."
     },
     "lev_rep": {
       "type": "number",
-      "description": "GlobalLink leverage band: repetitions."
+      "description": "GlobalLink leverage band: pure repetitions (cross-segment)."
     },
     "lev_match100": {
       "type": "number",
-      "description": "GlobalLink leverage band: 100% match."
+      "description": "GlobalLink leverage band: 100% match (pure)."
     },
     "lev_9599": {
       "type": "number",
-      "description": "GlobalLink leverage band: 95-99% fuzzy + reps."
+      "description": "GlobalLink leverage band: 95-99% fuzzy (PURE \u2014 does NOT include Reps95-99). Use lev_rep_9599 for the reps slice."
     },
     "lev_8594": {
       "type": "number",
-      "description": "GlobalLink leverage band: 85-94% fuzzy + reps."
+      "description": "GlobalLink leverage band: 85-94% fuzzy (PURE \u2014 does NOT include Reps85-94)."
     },
     "lev_7584": {
       "type": "number",
-      "description": "GlobalLink leverage band: 75-84% fuzzy + reps."
+      "description": "GlobalLink leverage band: 75-84% fuzzy (PURE \u2014 does NOT include Reps75-84)."
     },
     "lev_5074": {
       "type": "number",
-      "description": "GlobalLink leverage band: 50-74% fuzzy + reps."
+      "description": "GlobalLink leverage band: 50-74% fuzzy (PURE \u2014 does NOT include Reps50-74)."
+    },
+    "lev_rep_9599": {
+      "type": "number",
+      "description": "GlobalLink leverage band: Reps95-99% (repetitions falling into the 95-99 fuzzy band)."
+    },
+    "lev_rep_8594": {
+      "type": "number",
+      "description": "GlobalLink leverage band: Reps85-94%."
+    },
+    "lev_rep_7584": {
+      "type": "number",
+      "description": "GlobalLink leverage band: Reps75-84%."
+    },
+    "lev_rep_5074": {
+      "type": "number",
+      "description": "GlobalLink leverage band: Reps50-74%."
     },
     "lev_no_match": {
       "type": "number",

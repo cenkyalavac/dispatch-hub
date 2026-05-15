@@ -20,21 +20,37 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const FOLDER = 'AVAILABLE_SUBMISSION';
 
 // Inline leverage helpers (no local imports allowed in functions).
+// Keeps each of the 12 PD bands as a separate field — fuzzy and reps are NOT
+// merged at ingest time. WWC formula (MTPE-aligned, per Cenk):
+//   (95-99 + Reps95-99) * 0.2
+// + (85-94 + Reps85-94) * 0.35
+// + (75-84 + Reps75-84) * 0.45
+// + (50-74 + Reps50-74 + noMatch) * 0.6
+// Context / pure-rep / 100% bands carry weight 0 (free under MTPE).
 function _num(v) { return Number(v) || 0; }
 function _bandKey(name) {
   const n = String(name || '').toLowerCase().replace(/\s+/g, '');
   if (n === 'incontextmatch') return 'context';
   if (n === 'repetitions') return 'rep';
   if (n === 'match100') return 'match100';
-  if (n === '95%-99%' || n === 'reps95%-99%') return 'f9599';
-  if (n === '85%-94%' || n === 'reps85%-94%') return 'f8594';
-  if (n === '75%-84%' || n === 'reps75%-84%') return 'f7584';
-  if (n === '50%-74%' || n === 'reps50%-74%') return 'f5074';
+  if (n === '95%-99%') return 'f9599';
+  if (n === '85%-94%') return 'f8594';
+  if (n === '75%-84%') return 'f7584';
+  if (n === '50%-74%') return 'f5074';
+  if (n === 'reps95%-99%') return 'rep_9599';
+  if (n === 'reps85%-94%') return 'rep_8594';
+  if (n === 'reps75%-84%') return 'rep_7584';
+  if (n === 'reps50%-74%') return 'rep_5074';
   if (n === 'nomatch') return 'no_match';
   return null;
 }
 function normalizeLeverage(cumulativeTmStatistics) {
-  const out = { context: 0, rep: 0, match100: 0, f9599: 0, f8594: 0, f7584: 0, f5074: 0, no_match: 0 };
+  const out = {
+    context: 0, rep: 0, match100: 0,
+    f9599: 0, f8594: 0, f7584: 0, f5074: 0,
+    rep_9599: 0, rep_8594: 0, rep_7584: 0, rep_5074: 0,
+    no_match: 0,
+  };
   if (!Array.isArray(cumulativeTmStatistics)) return out;
   for (const b of cumulativeTmStatistics) {
     const k = _bandKey(b?.name);
@@ -45,14 +61,10 @@ function normalizeLeverage(cumulativeTmStatistics) {
 function computeWwc(lev) {
   if (!lev) return 0;
   return Math.round(
-    _num(lev.context) * 0
-    + _num(lev.rep) * 0.2
-    + _num(lev.match100) * 0.2
-    + _num(lev.f9599) * 0.4
-    + _num(lev.f8594) * 0.6
-    + _num(lev.f7584) * 0.8
-    + _num(lev.f5074) * 1.0
-    + _num(lev.no_match) * 1.0
+      (_num(lev.f9599) + _num(lev.rep_9599)) * 0.2
+    + (_num(lev.f8594) + _num(lev.rep_8594)) * 0.35
+    + (_num(lev.f7584) + _num(lev.rep_7584)) * 0.45
+    + (_num(lev.f5074) + _num(lev.rep_5074) + _num(lev.no_match)) * 0.6
   );
 }
 
@@ -210,6 +222,10 @@ Deno.serve(async (req) => {
               lev_8594: lev.f8594,
               lev_7584: lev.f7584,
               lev_5074: lev.f5074,
+              lev_rep_9599: lev.rep_9599,
+              lev_rep_8594: lev.rep_8594,
+              lev_rep_7584: lev.rep_7584,
+              lev_rep_5074: lev.rep_5074,
               lev_no_match: lev.no_match,
               weighted_wc: computeWwc(lev),
               raw: { submission: s, language: r._raw_lang, view_summary: addl.cumulativeTmStatistics || null },
