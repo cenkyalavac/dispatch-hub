@@ -29,7 +29,6 @@ export const PORTAL_DOCS = {
       { label: 'Authentication',     url: 'https://docs.translations.com/pd/#authentication' },
       { label: 'Submission lookup',  url: 'https://docs.translations.com/pd/#submission-search' },
       { label: 'Claim chain',        url: 'https://docs.translations.com/pd/#task-claim' },
-      { label: 'In-app guide',       url: '/docs/globallink-api.md' },
     ],
   },
 };

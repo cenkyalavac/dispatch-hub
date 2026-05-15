@@ -93,10 +93,9 @@ Deno.serve(async (req) => {
     body = null;
   }
 
-  // Service-role client (no user context — public endpoint).
-  // We DO NOT call createClientFromRequest here because there's no Base44
-  // auth header from Symfonie. Use a bare service-role-style call by hitting
-  // the SDK with no request context.
+  // Public endpoint — Symfonie cannot send Base44 auth headers, so we never
+  // call base44.auth.me() here. All DB writes go through base44.asServiceRole
+  // which doesn't need a user context.
   const base44 = createClientFromRequest(req);
   const receivedAt = new Date().toISOString();
   const taskId = extractTaskId(body);

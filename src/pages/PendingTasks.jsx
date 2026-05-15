@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, Search, Download } from 'lucide-react';
@@ -218,10 +218,14 @@ export default function PendingTasks() {
   }, [portals]);
 
   // Pick the first available portal once the list arrives — never leave the
-  // user staring at an empty selector on first load.
-  if (!selectedPortal && portalOptions.length > 0) {
-    setSelectedPortal(portalOptions[0].key);
-  }
+  // user staring at an empty selector on first load. MUST run inside useEffect:
+  // calling setState directly during render schedules an immediate re-render
+  // and React warns ("Cannot update a component while rendering a different one").
+  useEffect(() => {
+    if (!selectedPortal && portalOptions.length > 0) {
+      setSelectedPortal(portalOptions[0].key);
+    }
+  }, [selectedPortal, portalOptions]);
 
   return (
     <div className="px-8 py-7 max-w-6xl">

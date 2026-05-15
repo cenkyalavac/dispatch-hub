@@ -50,7 +50,8 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     await base44.auth.me().catch(() => null); // soft auth, same pattern as junctionGetOffers
 
-    const url = new URL(req.url);
+    // req.url may be relative in Deno deploy; supply a base so URL() doesn't throw.
+    const url = new URL(req.url, 'http://localhost');
     let body = {};
     try { body = await req.json(); } catch { body = {}; }
     const taskId = body.task_id ?? url.searchParams.get('task_id');
