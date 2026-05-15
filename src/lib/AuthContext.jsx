@@ -42,9 +42,15 @@ export const AuthProvider = ({ children }) => {
         if (appParams.token) {
           await checkUserAuth();
         } else {
+          // No token in the URL — Dispatch Hub is admin-only (all backend
+          // functions are gated by `user.role === 'admin'`), so an anonymous
+          // session can't do anything useful. Flag auth as required and let
+          // App.jsx redirect to login. This fixes the "Your session has
+          // expired" loop when the page is opened without ?token=...
           setIsLoadingAuth(false);
           setIsAuthenticated(false);
           setAuthChecked(true);
+          setAuthError({ type: 'auth_required', message: 'Authentication required' });
         }
         setIsLoadingPublicSettings(false);
       } catch (appError) {
