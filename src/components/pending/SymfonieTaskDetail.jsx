@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Skeleton } from '@/components/ui/skeleton';
 import { fmtNumber, EM } from '@/lib/format';
-import { Users, FileText, Sparkles, Hash, CalendarDays } from 'lucide-react';
+import { Users, FileText, Sparkles, Hash } from 'lucide-react';
 import { format } from 'date-fns';
 import SymfonieAttachments from './SymfonieAttachments';
 
@@ -81,10 +81,22 @@ export default function SymfonieTaskDetail({ task }) {
     <div className="px-4 py-4 bg-surface-2/40 border-t border-line-1 space-y-4">
       {/* Leverage breakdown */}
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-ink-3 mb-2 inline-flex items-center gap-1.5">
+        <p className="text-[10px] uppercase tracking-wider text-ink-3 mb-2 inline-flex items-center gap-1.5 flex-wrap">
           <Sparkles className="w-3 h-3" /> Word-count analysis
           {analysis?.parser_type && (
             <span className="text-ink-4 normal-case tracking-normal">· {analysis.parser_type}</span>
+          )}
+          {/* Warn the user when the analysis total doesn't match the task's
+              Word-billing finance row — Symfonie's "Word" finance row can lag
+              behind the latest WC CSV, so the leverage breakdown may be stale. */}
+          {analysis?.analysis_found && task.word_count > 0 && analysis.analysis_word_count > 0
+            && analysis.analysis_word_count !== task.word_count && (
+            <span
+              className="text-[color:var(--warning)] normal-case tracking-normal"
+              title={`Analysis total ${analysis.analysis_word_count} ≠ task word_count ${task.word_count}`}
+            >
+              · mismatch
+            </span>
           )}
         </p>
         {analysisLoading ? (

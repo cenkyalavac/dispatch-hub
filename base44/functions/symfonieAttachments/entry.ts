@@ -88,19 +88,25 @@ Deno.serve(async (req) => {
         );
       }
       const data = await r.json();
-      // FileType enum (doc: /Api/help/V5/enum/FileType):
+      // FileType (doc: /Api/help/V5/enum/FileType):
       //   0=Other, 1=Reference, 2=Source, 3=Target (delivery), 4=Analysis
-      // The TaskAttachment payload exposes this as `FileType` (integer).
-      const FILE_TYPE_NAMES = { 0: 'other', 1: 'reference', 2: 'source', 3: 'target', 4: 'analysis' };
+      // Symfonie returns this as the enum NAME (string), not the numeric code —
+      // confirmed live: { FileType: "Reference" } not { FileType: 1 }. We accept
+      // both shapes defensively so old/new tenants both render correctly.
+      const FILE_TYPE_BY_INT = { 0: 'other', 1: 'reference', 2: 'source', 3: 'target', 4: 'analysis' };
+      const FILE_TYPE_BY_NAME = { Other: 'other', Reference: 'reference', Source: 'source', Target: 'target', Analysis: 'analysis' };
+      const resolveKind = (ft) => {
+        if (ft == null) return null;
+        if (typeof ft === 'number') return FILE_TYPE_BY_INT[ft] ?? null;
+        return FILE_TYPE_BY_NAME[ft] ?? String(ft).toLowerCase();
+      };
       const attachments = (data.value || []).map((a) => ({
         id: a.Id,
         name: a.Name || '',
         size: a.Size ?? null,
         uploaded_at: a.CreatedAt || null,
         uploaded_by: a.CreatedByLogin || a.CreatedBy || '',
-        // Documented field is `FileType` (Int32 enum). Map to a human label and
-        // expose the raw code for callers that want to filter.
-        kind: FILE_TYPE_NAMES[a.FileType] ?? null,
+        kind: resolveKind(a.FileType),
         file_type_code: a.FileType ?? null,
         mime_type: a.MimeType || '',
         relative_path: a.RelativeFilePath || '',

@@ -160,7 +160,12 @@ function FetchFnPending({ portal }) {
           if (payload.error || payload.success === false) {
             throw new Error(payload.error || 'Accept failed');
           }
-          toast.success(`Accepted: ${task.name || task.task_name || task.id}`);
+          toast.success(`Accepted: ${task.name || task.task_name || task.project_name || `#${task.id}`}`);
+          // Symfonie returns handoff status — surface a soft warning if the
+          // Dropbox download failed (accept itself still succeeded).
+          if (payload.handoff?.error) {
+            toast.warning('Handoff to Dropbox failed — accept succeeded but files were not downloaded.');
+          }
           // Optimistically drop the row from the cached list.
           qc.setQueryData(['portal-pending', portal.key], (old) => {
             if (!old?.tasks) return old;
