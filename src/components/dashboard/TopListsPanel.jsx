@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { fmtNumber, EM } from '@/lib/format';
+import { useFriendlyNames } from '@/lib/friendly';
 
 // "Top clients & language pairs" over the last 30 days. Tasks already pre-
 // filtered upstream (status='accepted'). Two side-by-side leaderboards,
@@ -46,6 +47,7 @@ function List({ title, rows }) {
 }
 
 export default function TopListsPanel({ tasks }) {
+  const { friendly } = useFriendlyNames();
   const { clients, pairs } = useMemo(() => {
     const cutoff = Date.now() - 30 * 86400000;
     const c = {}, p = {};
@@ -53,13 +55,19 @@ export default function TopListsPanel({ tasks }) {
       if (t.status !== 'accepted') continue;
       const stamp = t.accepted_at ? new Date(t.accepted_at).getTime() : 0;
       if (stamp < cutoff) continue;
-      const client = t.client_name || EM;
+      // Group by the rumuz when one exists — so "Amazon" doesn't get split
+      // into "Amazon.com Services, Inc." + "Amazon Web Services" + …
+      const rawClient = t.client_name || t.account_name || '';
+      const client =
+        (rawClient && friendly({ ...t, client_name: rawClient }, 'client'))
+        || rawClient
+        || EM;
       c[client] = (c[client] || 0) + 1;
       const pair = `${t.source_language || EM} → ${t.target_language || EM}`;
       p[pair] = (p[pair] || 0) + 1;
     }
     return { clients: topNFromCounter(c), pairs: topNFromCounter(p) };
-  }, [tasks]);
+  }, [tasks, friendly]);
 
   return (
     <section className="bg-surface-1 border border-line-1 rounded-md p-5">

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { Clock, User, Lock, Briefcase, ExternalLink, ChevronDown, ChevronRight, Check, Loader2 } from 'lucide-react';
 import { EM, fmtNumber } from '@/lib/format';
+import { useFriendlyNames } from '@/lib/friendly';
 
 // Format USD compactly — Symfonie sometimes returns 0 (no SO yet), we then hide it.
 function fmtMoney(v) {
@@ -44,16 +45,42 @@ function dueBadge(due) {
 export default function PendingTaskRow({ task, portalKey, onAccept, isAccepting, DetailComponent }) {
   const [expanded, setExpanded] = useState(false);
 
+  // Tag the task with its portal key so the friendly resolver can pick the
+  // right portal-specific rumuz. PendingTab fetches don't always populate
+  // `portal` on the raw row (each connector's get-tasks function shapes the
+  // payload differently). We patch it here once — last assignment wins, so
+  // we always override the task's own portal field with the row's portalKey.
+  const taskWithPortal = { ...task, portal: portalKey };
+  const { friendly } = useFriendlyNames();
+
   const name = task.name || task.task_name || EM;
   const src = task.source_language || EM;
   const tgt = task.target_language || EM;
   const wc = Number(task.word_count) || 0;
   const price = fmtMoney(task.price ?? task.price_max_usd);
-  const account = task.account_name || task.client_name || '';
-  const projectName = task.project_name || '';
+  // Friendly versions for visible text; we keep the raw value in the title
+  // attribute so power users can still see the upstream label on hover.
+  //
+  // Account vs client: portals differ. Symfonie has client_name only;
+  // GlobalLink/Junction populate account_name. We try the account rumuz
+  // first (more specific), then fall back to the client rumuz, then raw.
+  const accountRaw = task.account_name || task.client_name || '';
+  const accountFriendly = accountRaw
+    ? (
+        friendly({ ...taskWithPortal, account_name: accountRaw }, 'account')
+        || friendly({ ...taskWithPortal, client_name: accountRaw }, 'client')
+        || accountRaw
+      )
+    : '';
+  const account = accountFriendly;
+  const projectNameRaw = task.project_name || '';
+  const projectName = projectNameRaw ? friendly(taskWithPortal, 'project') || projectNameRaw : '';
   const projectCode = task.project_code || task.symfonie_code || '';
   const jobName = task.job_name || '';
-  const workflow = task.workflow_name || task.workflow_group_name || '';
+  const workflowRaw = task.workflow_name || task.workflow_group_name || '';
+  const workflow = workflowRaw
+    ? friendly({ ...taskWithPortal, workflow_name: workflowRaw }, 'workflow') || workflowRaw
+    : '';
   const requestors = (task.requestors || []).slice(0, 2);
   const locked = task.lock_state && task.lock_state !== 'Unlocked';
   const orderDate = task.order_date || task.created_at;
@@ -100,10 +127,10 @@ export default function PendingTaskRow({ task, portalKey, onAccept, isAccepting,
             {/* Account › Project › Job — the hierarchy that actually identifies a task */}
             {(account || projectName || jobName) && (
               <p className="text-[11px] text-ink-3 truncate mt-0.5">
-                {account && <span>{account}</span>}
+                {account && <span title={accountRaw !== account ? accountRaw : undefined}>{account}</span>}
                 {account && projectName && <span className="text-ink-4 mx-1">›</span>}
                 {projectName && (
-                  <span>
+                  <span title={projectNameRaw !== projectName ? projectNameRaw : undefined}>
                     {projectName}
                     {projectCode && <span className="font-mono text-ink-4 ml-1">({projectCode})</span>}
                   </span>

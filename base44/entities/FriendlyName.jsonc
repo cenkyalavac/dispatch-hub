@@ -1,0 +1,51 @@
+{
+  "name": "FriendlyName",
+  "type": "object",
+  "description": "Human-friendly display name for portal-supplied identifiers. Used UI-side (pending lists, task panels, dashboards) and for outgoing surfaces (notification emails, Google Sheets, BMS API). Distinct from FieldMapping \u2014 friendly names PASS THROUGH unmapped values (no null-on-miss), and support matching by either upstream name OR upstream ID.",
+  "properties": {
+    "portal": {
+      "type": "string",
+      "description": "Source portal key (symfonie, junction, globallink). Use '*' to match any portal."
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "client",
+        "account",
+        "project",
+        "workflow"
+      ],
+      "description": "Which kind of entity this rumuz applies to."
+    },
+    "match_by": {
+      "type": "string",
+      "enum": [
+        "name",
+        "id"
+      ],
+      "default": "name",
+      "description": "Whether to match against the upstream name field (client_name, project_name, workflow_name) or the upstream ID field (account_id, project_id)."
+    },
+    "source_value": {
+      "type": "string",
+      "description": "Exact value to match (case-insensitive for name; exact string for id). E.g. 'Amazon.com Services, Inc.' or '47110'."
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Short, human-friendly label to show instead. E.g. 'Amazon'."
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "portal",
+    "type",
+    "source_value",
+    "display_name"
+  ]
+}

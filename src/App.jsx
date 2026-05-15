@@ -20,6 +20,7 @@ import PortalProbe from './pages/PortalProbe.jsx';
 import Notifications from './pages/Notifications.jsx';
 import Users from './pages/Users.jsx';
 import AcceptToken from './pages/AcceptToken.jsx';
+import FriendlyNames from './pages/FriendlyNames.jsx';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -68,6 +69,7 @@ const AuthenticatedApp = () => {
         <Route path="/history" element={<History />} />
         <Route path="/api" element={<ApiAccess />} />
         <Route path="/mappings" element={<Mappings />} />
+        <Route path="/friendly-names" element={<FriendlyNames />} />
         <Route path="/issues" element={<Issues />} />
         <Route path="/probe" element={<PortalProbe />} />
         <Route path="/notifications" element={<Notifications />} />

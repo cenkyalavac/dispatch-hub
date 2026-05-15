@@ -68,6 +68,48 @@ Deno.serve(async (req) => {
       .then(r => r.length)
       .catch(() => 0);
 
+    // Friendly rumuz block — separate from BMS `destination` (which stays
+    // null-on-miss for safety). Friendly passes through to the raw value on
+    // miss, so downstream BMS UIs can always render a human label.
+    const friendlyRows = await base44.asServiceRole.entities.FriendlyName
+      .list('-created_date', 2000)
+      .catch(() => []);
+    const FRIENDLY_TYPE_FIELDS = {
+      client:   { nameField: 'client_name',   idField: null },
+      account:  { nameField: 'account_name',  idField: null },
+      project:  { nameField: 'project_name',  idField: null },
+      workflow: { nameField: 'workflow_name', idField: null },
+    };
+    // Project entity stores client_name/project_name/source/target only at
+    // top level; account_id and project_id live under `origin` if present.
+    const taskLike = {
+      portal: project.portal,
+      client_name:  project.client_name,
+      project_name: project.project_name,
+      account_name: project.origin?.account_name || project.origin?.client_name || project.client_name,
+      account_id:   project.origin?.account_id || null,
+      project_id:   project.origin?.project_id || null,
+      workflow_name: project.origin?.workflow_name || null,
+    };
+    const resolveFriendly = (type) => {
+      const f = FRIENDLY_TYPE_FIELDS[type];
+      if (!f) return null;
+      const rawName = taskLike[f.nameField] != null ? String(taskLike[f.nameField]) : '';
+      const rawId = type === 'account' ? (taskLike.account_id != null ? String(taskLike.account_id) : '')
+                  : type === 'project' ? (taskLike.project_id != null ? String(taskLike.project_id) : '')
+                  : '';
+      const candidates = friendlyRows
+        .filter((r) => r.is_active !== false && r.type === type && (r.portal === project.portal || r.portal === '*'))
+        .sort((a, b) => (a.portal === '*' ? 1 : 0) - (b.portal === '*' ? 1 : 0));
+      for (const r of candidates) {
+        const match_by = r.match_by || 'name';
+        const srcLc = String(r.source_value || '').toLowerCase();
+        if (match_by === 'id' && rawId && srcLc === rawId.toLowerCase()) return r.display_name;
+        if (match_by === 'name' && rawName && srcLc === rawName.toLowerCase()) return r.display_name;
+      }
+      return rawName || null;
+    };
+
     return Response.json({
       project: {
         id: project.id,
@@ -91,6 +133,12 @@ Deno.serve(async (req) => {
           source_language: translate('source_language', project.source_language),
           target_language: translate('target_language', project.target_language),
           client_name:     translate('client_name',     project.client_name),
+        },
+        friendly: {
+          client_name:   resolveFriendly('client'),
+          account_name:  resolveFriendly('account'),
+          project_name:  resolveFriendly('project'),
+          workflow_name: resolveFriendly('workflow'),
         },
         mapping_applied: applied,
         unmapped,

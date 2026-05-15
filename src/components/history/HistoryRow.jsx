@@ -2,9 +2,17 @@ import { useState } from 'react';
 import { format } from 'date-fns';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { EM } from '@/lib/format';
+import { useFriendlyNames } from '@/lib/friendly';
 
 export default function HistoryRow({ task }) {
   const [open, setOpen] = useState(false);
+  const { friendly } = useFriendlyNames();
+
+  // History rows come from Symfonie /Tasks (no `portal` field). Tag it before
+  // the resolver call so portal-specific rumuz rules apply.
+  const tagged = { portal: 'symfonie', ...task };
+  const projectDisplay = task.project_name ? friendly(tagged, 'project') || task.project_name : '';
+  const workflowDisplay = task.workflow_name ? friendly(tagged, 'workflow') || task.workflow_name : '';
 
   return (
     <>
@@ -17,13 +25,13 @@ export default function HistoryRow({ task }) {
         </td>
         <td className="px-3 py-2 text-ink-1 max-w-[260px] truncate" title={task.name}>{task.name || EM}</td>
         <td className="px-3 py-2 text-ink-2 max-w-[200px] truncate" title={task.project_name}>
-          {task.project_name || EM}
+          {projectDisplay || EM}
           {task.account_code && <span className="ml-1.5 font-mono text-[10px] text-ink-4">{task.account_code}</span>}
         </td>
         <td className="px-3 py-2 font-mono text-ink-2">
           {task.source_language || EM}→{task.target_language || EM}
         </td>
-        <td className="px-3 py-2 text-ink-3">{task.workflow_name || EM}</td>
+        <td className="px-3 py-2 text-ink-3" title={workflowDisplay !== task.workflow_name ? task.workflow_name : undefined}>{workflowDisplay || EM}</td>
         <td className="px-3 py-2">
           <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded ${
             task.state === 'Approved' ? 'bg-success-soft text-success' : 'bg-accent-soft text-accent-ink'

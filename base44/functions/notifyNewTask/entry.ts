@@ -184,15 +184,29 @@ function buildCustomFieldRows(task) {
 function buildEmail({ portal, task, acceptUrl, rule }) {
   const portalLabel = ({ symfonie: 'Symfonie', junction: 'Junction', globallink: 'GlobalLink' })[portal] || portal;
 
+  // Friendly-or-raw helper. When a rumuz exists and differs from the raw
+  // value, we render "Friendly (raw)" so recipients see both. Otherwise just
+  // the value.
+  const fr = (friendly, raw) => {
+    if (!friendly || friendly === raw) return raw || '';
+    if (!raw) return friendly;
+    return `${friendly} (${raw})`;
+  };
+
+  const projectLine = fr(task.friendly_project_name, task.project_name);
+  const clientLine = fr(task.friendly_client_name, task.client_name)
+    || fr(task.friendly_account_name, task.account_name);
+  const workflowLine = fr(task.friendly_workflow_name, task.workflow_name);
+
   const baseRows = [
     ['Task',       task.task_name],
-    ['Project',    task.project_name],
-    ['Client',     task.client_name],
+    ['Project',    projectLine],
+    ['Client',     clientLine],
     ['Languages',  [task.source_language, task.target_language].filter(Boolean).join(' → ')],
     ['Word count', fmtNum(task.word_count)],
     ['Price',      fmtMoney(task.price)],
     ['Due',        fmtDate(task.due_date)],
-    ['Workflow',   task.workflow_name],
+    ['Workflow',   workflowLine],
   ];
   const rows = [...baseRows, ...buildExtraRows(task), ...buildCustomFieldRows(task)]
     .filter(([, v]) => v && v !== '—');
@@ -266,6 +280,41 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, skipped: true, reason: 'No notification rules' });
     }
 
+    // Resolve friendly names for the task once. Mail body and the task copy
+    // we hand off to evaluateCondition both benefit — rules written against
+    // the friendly_* fields can target rumuz instead of the verbose upstream
+    // names. Unmatched values fall through to the raw value.
+    const friendlyRows = await base44.asServiceRole.entities.FriendlyName.list('-created_date', 2000).catch(() => []);
+    const friendlyLookup = (type, taskObj) => {
+      const fieldsByType = {
+        client:   { nameField: 'client_name',   idField: null },
+        account:  { nameField: 'account_name',  idField: 'account_id' },
+        project:  { nameField: 'project_name',  idField: 'project_id' },
+        workflow: { nameField: 'workflow_name', idField: null },
+      };
+      const f = fieldsByType[type];
+      if (!f) return '';
+      const rawName = taskObj[f.nameField] != null ? String(taskObj[f.nameField]) : '';
+      const rawId = f.idField && taskObj[f.idField] != null ? String(taskObj[f.idField]) : '';
+      const candidates = friendlyRows
+        .filter((r) => r.is_active !== false && r.type === type && (r.portal === portal || r.portal === '*'))
+        .sort((a, b) => (a.portal === '*' ? 1 : 0) - (b.portal === '*' ? 1 : 0));
+      for (const r of candidates) {
+        const match_by = r.match_by || 'name';
+        const srcLc = String(r.source_value || '').toLowerCase();
+        if (match_by === 'id' && rawId && srcLc === rawId.toLowerCase()) return r.display_name;
+        if (match_by === 'name' && rawName && srcLc === rawName.toLowerCase()) return r.display_name;
+      }
+      return rawName;
+    };
+    const taskWithFriendly = {
+      ...task_payload,
+      friendly_client_name:   friendlyLookup('client',   task_payload),
+      friendly_account_name:  friendlyLookup('account',  task_payload),
+      friendly_project_name:  friendlyLookup('project',  task_payload),
+      friendly_workflow_name: friendlyLookup('workflow', task_payload),
+    };
+
     // Already-sent rows for this task → idempotency lookup.
     const existing = await base44.asServiceRole.entities.NotificationDelivery
       .filter({ portal, task_id: taskIdStr })
@@ -291,7 +340,8 @@ Deno.serve(async (req) => {
     let isFirstSend = true;
 
     for (const rule of rules) {
-      if (!ruleMatches(rule, task_payload)) continue;
+      // Rules can target friendly_* fields too — pass the enriched payload.
+      if (!ruleMatches(rule, taskWithFriendly)) continue;
       const recipients = Array.isArray(rule.recipients) ? rule.recipients.filter(Boolean) : [];
       if (recipients.length === 0) continue;
 
@@ -309,7 +359,7 @@ Deno.serve(async (req) => {
         // /accept page which proxies to acceptViaToken under the hood.
         const acceptUrl = `${acceptBase}?token=${token}`;
 
-        const html = buildEmail({ portal, task: task_payload, acceptUrl, rule });
+        const html = buildEmail({ portal, task: taskWithFriendly, acceptUrl, rule });
         const subject = `New ${({ symfonie: 'Symfonie', junction: 'Junction', globallink: 'GlobalLink' })[portal] || portal} task — ${task_payload.task_name || taskIdStr}`;
 
         // On a 429, back off 1.2s and retry once. That's enough to clear the

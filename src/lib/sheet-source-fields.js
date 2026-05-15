@@ -8,6 +8,12 @@ export const STANDARD_FIELDS = [
   { name: 'task_name',       label: 'Task name' },
   { name: 'project_name',    label: 'Project name' },
   { name: 'client_name',     label: 'Client / account' },
+  // Friendly variants — resolved at sync time from the FriendlyName entity.
+  // Fall through to the raw name if no rumuz exists for the value.
+  { name: 'friendly_client_name',   label: 'Friendly · Client' },
+  { name: 'friendly_account_name',  label: 'Friendly · Account' },
+  { name: 'friendly_project_name',  label: 'Friendly · Project' },
+  { name: 'friendly_workflow_name', label: 'Friendly · Workflow' },
   { name: 'source_language', label: 'Source language' },
   { name: 'target_language', label: 'Target language' },
   { name: 'word_count',      label: 'Word count' },

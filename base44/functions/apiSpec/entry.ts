@@ -23,7 +23,8 @@ Deno.serve(async () => {
         function: 'apiProjectsGet',
         scope: 'read:projects',
         body: { id: 'string' },
-        returns: '{ project: { origin, destination, mapping_applied, attachments_count } }',
+        returns: '{ project: { origin, destination, friendly, mapping_applied, attachments_count } }',
+        notes: 'destination is null-on-miss (BMS safety). friendly is passthrough — short rumuz when one exists, else raw upstream name.',
       },
       {
         name: 'Acknowledge project',
@@ -69,8 +70,15 @@ Deno.serve(async () => {
     mapping: {
       entity: 'FieldMapping',
       fields: ['source_language', 'target_language', 'client_name', 'workflow_name', 'service_tag'],
-      match: 'case-insensitive on source_value; passthrough if no rule matches',
+      match: 'case-insensitive on source_value; null-on-miss (BMS safety)',
       portal_scope: 'specific portal key, or "*" for any',
+    },
+    friendly_names: {
+      entity: 'FriendlyName',
+      types: ['client', 'account', 'project', 'workflow'],
+      match_by: ['name (case-insensitive)', 'id (exact)'],
+      behaviour: 'passthrough — falls back to raw upstream name if no rumuz matches',
+      surfaces: ['UI (pending, dashboard, history)', 'notification emails', 'Google Sheets (friendly_* source fields)', 'BMS API (project.friendly block)'],
     },
     notes: [
       'Faz 2: destination is computed via FieldMapping rules; mapping_applied lists every translation that fired.',

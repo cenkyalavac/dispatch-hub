@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Google Sheets connector not authorized' }, { status: 400 });
     }
 
-    const [portals, routes, allTasks, allMappings] = await Promise.all([
+    const [portals, routes, allTasks, allMappings, friendlyRows] = await Promise.all([
       base44.asServiceRole.entities.Portal.list(),
       base44.asServiceRole.entities.SheetRoute.filter({ is_active: true }, 'priority', 500),
       base44.asServiceRole.entities.AcceptedTask.filter(
@@ -97,6 +97,7 @@ Deno.serve(async (req) => {
         500
       ),
       base44.asServiceRole.entities.SheetColumnMapping.filter({ is_active: true }, 'order', 1000),
+      base44.asServiceRole.entities.FriendlyName.list('-created_date', 2000).catch(() => []),
     ]);
 
     if (allTasks.length === 0) {
@@ -104,6 +105,39 @@ Deno.serve(async (req) => {
     }
 
     const portalByKey = new Map(portals.map(p => [p.key, p]));
+
+    // Pre-enrich every task with friendly_* fields so SheetColumnMapping
+    // source_field='friendly_project_name' (etc.) resolves to a real value
+    // at write time. Unmatched values fall through to the raw name.
+    const FRIENDLY_TYPE_FIELDS = {
+      client:   { nameField: 'client_name',   idField: null },
+      account:  { nameField: 'account_name',  idField: 'account_id' },
+      project:  { nameField: 'project_name',  idField: 'project_id' },
+      workflow: { nameField: 'workflow_name', idField: null },
+    };
+    const resolveFriendly = (task, type) => {
+      const f = FRIENDLY_TYPE_FIELDS[type];
+      if (!f) return '';
+      const rawName = task[f.nameField] != null ? String(task[f.nameField]) : '';
+      const rawId = f.idField && task[f.idField] != null ? String(task[f.idField]) : '';
+      const portalKey = task.portal || '';
+      const candidates = friendlyRows
+        .filter((r) => r.is_active !== false && r.type === type && (r.portal === portalKey || r.portal === '*'))
+        .sort((a, b) => (a.portal === '*' ? 1 : 0) - (b.portal === '*' ? 1 : 0));
+      for (const r of candidates) {
+        const match_by = r.match_by || 'name';
+        const srcLc = String(r.source_value || '').toLowerCase();
+        if (match_by === 'id' && rawId && srcLc === rawId.toLowerCase()) return r.display_name;
+        if (match_by === 'name' && rawName && srcLc === rawName.toLowerCase()) return r.display_name;
+      }
+      return rawName;
+    };
+    for (const t of allTasks) {
+      t.friendly_client_name   = resolveFriendly(t, 'client');
+      t.friendly_account_name  = resolveFriendly(t, 'account');
+      t.friendly_project_name  = resolveFriendly(t, 'project');
+      t.friendly_workflow_name = resolveFriendly(t, 'workflow');
+    }
 
     // Group active mappings by portal key, sorted by order.
     const mappingsByPortal = new Map();
