@@ -15,7 +15,16 @@
       "type": "string"
     },
     "client_name": {
-      "type": "string"
+      "type": "string",
+      "description": "Account / client display name. Resolved from PD `paClientName` (primary) with fallbacks to clientName / organizationName."
+    },
+    "account_id": {
+      "type": "string",
+      "description": "PA (Project Account) ticket from PD `paClientTicket` \u2014 the stable account identifier."
+    },
+    "project_name": {
+      "type": "string",
+      "description": "Project display name from PD `projectName`."
     },
     "source_language": {
       "type": "string"

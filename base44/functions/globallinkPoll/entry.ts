@@ -156,11 +156,17 @@ Deno.serve(async (req) => {
               const phaseName = it.subPhaseStatusDataHolders?.[0]?.phaseStatusData?.[0]?.phaseName
                             || it.phaseStatusData?.[0]?.phaseName || '';
               const workflowName = it.subPhaseStatusDataHolders?.[0]?.workflow || it.workflow || '';
+              // Account / client resolution — PD exposes the Project Account under
+              // `paClientName` + `paClientTicket`. These are the authoritative
+              // identifiers for a submission's owning account (clientName /
+              // organizationName are usually empty for Available submissions).
               return {
                 submission_ticket: s.ticket,
                 submission_id: String(s.submissionId ?? ''),
                 submission_name: s.submissionName || '',
-                client_name: s.clientName || s.organizationName || '',
+                client_name: s.paClientName || s.clientName || s.organizationName || '',
+                account_id: s.paClientTicket || '',
+                project_name: s.projectName || '',
                 source_language: srcLoc,
                 target_language: tgtLoc,
                 word_count: Number(s.wordCount) || 0,

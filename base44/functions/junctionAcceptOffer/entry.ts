@@ -2,21 +2,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const PROD_BASE = 'https://hypnos.welocalize.tools';
 
-async function appendToSheets(base44, row) {
-  try {
-    const sheetId = Deno.env.get('GOOGLE_SHEETS_SPREADSHEET_ID');
-    if (!sheetId) return;
-    const { accessToken } = await base44.asServiceRole.connectors.getConnection('googlesheets');
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Sayfa1!A:K:append?valueInputOption=USER_ENTERED`;
-    await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values: [row] }),
-    });
-  } catch (e) {
-    console.error('Sheets append failed:', e.message);
-  }
-}
+// Sheet write is delegated to `sheetsSyncPending` (fire-and-forget). It owns
+// SheetColumnMapping + SheetRoute resolution — duplicating it inline silently
+// ignored per-portal column config and hardcoded the wrong tab name ("Sayfa1").
 
 Deno.serve(async (req) => {
   try {
@@ -27,6 +15,12 @@ Deno.serve(async (req) => {
     const { task_id, task_name, project_name, client_name, account_name, source_language, target_language, word_count, price, due_date } = await req.json();
     if (!task_id) return Response.json({ success: false, error: 'task_id is required' }, { status: 400 });
     const resolvedClient = client_name || account_name || '';
+
+    // Kill switch: paused connector must not be bypassed by manual accept.
+    const portalRows = await base44.asServiceRole.entities.Portal.filter({ key: 'junction' });
+    if (portalRows[0]?.is_active === false) {
+      return Response.json({ success: false, error: 'Junction connector is paused' }, { status: 409 });
+    }
 
     const jwt = Deno.env.get('JUNCTION_JWT');
     const apiKey = Deno.env.get('JUNCTION_API_KEY');
@@ -101,21 +95,11 @@ Deno.serve(async (req) => {
       console.error('Project create failed:', e.message);
     }
 
-    await appendToSheets(base44, [
-      acceptedAt,
-      'junction',
-      task_id,
-      task_name || '',
-      project_name || '',
-      resolvedClient,
-      source_language || '',
-      target_language || '',
-      word_count || 0,
-      price || 0,
-      'Manual',
-    ]);
+    // Trigger the unified sheet sync (handles SheetColumnMapping + SheetRoute).
+    base44.asServiceRole.functions.invoke('sheetsSyncPending', {})
+      .catch((e) => console.error('sheetsSyncPending trigger failed:', e.message));
 
-    return Response.json({ success: true, accepted_at: acceptedAt, project_id: project?.id || null });
+    return Response.json({ success: true, accepted_at: acceptedAt, project_id: project?.id || null, sheets_sync: 'queued' });
   } catch (error) {
     return Response.json({ success: false, error: error.message }, { status: 500 });
   }

@@ -1,40 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-async function appendToSheets(base44, taskRecord) {
-  const spreadsheetId = Deno.env.get('GOOGLE_SHEETS_SPREADSHEET_ID');
-  if (!spreadsheetId) { console.warn('GOOGLE_SHEETS_SPREADSHEET_ID not set'); return false; }
-
-  const { accessToken } = await base44.asServiceRole.connectors.getConnection('googlesheets');
-
-  const row = [
-    taskRecord.task_id,
-    taskRecord.task_name,
-    taskRecord.project_name || '',
-    taskRecord.client_name || '',
-    taskRecord.source_language || '',
-    taskRecord.target_language || '',
-    taskRecord.word_count || '',
-    taskRecord.price || '',
-    taskRecord.due_date || '',
-    taskRecord.accepted_at || '',
-    taskRecord.matched_rule || 'Manual'
-  ];
-
-  const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A1:append?valueInputOption=USER_ENTERED`,
-    {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values: [row] })
-    }
-  );
-
-  if (!res.ok) {
-    console.error('Sheets append failed:', res.status, await res.text());
-    return false;
-  }
-  return true;
-}
+// Sheet write is delegated to `sheetsSyncPending` (fire-and-forget). That's the
+// single code path that honours SheetColumnMapping + SheetRoute — duplicating it
+// inline here was silently ignoring per-portal column config and breaking when
+// the destination tab wasn't named "Sheet1" / "Sayfa1".
 
 const TENANT_ID = Deno.env.get('SYMFONIE_TENANT_ID') || 'ead220ab-1743-4c57-83ae-e055f3401f19';
 const SCOPE = 'api://c2e8870d-faef-45ea-919c-b603f97bd0cc/.default';
@@ -73,6 +42,13 @@ Deno.serve(async (req) => {
 
     if (!task_id) return Response.json({ error: 'task_id is required' }, { status: 400 });
     const taskIdNum = Number(task_id);
+
+    // Kill switch: respect the connector's active flag. Manual accept must not
+    // bypass a paused portal — matches the behaviour of symfonieProcessTasks.
+    const portalRows = await base44.asServiceRole.entities.Portal.filter({ key: 'symfonie' });
+    if (portalRows[0]?.is_active === false) {
+      return Response.json({ error: 'Symfonie connector is paused' }, { status: 409 });
+    }
 
     const token = await getToken();
 
@@ -114,10 +90,10 @@ Deno.serve(async (req) => {
     const saved = await base44.asServiceRole.entities.AcceptedTask.create(taskRecord);
     console.log(`Task ${taskIdNum} manually accepted by ${user?.email || 'user'}`);
 
-    const synced = await appendToSheets(base44, taskRecord);
-    if (synced) {
-      await base44.asServiceRole.entities.AcceptedTask.update(saved.id, { sheets_synced: true });
-    }
+    // Sheet write is delegated to sheetsSyncPending (fire-and-forget). It owns
+    // SheetColumnMapping + SheetRoute resolution — the single source of truth.
+    base44.asServiceRole.functions.invoke('sheetsSyncPending', {})
+      .catch((e) => console.error('sheetsSyncPending trigger failed:', e.message));
 
     // BMS Integration: project = downstream-facing record of this accepted task.
     // Failures here MUST NOT roll back the Symfonie accept — log and continue.
@@ -164,7 +140,7 @@ Deno.serve(async (req) => {
       handoff = { error: e.message };
     }
 
-    return Response.json({ success: true, sheets_synced: synced, handoff, project_id: project?.id || null });
+    return Response.json({ success: true, sheets_sync: 'queued', handoff, project_id: project?.id || null });
   } catch (error) {
     console.error('symfonieAcceptTask error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });

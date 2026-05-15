@@ -43,8 +43,9 @@ export const DEFAULT_FIELDS = {
   globallink: [
     t('submission_id', 'Submission ID'),
     t('submission_ticket', 'Submission ticket'),
-    t('project_name', 'Submission name'),
-    t('client_name', 'Client'),
+    t('project_name', 'Project name'),
+    t('client_name', 'Account / Client'),
+    t('account_id', 'Account ID'),
     t('source_language', 'Source language'),
     t('target_language', 'Target language'),
     t('phase_name', 'Phase'),

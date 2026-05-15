@@ -189,6 +189,12 @@ Deno.serve(async (req) => {
       }
     });
 
+    // Batch sheet sync — single source of truth for column mapping + routing.
+    if (summary.accepted > 0) {
+      base44.asServiceRole.functions.invoke('sheetsSyncPending', {})
+        .catch((e) => console.error('sheetsSyncPending trigger failed:', e.message));
+    }
+
     return Response.json({ success: true, summary, details, total_offers: offers.length });
   } catch (error) {
     return Response.json({ success: false, error: error.message }, { status: 500 });

@@ -10,7 +10,7 @@ import BulkActionBar from '@/components/pending/BulkActionBar';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import ErrorState from '@/components/ui/ErrorState';
-import { fmtNumber, EM } from '@/lib/format';
+import { fmtNumber } from '@/lib/format';
 import { downloadCsv } from '@/lib/csv';
 
 // GlobalLink lives on its own page (/globallink/pending) because its data is

@@ -23,6 +23,10 @@
       "type": "string",
       "description": "M\u00fc\u015fteri / hesap ad\u0131"
     },
+    "account_id": {
+      "type": "string",
+      "description": "Portal-specific stable account identifier (e.g. GlobalLink paClientTicket)."
+    },
     "source_language": {
       "type": "string",
       "description": "Kaynak dil kodu"

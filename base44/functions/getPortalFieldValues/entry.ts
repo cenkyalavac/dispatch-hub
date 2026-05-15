@@ -36,6 +36,7 @@ const KNOWN_TEXT_FIELDS = new Set([
   'submission_ticket',
   'phase_name',
   'deadline_at',
+  'account_id',
 ]);
 
 Deno.serve(async (req) => {

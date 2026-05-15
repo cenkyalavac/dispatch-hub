@@ -32,6 +32,12 @@ Deno.serve(async (req) => {
     const { task_id, task_name, project_name, account_name, source_language, target_language, word_count, price, due_date } = body;
     if (!task_id) return Response.json({ error: 'task_id is required' }, { status: 400 });
 
+    // Kill switch: paused connector must not accept/reject either.
+    const portalRows = await base44.asServiceRole.entities.Portal.filter({ key: 'symfonie' });
+    if (portalRows[0]?.is_active === false) {
+      return Response.json({ error: 'Symfonie connector is paused' }, { status: 409 });
+    }
+
     const taskIdNum = Number(task_id);
     const token = await getToken();
 

@@ -118,79 +118,10 @@ async function executeTaskCommand(taskId, command, token) {
   return { ok: true };
 }
 
-function evalSheetCondition(c, task) {
-  const raw = task[c.field];
-  const taskStr = String(raw ?? '').toLowerCase();
-  const taskNum = Number(raw);
-  const value = String(c.value ?? '').toLowerCase();
-  const numVal = Number(c.value);
-  switch (c.operator) {
-    case 'contains':       return taskStr.includes(value);
-    case 'not_contains':   return !taskStr.includes(value);
-    case 'equals':         return taskStr === value;
-    case 'starts_with':    return taskStr.startsWith(value);
-    case 'in':             return value.split(',').map(v => v.trim()).filter(Boolean).includes(taskStr);
-    case 'greater_than':   return taskNum > numVal;
-    case 'less_than':      return taskNum < numVal;
-    case 'greater_equal':  return taskNum >= numVal;
-    case 'less_equal':     return taskNum <= numVal;
-    default:               return true;
-  }
-}
-
-function resolveSheetDestination(task, routes, portal) {
-  for (const r of routes) {
-    if (r.portal !== 'symfonie') continue;
-    const conds = r.conditions || [];
-    const matched = conds.length === 0 || conds.every(c => evalSheetCondition(c, task));
-    if (matched) return { spreadsheet_id: r.spreadsheet_id, tab_name: r.tab_name || '' };
-  }
-  if (portal?.sheets_spreadsheet_id) {
-    return { spreadsheet_id: portal.sheets_spreadsheet_id, tab_name: portal.sheets_tab_name || '' };
-  }
-  return null;
-}
-
-async function appendToSheets(base44, taskRecord, portal, routes) {
-  const dest = resolveSheetDestination(taskRecord, routes || [], portal);
-  if (!dest) return false;
-
-  const { accessToken } = await base44.asServiceRole.connectors.getConnection('googlesheets');
-  const spreadsheetId = dest.spreadsheet_id;
-  const tab = dest.tab_name;
-  const range = tab ? `${encodeURIComponent(tab)}!A1:append` : 'A1:append';
-
-  const row = [
-    taskRecord.task_id,
-    taskRecord.task_name,
-    taskRecord.project_name || '',
-    taskRecord.client_name || '',
-    taskRecord.source_language || '',
-    taskRecord.target_language || '',
-    taskRecord.word_count || '',
-    taskRecord.price || '',
-    taskRecord.due_date || '',
-    taskRecord.accepted_at || '',
-    taskRecord.matched_rule || ''
-  ];
-
-  const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ values: [row] })
-    }
-  );
-  if (!res.ok) {
-    console.error('Sheets append failed:', res.status, await res.text());
-    return false;
-  }
-  return true;
-}
+// Sheet write is delegated to `sheetsSyncPending` (single source of truth).
+// Inline legacy 11-column append used to silently ignore SheetColumnMapping
+// + SheetRoute config; routing it through sheetsSyncPending keeps every code
+// path consistent.
 
 Deno.serve(async (req) => {
   try {
@@ -204,11 +135,9 @@ Deno.serve(async (req) => {
 
     console.log('symfonieProcessTasks started, user:', user?.email || 'scheduled/system');
 
-    // Load portal config + active sheet routes once — needed for Sheet routing in appendToSheets.
-    const [portalRows, sheetRoutes] = await Promise.all([
-      base44.asServiceRole.entities.Portal.filter({ key: 'symfonie' }),
-      base44.asServiceRole.entities.SheetRoute.filter({ portal: 'symfonie', is_active: true }, 'priority', 200),
-    ]);
+    // Load portal config (only used for the kill switch — sheet routing is
+    // handled by sheetsSyncPending which reads its own copy).
+    const portalRows = await base44.asServiceRole.entities.Portal.filter({ key: 'symfonie' });
     const portal = portalRows[0] || null;
 
     // Kill switch: if the portal is toggled off, do nothing. The scheduler still ticks,
@@ -335,11 +264,6 @@ Deno.serve(async (req) => {
         console.log(`Task ${taskId} "${raw.Name}" accepted via rule "${matchedRule.name}"`);
         const saved = await base44.asServiceRole.entities.AcceptedTask.create(task);
 
-        const synced = await appendToSheets(base44, task, portal, sheetRoutes);
-        if (synced) {
-          await base44.asServiceRole.entities.AcceptedTask.update(saved.id, { sheets_synced: true });
-        }
-
         // Faz 1/2 BMS pipeline: every accepted task MUST get a Project record + webhook fire,
         // otherwise downstream BMS never sees rule-accepted tasks (only manual ones).
         let project = null;
@@ -400,6 +324,13 @@ Deno.serve(async (req) => {
         await base44.asServiceRole.entities.AcceptedTask.create(task);
         results.rejected.push({ id: taskId, name: raw.Name, rule: matchedRule.name });
       }
+    }
+
+    // Batch sheet sync once per run — fire-and-forget; sheetsSyncPending picks up
+    // every newly-created AcceptedTask via `sheets_synced: false` filter.
+    if (results.accepted.length > 0) {
+      base44.asServiceRole.functions.invoke('sheetsSyncPending', {})
+        .catch((e) => console.error('sheetsSyncPending trigger failed:', e.message));
     }
 
     console.log(`Finished: ${results.accepted.length} accepted, ${results.rejected.length} rejected, ${results.skipped.length} skipped, ${results.errors.length} errors`);
