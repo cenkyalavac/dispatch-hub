@@ -20,13 +20,11 @@ const TABS = [
   { to: '/api',       label: 'API',        matches: ['/api', '/mappings'] },
 ];
 
-// Pending lists live inside each connector's own detail page now (Pending tab).
-// GlobalLink keeps its standalone page because its data model and bulk-claim
-// UX is fundamentally different from the cached-fetch portals.
+// Pending lists live inside each connector's own detail page (Pending tab) —
+// uniformly for every portal, including GlobalLink. Legacy standalone pending
+// pages are retired.
 function pendingHref(portal) {
-  return portal.key === 'globallink'
-    ? '/globallink/pending'
-    : `/portals/${portal.key}?tab=pending`;
+  return `/portals/${portal.key}?tab=pending`;
 }
 
 export default function TopBar() {
@@ -47,9 +45,7 @@ export default function TopBar() {
   // or on any portal detail page with the pending tab open. We can't read the
   // query string from pathname alone, so also check window.location.search here.
   const pendingActive =
-    pathname.startsWith('/pending') ||
-    pathname.startsWith('/globallink/pending') ||
-    (pathname.startsWith('/portals/') && typeof window !== 'undefined' && window.location.search.includes('tab=pending'));
+    pathname.startsWith('/portals/') && typeof window !== 'undefined' && window.location.search.includes('tab=pending');
 
   useEffect(() => {
     const onKey = (e) => {

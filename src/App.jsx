@@ -12,13 +12,10 @@ import Tasks from './pages/Tasks';
 import SettingsPage from './pages/SettingsPage';
 import Connectors from './pages/Connectors.jsx';
 import PortalDetail from './pages/PortalDetail.jsx';
-import PendingTasks from './pages/PendingTasks.jsx';
-import PendingPortalRedirect from './pages/PendingPortalRedirect.jsx';
 import History from './pages/History.jsx';
 import ApiAccess from './pages/ApiAccess.jsx';
 import Mappings from './pages/Mappings.jsx';
 import Issues from './pages/Issues.jsx';
-import GlobalLinkPending from './pages/GlobalLinkPending.jsx';
 import PortalProbe from './pages/PortalProbe.jsx';
 import Notifications from './pages/Notifications.jsx';
 import Users from './pages/Users.jsx';
@@ -56,13 +53,10 @@ const AuthenticatedApp = () => {
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/portals" element={<Connectors />} />
         <Route path="/portals/:key" element={<PortalDetail />} />
-        <Route path="/pending" element={<PendingPortalRedirect />} />
-        <Route path="/pending/:portalKey" element={<PendingTasks />} />
         <Route path="/history" element={<History />} />
         <Route path="/api" element={<ApiAccess />} />
         <Route path="/mappings" element={<Mappings />} />
         <Route path="/issues" element={<Issues />} />
-        <Route path="/globallink/pending" element={<GlobalLinkPending />} />
         <Route path="/probe" element={<PortalProbe />} />
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/users" element={<Users />} />

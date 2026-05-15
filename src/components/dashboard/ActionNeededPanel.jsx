@@ -16,7 +16,7 @@ import { fmtNumber, EM } from '@/lib/format';
 // This keeps the dashboard cheap to render and respects upstream rate limits.
 
 function pendingHref(portalKey) {
-  return portalKey === 'globallink' ? '/globallink/pending' : `/pending/${portalKey}`;
+  return `/portals/${portalKey}?tab=pending`;
 }
 
 const DOT = {
