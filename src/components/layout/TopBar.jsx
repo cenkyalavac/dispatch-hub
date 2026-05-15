@@ -159,11 +159,12 @@ export default function TopBar() {
             to="/notifications"
             aria-label="Notifications"
             className={({ isActive }) =>
-              `inline-flex items-center justify-center w-8 h-8 rounded-md border border-line-1 transition-colors duration-tab
+              `inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-line-1 transition-colors duration-tab text-[12px] font-medium
                ${isActive ? 'bg-surface-2 text-ink-1' : 'bg-surface-1 text-ink-3 hover:bg-surface-2 hover:text-ink-1'}`
             }
           >
             <Bell className="w-3.5 h-3.5" />
+            <span>Notifications</span>
           </NavLink>
           <NavLink
             to="/settings"
