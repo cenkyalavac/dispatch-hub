@@ -296,10 +296,34 @@ Deno.serve(async (req) => {
       };
     });
 
-    return Response.json({
-      tasks: mapped,
-      total: mapped.length
-    });
+    // Snapshot the result so the Pending tab can render instantly on the next
+    // visit (TanStack Query's in-memory cache is per browser session — a fresh
+    // tab or page reload re-pays the ~2s upstream cost). Fire-and-forget; the
+    // snapshot is purely an optimization and must never block the response.
+    const snapshotPayload = { tasks: mapped, total: mapped.length };
+    (async () => {
+      try {
+        const existing = await base44.asServiceRole.entities.CachedSnapshot
+          .filter({ key: 'pending_symfonie' }, '-created_date', 1)
+          .catch(() => []);
+        const row = {
+          key: 'pending_symfonie',
+          data: snapshotPayload,
+          fetched_at: new Date().toISOString(),
+          source_function: 'symfonieGetTasks',
+          item_count: mapped.length,
+        };
+        if (existing[0]) {
+          await base44.asServiceRole.entities.CachedSnapshot.update(existing[0].id, row);
+        } else {
+          await base44.asServiceRole.entities.CachedSnapshot.create(row);
+        }
+      } catch (e) {
+        console.warn('pending_symfonie snapshot write failed:', e.message);
+      }
+    })();
+
+    return Response.json(snapshotPayload);
   } catch (error) {
     console.error('symfonieGetTasks error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });

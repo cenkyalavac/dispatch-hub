@@ -10,6 +10,13 @@ import PendingTaskRow from './PendingTaskRow';
 import SymfonieTaskDetail from '@/components/pending/SymfonieTaskDetail';
 import JunctionTaskDetailPanel from '@/components/pending/JunctionTaskDetailPanel';
 
+// Snapshot key per portal. Only portals whose fetch function writes a
+// CachedSnapshot row will have a fast-path render — everything else falls
+// back to the live fetch with no placeholder.
+const SNAPSHOT_KEY_BY_PORTAL = {
+  symfonie: 'pending_symfonie',
+};
+
 // Per-portal detail component map. Each connector is fully isolated — adding a
 // new portal means adding one entry here, no cross-imports inside detail files.
 const DETAIL_BY_PORTAL = {
@@ -52,7 +59,7 @@ function GLRow({ task }) {
 // Header is always rendered so Refresh is reachable even while loading —
 // previously the Refresh button only appeared after the first successful fetch,
 // which is exactly the case where users most want to retry.
-function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComponent, onAccept, acceptingId, DetailComponent }) {
+function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComponent, onAccept, acceptingId, DetailComponent, snapshotAge }) {
   return (
     <section className="bg-surface-1 border border-line-1 rounded-md">
       <header className="flex items-center justify-between px-4 py-2.5 border-b border-line-1">
@@ -63,11 +70,17 @@ function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComp
           ) : (
             <span className="text-[11px] text-ink-3 tabular-nums">{items.length}</span>
           )}
+          {/* Cache age hint — only shown when we're showing snapshot data while
+              a fresh fetch is in flight, so the user knows the list might be
+              slightly stale and that "live" data is on its way. */}
+          {snapshotAge && isFetching && (
+            <span className="text-[11px] text-ink-4 italic-editorial">· cached {snapshotAge}</span>
+          )}
         </div>
         <button
           onClick={() => refetch()}
           disabled={isFetching}
-          className="inline-flex items-center gap-1 h-7 px-2 rounded text-[11px] text-ink-3 hover:bg-surface-2 hover:text-ink-1 transition-colors duration-tab disabled:opacity-40"
+          className="inline-flex items-center gap-1 h-7 px-2 rounded text-[11px] text-ink-3 hover:bg-surface-2 hover:text-ink-1 transition-colors duration-tab disabled:cursor-wait"
         >
           <RefreshCw className={`w-3 h-3 ${isFetching ? 'animate-spin' : ''}`} />
           {isFetching ? 'Refreshing…' : 'Refresh'}
@@ -124,6 +137,21 @@ function FetchFnPending({ portal }) {
   const qc = useQueryClient();
   const [acceptingId, setAcceptingId] = useState(null);
 
+  // Snapshot fast-path: when the portal writes a CachedSnapshot row from its
+  // fetch function (currently only Symfonie), read it as `placeholderData`
+  // so the list renders instantly on first paint. The live fetch still runs
+  // in the background and overwrites the placeholder once it resolves.
+  const snapshotKey = SNAPSHOT_KEY_BY_PORTAL[portal.key];
+  const { data: snapshot } = useQuery({
+    queryKey: ['portal-pending-snapshot', portal.key],
+    queryFn: async () => {
+      const rows = await base44.entities.CachedSnapshot.filter({ key: snapshotKey }, '-created_date', 1);
+      return rows[0] || null;
+    },
+    enabled: !!snapshotKey,
+    staleTime: Infinity, // snapshot itself is read once per mount
+  });
+
   const { data, isLoading, refetch, isFetching, isError, error } = useQuery({
     queryKey: ['portal-pending', portal.key],
     queryFn: async () => {
@@ -133,8 +161,22 @@ function FetchFnPending({ portal }) {
     },
     staleTime: 5 * 60_000,
     retry: false,
+    // Use the snapshot as initial data so the table is filled on first render
+    // even while the live fetch is still in flight.
+    placeholderData: snapshot?.data || undefined,
   });
   const items = data?.tasks || [];
+
+  // Format the snapshot's age compactly ("12m", "2h") for the header hint.
+  const snapshotAge = (() => {
+    if (!snapshot?.fetched_at) return null;
+    const ms = Date.now() - new Date(snapshot.fetched_at).getTime();
+    const m = Math.round(ms / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m}m ago`;
+    const h = Math.round(m / 60);
+    return `${h}h ago`;
+  })();
 
   // Accept handler is wired only when the portal declares an accept_function.
   // Each portal's accept fn has its own payload contract — we just pass through
@@ -185,7 +227,10 @@ function FetchFnPending({ portal }) {
     <Body
       items={items}
       portal={portal}
-      isLoading={isLoading}
+      // When the snapshot serves the first paint, suppress the skeleton —
+      // we already have rows to show; the spinner on Refresh signals
+      // background work.
+      isLoading={isLoading && items.length === 0}
       refetch={refetch}
       isFetching={isFetching}
       errorMsg={isError ? (error?.message || 'Failed to load') : null}
@@ -193,6 +238,7 @@ function FetchFnPending({ portal }) {
       onAccept={handleAccept}
       acceptingId={acceptingId}
       DetailComponent={DETAIL_BY_PORTAL[portal.key]}
+      snapshotAge={snapshotAge}
     />
   );
 }
