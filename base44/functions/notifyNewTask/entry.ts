@@ -86,26 +86,124 @@ function esc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// Leverage band definitions — same order/labels the in-app SymfonieTaskDetail
+// uses. For GlobalLink we sum the "pure fuzzy" band with its sibling "Reps
+// in that band" because that's how the WWC formula treats them and that's
+// the number recipients actually need to price the job.
+const LEVERAGE_BANDS = [
+  { key: 'lev_context',  label: 'Context',     repKey: null },
+  { key: 'lev_rep',      label: 'Repetitions', repKey: null },
+  { key: 'lev_match100', label: '100%',        repKey: null },
+  { key: 'lev_9599',     label: '95–99%',      repKey: 'lev_rep_9599' },
+  { key: 'lev_8594',     label: '85–94%',      repKey: 'lev_rep_8594' },
+  { key: 'lev_7584',     label: '75–84%',      repKey: 'lev_rep_7584' },
+  { key: 'lev_5074',     label: '50–74%',      repKey: 'lev_rep_5074' },
+  { key: 'lev_no_match', label: 'No match',    repKey: null },
+];
+
+// Returns the leverage-grid HTML when the task carries ANY non-zero leverage
+// value — otherwise returns '' so the section is omitted entirely.
+function buildLeverageGrid(task) {
+  const values = LEVERAGE_BANDS.map(({ key, label, repKey }) => {
+    const base = Number(task[key]) || 0;
+    const rep = repKey ? (Number(task[repKey]) || 0) : 0;
+    return { label, value: base + rep };
+  });
+  const total = values.reduce((s, v) => s + v.value, 0);
+  if (total === 0) return '';
+
+  // 4-column grid built with nested tables — Outlook can't handle CSS grid.
+  // Two rows of four cells each. Each cell shows label + count + share%.
+  const cell = (v) => {
+    const pct = total > 0 ? (v.value / total) * 100 : 0;
+    return `<td width="25%" style="padding:6px;vertical-align:top;">
+      <div style="background:#f9fafb;border:1px solid #f3f4f6;border-radius:6px;padding:8px 10px;">
+        <p style="margin:0;color:#9ca3af;font-size:10px;text-transform:uppercase;letter-spacing:.06em;">${esc(v.label)}</p>
+        <p style="margin:2px 0 0;color:#111827;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;">${fmtNum(v.value)}</p>
+        <p style="margin:0;color:#9ca3af;font-size:10px;font-variant-numeric:tabular-nums;">${pct.toFixed(0)}%</p>
+      </div>
+    </td>`;
+  };
+  const row1 = values.slice(0, 4).map(cell).join('');
+  const row2 = values.slice(4, 8).map(cell).join('');
+
+  const wwc = Number(task.weighted_wc) || 0;
+  const wwcLine = wwc > 0
+    ? `<p style="margin:8px 12px 0;color:#6b7280;font-size:11px;">
+         Weighted WC: <strong style="color:#111827;font-variant-numeric:tabular-nums;">${fmtNum(Math.round(wwc))}</strong>
+         · Total: <strong style="color:#111827;font-variant-numeric:tabular-nums;">${fmtNum(total)}</strong>
+       </p>`
+    : '';
+  const parserLine = task.parser_type
+    ? `<p style="margin:0 12px 0;color:#9ca3af;font-size:10px;text-transform:uppercase;letter-spacing:.06em;">Analysis · ${esc(task.parser_type)}</p>`
+    : '';
+
+  return `
+    <tr><td style="padding:4px 16px 0;">
+      <p style="margin:12px 12px 6px;color:#6b7280;font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:600;">Word-count analysis</p>
+      ${parserLine}
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;">
+        <tr>${row1}</tr>
+        <tr>${row2}</tr>
+      </table>
+      ${wwcLine}
+    </td></tr>`;
+}
+
+// Pulls a small set of optional metadata rows. Only the ones present on the
+// payload are returned — keeps the mail compact for portals (Junction) that
+// don't send them.
+function buildExtraRows(task) {
+  const extra = [];
+  if (Array.isArray(task.requestors) && task.requestors.length > 0) {
+    extra.push(['Requestors', task.requestors.join(', ')]);
+  }
+  if (Array.isArray(task.assignees) && task.assignees.length > 0) {
+    extra.push(['Assignees', task.assignees.join(', ')]);
+  }
+  if (task.phase_name) extra.push(['Phase', task.phase_name]);
+  if (task.submission_id) extra.push(['Submission', task.submission_id]);
+  if (task.symfonie_code) extra.push(['Symfonie code', task.symfonie_code]);
+  if (task.job_identifier) extra.push(['Job', task.job_identifier]);
+  return extra;
+}
+
+// Custom fields come back from Symfonie as a flat object. Filter empties and
+// keep at most 6 — recipients don't need a wall of metadata in their inbox.
+function buildCustomFieldRows(task) {
+  const cf = task.custom_fields;
+  if (!cf || typeof cf !== 'object') return [];
+  return Object.entries(cf)
+    .filter(([, v]) => v != null && v !== '')
+    .slice(0, 6)
+    .map(([k, v]) => [k, String(v)]);
+}
+
 // Compact, mail-client-safe HTML. Inline styles only — Gmail/Outlook strip
 // <style> blocks. No external CSS, no web fonts.
 function buildEmail({ portal, task, acceptUrl, rule }) {
   const portalLabel = ({ symfonie: 'Symfonie', junction: 'Junction', globallink: 'GlobalLink' })[portal] || portal;
-  const rows = [
-    ['Task',         task.task_name],
-    ['Project',      task.project_name],
-    ['Client',       task.client_name],
-    ['Languages',    [task.source_language, task.target_language].filter(Boolean).join(' → ')],
-    ['Word count',   fmtNum(task.word_count)],
-    ['Price',        fmtMoney(task.price)],
-    ['Due',          fmtDate(task.due_date)],
-    ['Workflow',     task.workflow_name],
-  ].filter(([, v]) => v && v !== '—');
+
+  const baseRows = [
+    ['Task',       task.task_name],
+    ['Project',    task.project_name],
+    ['Client',     task.client_name],
+    ['Languages',  [task.source_language, task.target_language].filter(Boolean).join(' → ')],
+    ['Word count', fmtNum(task.word_count)],
+    ['Price',      fmtMoney(task.price)],
+    ['Due',        fmtDate(task.due_date)],
+    ['Workflow',   task.workflow_name],
+  ];
+  const rows = [...baseRows, ...buildExtraRows(task), ...buildCustomFieldRows(task)]
+    .filter(([, v]) => v && v !== '—');
 
   const rowsHtml = rows.map(([k, v]) => `
     <tr>
-      <td style="padding:8px 12px;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;border-bottom:1px solid #f3f4f6;">${esc(k)}</td>
+      <td style="padding:8px 12px;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;border-bottom:1px solid #f3f4f6;vertical-align:top;">${esc(k)}</td>
       <td style="padding:8px 12px;color:#111827;font-size:14px;border-bottom:1px solid #f3f4f6;">${esc(v)}</td>
     </tr>`).join('');
+
+  const leverageHtml = buildLeverageGrid(task);
 
   return `<!doctype html>
 <html><body style="margin:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
@@ -119,6 +217,7 @@ function buildEmail({ portal, task, acceptUrl, rule }) {
         <tr><td style="padding:12px 16px 8px;">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">${rowsHtml}</table>
         </td></tr>
+        ${leverageHtml}
         <tr><td align="center" style="padding:20px 28px 28px;">
           <a href="${esc(acceptUrl)}"
              style="display:inline-block;padding:12px 28px;background:#4f46e5;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;border-radius:8px;">
