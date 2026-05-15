@@ -4,6 +4,7 @@ import { Inbox, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EM, fmtNumber } from '@/lib/format';
+import PendingTaskRow from './PendingTaskRow';
 
 // Per-portal pending list inside PortalDetail. This IS the pending list now —
 // no separate /pending/:key page to bounce to.
@@ -11,21 +12,22 @@ import { EM, fmtNumber } from '@/lib/format';
 //   - Symfonie / Junction: live via the portal's fetch_function, cached 5min
 //     server-side via CachedSnapshot so repeated tab opens are cheap.
 
-function Row({ task }) {
-  // GlobalLinkSubmission fields differ from AcceptedTask/Symfonie pending —
-  // normalise just enough to show one consistent row.
-  const name = task.submission_name || task.task_name || task.name || EM;
+// Minimal row for GlobalLink (its data shape is much narrower than the
+// Symfonie/Junction live fetch — single locale, fewer fields).
+function GLRow({ task }) {
+  const name = task.submission_name || task.task_name || EM;
   const src = task.source_language || EM;
   const tgt = task.target_language || EM;
   const wc = task.word_count || 0;
-  const stamp = task.created_date || task.created_at;
+  const stamp = task.created_date;
   return (
-    <div className="flex items-center gap-3 px-3 py-2 hover:bg-surface-2 transition-colors duration-tab">
+    <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-surface-2 transition-colors duration-tab">
       <div className="min-w-0 flex-1">
         <p className="text-[12px] font-medium text-ink-1 truncate">{name}</p>
-        <p className="text-[11px] text-ink-3 truncate font-mono">
-          {src} → {tgt}
-          {task.project_name && <span className="font-sans"> · {task.project_name}</span>}
+        <p className="text-[11px] text-ink-3 truncate">
+          <span className="font-mono">{src} → {tgt}</span>
+          {task.project_name && <span> · {task.project_name}</span>}
+          {task.client_name && <span className="text-ink-4"> · {task.client_name}</span>}
         </p>
       </div>
       <span className="text-[11px] text-ink-3 tabular-nums flex-shrink-0">{fmtNumber(wc)} w</span>
@@ -36,26 +38,40 @@ function Row({ task }) {
   );
 }
 
-function Body({ items, portal, isLoading, refetch, isFetching, errorMsg }) {
-  if (isLoading) {
-    return <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12" />)}</div>;
-  }
+// Header is always rendered so Refresh is reachable even while loading —
+// previously the Refresh button only appeared after the first successful fetch,
+// which is exactly the case where users most want to retry.
+function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComponent }) {
   return (
     <section className="bg-surface-1 border border-line-1 rounded-md">
       <header className="flex items-center justify-between px-4 py-2.5 border-b border-line-1">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-semibold text-ink-1">Pending</span>
-          <span className="text-[11px] text-ink-3 tabular-nums">{items.length}</span>
+          {isLoading ? (
+            <Skeleton className="h-3 w-6" />
+          ) : (
+            <span className="text-[11px] text-ink-3 tabular-nums">{items.length}</span>
+          )}
         </div>
         <button
           onClick={() => refetch()}
           disabled={isFetching}
           className="inline-flex items-center gap-1 h-7 px-2 rounded text-[11px] text-ink-3 hover:bg-surface-2 hover:text-ink-1 transition-colors duration-tab disabled:opacity-40"
         >
-          <RefreshCw className={`w-3 h-3 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
+          <RefreshCw className={`w-3 h-3 ${isFetching ? 'animate-spin' : ''}`} />
+          {isFetching ? 'Refreshing…' : 'Refresh'}
         </button>
       </header>
-      {errorMsg ? (
+      {isLoading ? (
+        <div className="divide-y divide-line-1">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="px-4 py-3 space-y-2">
+              <Skeleton className="h-3 w-2/3" />
+              <Skeleton className="h-2.5 w-1/2" />
+            </div>
+          ))}
+        </div>
+      ) : errorMsg ? (
         <div className="px-4 py-5 text-center">
           <p className="text-[12px] text-danger">{errorMsg}</p>
         </div>
@@ -67,7 +83,7 @@ function Body({ items, portal, isLoading, refetch, isFetching, errorMsg }) {
       ) : (
         <div className="divide-y divide-line-1">
           {items.map((it) => (
-            <Row key={it.id} task={it} />
+            <RowComponent key={it.id} task={it} portalKey={portal.key} />
           ))}
         </div>
       )}
@@ -82,7 +98,7 @@ function GlobalLinkPending({ portal }) {
       base44.entities.GlobalLinkSubmission.filter({ status: 'available' }, '-created_date', 100),
   });
   return (
-    <Body items={rows} portal={portal} isLoading={isLoading} refetch={refetch} isFetching={isFetching} />
+    <Body items={rows} portal={portal} isLoading={isLoading} refetch={refetch} isFetching={isFetching} RowComponent={GLRow} />
   );
 }
 
@@ -106,6 +122,7 @@ function FetchFnPending({ portal }) {
       refetch={refetch}
       isFetching={isFetching}
       errorMsg={isError ? (error?.message || 'Failed to load') : null}
+      RowComponent={PendingTaskRow}
     />
   );
 }
