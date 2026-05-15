@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { formatDistanceToNow, format } from 'date-fns';
-import { Clock, AlertTriangle, Tag, User, Lock, Briefcase, ExternalLink } from 'lucide-react';
+import { Clock, User, Lock, Briefcase, ExternalLink, ChevronDown, ChevronRight, Check, Loader2 } from 'lucide-react';
 import { EM, fmtNumber } from '@/lib/format';
+import SymfonieTaskDetail from '@/components/pending/SymfonieTaskDetail';
+import JunctionTaskDetail from '@/components/pending/JunctionTaskDetail';
 
 // Format USD compactly — Symfonie sometimes returns 0 (no SO yet), we then hide it.
 function fmtMoney(v) {
@@ -33,7 +36,13 @@ function dueBadge(due) {
 
 // Rich row for live-fetched portal tasks (Symfonie, Junction). GlobalLink uses
 // its own narrower row in PendingTab (different entity, different field names).
-export default function PendingTaskRow({ task, portalKey }) {
+//
+// Expand toggle reveals a portal-specific detail panel:
+//   Symfonie → leverage breakdown + finance + people + custom fields + attachments
+//   Junction → notes/instructions + assets
+export default function PendingTaskRow({ task, portalKey, onAccept, isAccepting }) {
+  const [expanded, setExpanded] = useState(false);
+
   const name = task.name || task.task_name || EM;
   const src = task.source_language || EM;
   const tgt = task.target_language || EM;
@@ -44,9 +53,7 @@ export default function PendingTaskRow({ task, portalKey }) {
   const projectCode = task.project_code || task.symfonie_code || '';
   const jobName = task.job_name || '';
   const workflow = task.workflow_name || task.workflow_group_name || '';
-  const serviceTag = task.service_tag || '';
   const requestors = (task.requestors || []).slice(0, 2);
-  const tags = (task.tags || []).map((t) => (typeof t === 'string' ? t : t?.Name)).filter(Boolean).slice(0, 3);
   const locked = task.lock_state && task.lock_state !== 'Unlocked';
   const orderDate = task.order_date || task.created_at;
 
@@ -54,87 +61,118 @@ export default function PendingTaskRow({ task, portalKey }) {
     ? `https://projects.moravia.com/Jobs/Detail/${task.job_id}#task-${task.id}`
     : null;
 
+  // Junction's detail panel needs the *task id* (not the offer id). For Symfonie
+  // task.id is already the task id.
+  const detailTaskId = portalKey === 'junction' ? task.task_id : task.id;
+
   return (
-    <div className="px-4 py-3 hover:bg-surface-2 transition-colors duration-tab">
-      {/* Top line: title + headline metrics */}
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-[13px] font-semibold text-ink-1 truncate" title={name}>{name}</p>
-            {locked && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-danger-soft text-danger">
-                <Lock className="w-2.5 h-2.5" /> {task.lock_state}
-              </span>
-            )}
-            {symfonieLink && (
-              <a
-                href={symfonieLink}
-                target="_blank"
-                rel="noreferrer"
-                className="text-ink-4 hover:text-accent transition-colors"
-                title="Open in Symfonie"
-              >
-                <ExternalLink className="w-3 h-3" />
-              </a>
+    <div>
+      <div className="px-4 py-3 hover:bg-surface-2 transition-colors duration-tab">
+        {/* Top line: title + headline metrics */}
+        <div className="flex items-start gap-3">
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="mt-0.5 text-ink-4 hover:text-ink-1 transition-colors flex-shrink-0"
+            aria-label={expanded ? 'Collapse' : 'Expand'}
+          >
+            {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          </button>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-[13px] font-semibold text-ink-1 truncate" title={name}>{name}</p>
+              {locked && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-danger-soft text-danger">
+                  <Lock className="w-2.5 h-2.5" /> {task.lock_state}
+                </span>
+              )}
+              {symfonieLink && (
+                <a
+                  href={symfonieLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-ink-4 hover:text-accent transition-colors"
+                  title="Open in Symfonie"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            </div>
+
+            {/* Account › Project › Job — the hierarchy that actually identifies a task */}
+            {(account || projectName || jobName) && (
+              <p className="text-[11px] text-ink-3 truncate mt-0.5">
+                {account && <span>{account}</span>}
+                {account && projectName && <span className="text-ink-4 mx-1">›</span>}
+                {projectName && (
+                  <span>
+                    {projectName}
+                    {projectCode && <span className="font-mono text-ink-4 ml-1">({projectCode})</span>}
+                  </span>
+                )}
+                {(projectName || account) && jobName && <span className="text-ink-4 mx-1">›</span>}
+                {jobName && <span className="text-ink-2">{jobName}</span>}
+              </p>
             )}
           </div>
 
-          {/* Account › Project › Job — the hierarchy that actually identifies a task */}
-          {(account || projectName || jobName) && (
-            <p className="text-[11px] text-ink-3 truncate mt-0.5">
-              {account && <span>{account}</span>}
-              {account && projectName && <span className="text-ink-4 mx-1">›</span>}
-              {projectName && (
-                <span>
-                  {projectName}
-                  {projectCode && <span className="font-mono text-ink-4 ml-1">({projectCode})</span>}
-                </span>
-              )}
-              {(projectName || account) && jobName && <span className="text-ink-4 mx-1">›</span>}
-              {jobName && <span className="text-ink-2">{jobName}</span>}
-            </p>
-          )}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="flex flex-col items-end gap-0.5">
+              <span className="text-[12px] font-medium text-ink-1 tabular-nums">{fmtNumber(wc)} w</span>
+              {price && <span className="text-[11px] text-ink-3 tabular-nums">{price}</span>}
+            </div>
+            {onAccept && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onAccept(task); }}
+                disabled={isAccepting}
+                className="inline-flex items-center gap-1 h-7 px-2.5 rounded text-[11px] font-medium bg-accent text-white hover:bg-[var(--accent-hover)] transition-colors duration-tab disabled:opacity-50"
+              >
+                {isAccepting ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Check className="w-3 h-3" />
+                )}
+                Accept
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
-          <span className="text-[12px] font-medium text-ink-1 tabular-nums">{fmtNumber(wc)} w</span>
-          {price && <span className="text-[11px] text-ink-3 tabular-nums">{price}</span>}
-        </div>
-      </div>
-
-      {/* Bottom line: lang pair, workflow, tags, due, ordered */}
-      <div className="mt-1.5 flex items-center gap-2 flex-wrap text-[11px]">
-        <span className="font-mono text-ink-2">{src} → {tgt}</span>
-        {workflow && (
-          <span className="inline-flex items-center gap-1 text-ink-3">
-            <Briefcase className="w-2.5 h-2.5" /> {workflow}
-          </span>
-        )}
-        {serviceTag && (
-          <span className="inline-flex items-center gap-1 text-ink-3">
-            <Tag className="w-2.5 h-2.5" /> {serviceTag}
-          </span>
-        )}
-        {tags.map((t) => (
-          <span key={t} className="px-1.5 py-0.5 rounded bg-surface-2 text-ink-3 text-[10px]">{t}</span>
-        ))}
-        {requestors.length > 0 && (
-          <span className="inline-flex items-center gap-1 text-ink-3 truncate max-w-[200px]">
-            <User className="w-2.5 h-2.5" /> {requestors.join(', ')}
-          </span>
-        )}
-        <span className="ml-auto inline-flex items-center gap-2">
-          {dueBadge(task.due_date)}
-          {orderDate && (
-            <span
-              className="text-ink-4 tabular-nums"
-              title={`Ordered ${format(new Date(orderDate), 'PPp')}`}
-            >
-              {formatDistanceToNow(new Date(orderDate), { addSuffix: true })}
+        {/* Bottom line: lang pair, workflow, due, ordered */}
+        <div className="mt-1.5 ml-6 flex items-center gap-2 flex-wrap text-[11px]">
+          <span className="font-mono text-ink-2">{src} → {tgt}</span>
+          {workflow && (
+            <span className="inline-flex items-center gap-1 text-ink-3">
+              <Briefcase className="w-2.5 h-2.5" /> {workflow}
             </span>
           )}
-        </span>
+          {requestors.length > 0 && (
+            <span className="inline-flex items-center gap-1 text-ink-3 truncate max-w-[200px]">
+              <User className="w-2.5 h-2.5" /> {requestors.join(', ')}
+            </span>
+          )}
+          <span className="ml-auto inline-flex items-center gap-2">
+            {dueBadge(task.due_date)}
+            {orderDate && (
+              <span
+                className="text-ink-4 tabular-nums"
+                title={`Ordered ${format(new Date(orderDate), 'PPp')}`}
+              >
+                {formatDistanceToNow(new Date(orderDate), { addSuffix: true })}
+              </span>
+            )}
+          </span>
+        </div>
       </div>
+
+      {/* Expandable detail — portal-specific component, lazy-mounted */}
+      {expanded && portalKey === 'symfonie' && <SymfonieTaskDetail task={task} />}
+      {expanded && portalKey === 'junction' && (
+        <div className="px-4 py-4 bg-surface-2/40 border-t border-line-1">
+          <JunctionTaskDetail taskId={detailTaskId} />
+        </div>
+      )}
     </div>
   );
 }

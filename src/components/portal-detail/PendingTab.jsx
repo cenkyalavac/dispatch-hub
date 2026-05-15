@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Inbox, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EM, fmtNumber } from '@/lib/format';
 import PendingTaskRow from './PendingTaskRow';
@@ -41,7 +43,7 @@ function GLRow({ task }) {
 // Header is always rendered so Refresh is reachable even while loading —
 // previously the Refresh button only appeared after the first successful fetch,
 // which is exactly the case where users most want to retry.
-function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComponent }) {
+function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComponent, onAccept, acceptingId }) {
   return (
     <section className="bg-surface-1 border border-line-1 rounded-md">
       <header className="flex items-center justify-between px-4 py-2.5 border-b border-line-1">
@@ -83,7 +85,13 @@ function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComp
       ) : (
         <div className="divide-y divide-line-1">
           {items.map((it) => (
-            <RowComponent key={it.id} task={it} portalKey={portal.key} />
+            <RowComponent
+              key={it.id}
+              task={it}
+              portalKey={portal.key}
+              onAccept={onAccept}
+              isAccepting={onAccept && acceptingId === it.id}
+            />
           ))}
         </div>
       )}
@@ -103,6 +111,9 @@ function GlobalLinkPending({ portal }) {
 }
 
 function FetchFnPending({ portal }) {
+  const qc = useQueryClient();
+  const [acceptingId, setAcceptingId] = useState(null);
+
   const { data, isLoading, refetch, isFetching, isError, error } = useQuery({
     queryKey: ['portal-pending', portal.key],
     queryFn: async () => {
@@ -114,6 +125,47 @@ function FetchFnPending({ portal }) {
     retry: false,
   });
   const items = data?.tasks || [];
+
+  // Accept handler is wired only when the portal declares an accept_function.
+  // Each portal's accept fn has its own payload contract — we just pass through
+  // the canonical fields the row already has. Optimistic remove on success so
+  // the list updates immediately without waiting for the next poll.
+  const handleAccept = portal.accept_function
+    ? async (task) => {
+        setAcceptingId(task.id);
+        try {
+          const res = await base44.functions.invoke(portal.accept_function, {
+            task_id: task.id,
+            task_name: task.name || task.task_name || '',
+            project_name: task.project_name || '',
+            account_name: task.account_name || task.client_name || '',
+            client_name: task.client_name || task.account_name || '',
+            source_language: task.source_language || '',
+            target_language: task.target_language || '',
+            word_count: task.word_count || 0,
+            price: task.price ?? task.price_max_usd ?? 0,
+            due_date: task.due_date || null,
+          });
+          const payload = res.data || {};
+          if (payload.error || payload.success === false) {
+            throw new Error(payload.error || 'Accept failed');
+          }
+          toast.success(`Accepted: ${task.name || task.task_name || task.id}`);
+          // Optimistically drop the row from the cached list.
+          qc.setQueryData(['portal-pending', portal.key], (old) => {
+            if (!old?.tasks) return old;
+            return { ...old, tasks: old.tasks.filter((t) => t.id !== task.id) };
+          });
+          // Plus invalidate history/recent so other panels reflect it.
+          qc.invalidateQueries({ queryKey: ['recent-accepted'] });
+        } catch (e) {
+          toast.error(e.message || 'Accept failed');
+        } finally {
+          setAcceptingId(null);
+        }
+      }
+    : null;
+
   return (
     <Body
       items={items}
@@ -123,6 +175,8 @@ function FetchFnPending({ portal }) {
       isFetching={isFetching}
       errorMsg={isError ? (error?.message || 'Failed to load') : null}
       RowComponent={PendingTaskRow}
+      onAccept={handleAccept}
+      acceptingId={acceptingId}
     />
   );
 }
