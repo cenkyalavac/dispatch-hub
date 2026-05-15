@@ -88,14 +88,22 @@ Deno.serve(async (req) => {
         );
       }
       const data = await r.json();
+      // FileType enum (doc: /Api/help/V5/enum/FileType):
+      //   0=Other, 1=Reference, 2=Source, 3=Target (delivery), 4=Analysis
+      // The TaskAttachment payload exposes this as `FileType` (integer).
+      const FILE_TYPE_NAMES = { 0: 'other', 1: 'reference', 2: 'source', 3: 'target', 4: 'analysis' };
       const attachments = (data.value || []).map((a) => ({
         id: a.Id,
         name: a.Name || '',
-        size: a.Size ?? a.FileSize ?? null,
-        uploaded_at: a.CreatedAt || a.UploadedAt || null,
+        size: a.Size ?? null,
+        uploaded_at: a.CreatedAt || null,
         uploaded_by: a.CreatedByLogin || a.CreatedBy || '',
-        // Kind hint based on Symfonie's directory convention (HO=hand-off, RF=reference, DL=delivery).
-        kind: a.Type || a.AttachmentType || null,
+        // Documented field is `FileType` (Int32 enum). Map to a human label and
+        // expose the raw code for callers that want to filter.
+        kind: FILE_TYPE_NAMES[a.FileType] ?? null,
+        file_type_code: a.FileType ?? null,
+        mime_type: a.MimeType || '',
+        relative_path: a.RelativeFilePath || '',
       }));
       return Response.json({ success: true, task_id: taskId, attachments });
     }

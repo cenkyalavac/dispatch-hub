@@ -61,13 +61,21 @@ async function fetchAllPages(url, token) {
   return results;
 }
 
-// Billing unit codes from Symfonie API
+// Billing unit codes — must match Symfonie's BillingUnits enum exactly.
+// Source: https://projects.moravia.com/Api/help/V5/enum/BillingUnits
+//   0=Hour, 1=Page, 2=Piece, 3=Segment, 4=Word, 5=Percentage,
+//   6=Character, 7=Minute, 8=Other, 9=Line
+// The previous map (1=Words … 8=Files) was wrong and meant the "Word" finance row
+// was never matched correctly, leaving word_count at 0 on every task.
 const BILLING_UNIT_NAMES = {
-  1: 'Words', 2: 'Characters', 3: 'Lines', 4: 'Pages',
-  5: 'Hours', 6: 'Minutes', 7: 'Segments', 8: 'Files',
-  Words: 'Words', Characters: 'Characters', Lines: 'Lines', Pages: 'Pages',
-  Hours: 'Hours', Minutes: 'Minutes', Segments: 'Segments', Files: 'Files',
+  0: 'Hour', 1: 'Page', 2: 'Piece', 3: 'Segment', 4: 'Word',
+  5: 'Percentage', 6: 'Character', 7: 'Minute', 8: 'Other', 9: 'Line',
+  // String passthroughs — Symfonie sometimes returns the enum name as a string.
+  Hour: 'Hour', Page: 'Page', Piece: 'Piece', Segment: 'Segment', Word: 'Word',
+  Percentage: 'Percentage', Character: 'Character', Minute: 'Minute', Other: 'Other', Line: 'Line',
 };
+// Code used by the word-row lookup below. Single source of truth.
+const WORD_BILLING_UNIT_CODE = 4;
 
 // Lazy SDK import — only loaded on the request path so the file still compiles
 // if the platform ever resolves imports at boot. We also keep auth guarding here.
@@ -179,7 +187,10 @@ Deno.serve(async (req) => {
         if (r.is_confirmed) totalConfirmedUsd += r.total_usd || 0;
         if (r.purchase_order?.is_billable) billableCount++;
         if (r.purchase_order?.is_proposal) proposalCount++;
-        if (!wordRow && (r.billing_unit === 'Words' || r.billing_unit === 'Word')) wordRow = r;
+        // Word row selection: prefer the documented numeric enum (4) — string
+        // form ("Word") kept as a fallback for the edge case where Symfonie
+        // returns the enum name. "Words" (plural) was the old wrong code.
+        if (!wordRow && (r.billing_unit_code === WORD_BILLING_UNIT_CODE || r.billing_unit === 'Word')) wordRow = r;
       }
       const wordCount = wordRow?.quantity || 0;
 
