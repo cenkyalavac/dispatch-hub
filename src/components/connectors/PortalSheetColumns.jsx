@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Columns3, Plus, Trash2, GripVertical, ChevronUp, ChevronDown, Info } from 'lucide-react';
+import { Columns3, Plus, Trash2, GripVertical, ChevronUp, ChevronDown, Info, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { getSourceFieldsForPortal } from '@/lib/sheet-source-fields';
 
@@ -84,7 +84,8 @@ export default function PortalSheetColumns({ portal }) {
         <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
         <span>
           Each row below is one column in your sheet (left-to-right). The <b>header</b> is the text written into row 1; the
-          <b> source field</b> is what gets pulled from each task. Leave this empty to keep the legacy fixed schema.
+          <b> source field</b> is what gets pulled from each task. Click <b>+ field</b> to sum two numeric fields into one
+          column (e.g. combine fuzzy + repetition bands). Leave empty to keep the legacy fixed schema.
         </span>
       </p>
 
@@ -103,8 +104,8 @@ export default function PortalSheetColumns({ portal }) {
             <span className="text-right">Actions</span>
           </div>
           {rows.map((row, idx) => (
-            <div key={row.id} className="grid grid-cols-[24px_1fr_1fr_72px] gap-2 items-center">
-              <div className="flex flex-col items-center text-ink-4">
+            <div key={row.id} className="grid grid-cols-[24px_1fr_1fr_72px] gap-2 items-start">
+              <div className="flex flex-col items-center text-ink-4 pt-1">
                 <button
                   type="button"
                   onClick={() => move(row, -1)}
@@ -130,20 +131,56 @@ export default function PortalSheetColumns({ portal }) {
                 placeholder="e.g. Volume"
                 onChange={(e) => updateRow(row, { header: e.target.value })}
               />
-              <select
-                className={fieldCls}
-                value={row.source_field}
-                onChange={(e) => updateRow(row, { source_field: e.target.value })}
-              >
-                {fields.map((f) => (
-                  <option key={f.name} value={f.name}>{f.label} ({f.name})</option>
-                ))}
-                {/* Preserve unknown values (e.g. removed rule_fields) so they don't silently vanish */}
-                {!fields.some((f) => f.name === row.source_field) && (
-                  <option value={row.source_field}>{row.source_field} (missing)</option>
+              {/* Source field stack — main field + optional second field summed into one column */}
+              <div className="space-y-1">
+                <select
+                  className={fieldCls}
+                  value={row.source_field}
+                  onChange={(e) => updateRow(row, { source_field: e.target.value })}
+                >
+                  {fields.map((f) => (
+                    <option key={f.name} value={f.name}>{f.label} ({f.name})</option>
+                  ))}
+                  {!fields.some((f) => f.name === row.source_field) && (
+                    <option value={row.source_field}>{row.source_field} (missing)</option>
+                  )}
+                </select>
+                {row.source_field_2 != null && row.source_field_2 !== '' ? (
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] font-mono text-ink-4 px-1">+</span>
+                    <select
+                      className={fieldCls}
+                      value={row.source_field_2}
+                      onChange={(e) => updateRow(row, { source_field_2: e.target.value })}
+                    >
+                      {fields.map((f) => (
+                        <option key={f.name} value={f.name}>{f.label} ({f.name})</option>
+                      ))}
+                      {!fields.some((f) => f.name === row.source_field_2) && (
+                        <option value={row.source_field_2}>{row.source_field_2} (missing)</option>
+                      )}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => updateRow(row, { source_field_2: '' })}
+                      className="inline-flex items-center justify-center h-7 w-7 rounded text-ink-3 hover:bg-danger-soft hover:text-danger transition-colors duration-tab flex-shrink-0"
+                      title="Remove second field"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => updateRow(row, { source_field_2: row.source_field })}
+                    className="inline-flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-ink-3 hover:bg-surface-2 hover:text-ink-1 transition-colors duration-tab"
+                    title="Sum a second numeric field into this column"
+                  >
+                    <Plus className="w-2.5 h-2.5" /> field (sum)
+                  </button>
                 )}
-              </select>
-              <div className="flex items-center justify-end">
+              </div>
+              <div className="flex items-center justify-end pt-0.5">
                 <button
                   type="button"
                   onClick={() => deleteRow(row)}

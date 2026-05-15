@@ -57,6 +57,15 @@ function cellValue(task, field) {
   return v;
 }
 
+// When a mapping has source_field_2 set, sum the two numeric values.
+// Falls back to source_field-only value if the second is empty.
+function combinedValue(task, mapping) {
+  if (!mapping.source_field_2) return cellValue(task, mapping.source_field);
+  const a = Number(task[mapping.source_field]) || 0;
+  const b = Number(task[mapping.source_field_2]) || 0;
+  return a + b;
+}
+
 // Convert a column count to the Sheets A1 letter range (e.g. 1→A, 11→K, 27→AA).
 function colLetter(n) {
   let s = '';
@@ -107,7 +116,7 @@ Deno.serve(async (req) => {
     const buildRow = (t) => {
       const mappings = mappingsByPortal.get(t.portal);
       if (mappings && mappings.length > 0) {
-        return mappings.map(m => cellValue(t, m.source_field));
+        return mappings.map(m => combinedValue(t, m));
       }
       return LEGACY_FIELDS.map(f => cellValue(t, f));
     };

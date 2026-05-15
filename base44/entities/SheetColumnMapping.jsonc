@@ -1,0 +1,37 @@
+{
+  "name": "SheetColumnMapping",
+  "type": "object",
+  "description": "Per-portal mapping that defines which AcceptedTask source field gets written into which Google Sheets column. Match by header name (row 1 of the configured tab). When at least one row exists for a portal, sheetsSync uses these mappings instead of the legacy fixed schema. Optionally combines two source fields by summing them (useful for collapsing e.g. fuzzy + repetition bands into one column).",
+  "properties": {
+    "portal": {
+      "type": "string",
+      "description": "Portal key (e.g. symfonie, junction, globallink). One column-mapping set per portal."
+    },
+    "header": {
+      "type": "string",
+      "description": "Exact header text expected/written into row 1 of the destination sheet (e.g. 'Volume', 'Deadline')."
+    },
+    "source_field": {
+      "type": "string",
+      "description": "AcceptedTask field name (e.g. 'word_count', 'due_date', 'client_name') or a portal-specific rule_field name."
+    },
+    "source_field_2": {
+      "type": "string",
+      "description": "Optional second source field. When set, the column value is the numeric sum of source_field + source_field_2. Useful for combining fuzzy + repetition leverage bands (e.g. lev_5074 + lev_rep_5074) into a single sheet column. Non-numeric values are coerced to 0."
+    },
+    "order": {
+      "type": "integer",
+      "default": 0,
+      "description": "Column order \u2014 lower numbers go to the left. Determines header row order and value column index."
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "portal",
+    "header",
+    "source_field"
+  ]
+}

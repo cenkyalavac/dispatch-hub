@@ -17,6 +17,24 @@ export const STANDARD_FIELDS = [
   { name: 'matched_rule',    label: 'Matched rule' },
   { name: 'portal',          label: 'Portal' },
   { name: 'status',          label: 'Status' },
+  // GlobalLink leverage bands — populated by globallinkApproveOne onto every
+  // AcceptedTask. Exposed here so vendors can map them to their own sheet
+  // schemas (often combining fuzzy + reps bands via source_field_2).
+  { name: 'weighted_wc',     label: 'Weighted WC (WWC)' },
+  { name: 'lev_context',     label: 'Leverage \u00b7 In-context' },
+  { name: 'lev_rep',         label: 'Leverage \u00b7 Repetitions' },
+  { name: 'lev_match100',    label: 'Leverage \u00b7 100%' },
+  { name: 'lev_9599',        label: 'Leverage \u00b7 95-99%' },
+  { name: 'lev_8594',        label: 'Leverage \u00b7 85-94%' },
+  { name: 'lev_7584',        label: 'Leverage \u00b7 75-84%' },
+  { name: 'lev_5074',        label: 'Leverage \u00b7 50-74%' },
+  { name: 'lev_no_match',    label: 'Leverage \u00b7 No match' },
+  { name: 'deadline_at',     label: 'Phase deadline' },
+  { name: 'phase_name',      label: 'Phase name' },
+  { name: 'workflow_name',   label: 'Workflow' },
+  { name: 'submission_id',   label: 'Submission ID' },
+  { name: 'submission_ticket', label: 'Submission ticket' },
+  { name: 'account_id',      label: 'Account ID' },
 ];
 
 // Returns the full picker list for a given portal — standard + that portal's
