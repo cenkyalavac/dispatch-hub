@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Columns3, Plus, Trash2, GripVertical, ChevronUp, ChevronDown, Info, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { getSourceFieldsForPortal } from '@/lib/sheet-source-fields';
+import SheetColumnHeaderInput from '@/components/connectors/SheetColumnHeaderInput';
 
 const fieldCls = 'w-full h-8 px-2 rounded-md border border-line-1 bg-surface-1 text-[12px] outline-none placeholder:text-ink-4';
 
@@ -125,11 +126,9 @@ export default function PortalSheetColumns({ portal }) {
                   <ChevronDown className="w-3 h-3" />
                 </button>
               </div>
-              <input
-                className={fieldCls}
+              <SheetColumnHeaderInput
                 value={row.header || ''}
-                placeholder="e.g. Volume"
-                onChange={(e) => updateRow(row, { header: e.target.value })}
+                onCommit={(v) => updateRow(row, { header: v })}
               />
               {/* Source field stack — main field + optional second field summed into one column */}
               <div className="space-y-1">
