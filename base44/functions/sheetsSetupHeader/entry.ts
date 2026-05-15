@@ -53,9 +53,13 @@ Deno.serve(async (req) => {
       ? mappings.map(m => m.header || m.source_field)
       : LEGACY_HEADERS;
 
-    const tab = portal.sheets_tab_name || '';
+    const tab = (portal.sheets_tab_name || '').trim();
     const colRange = `A1:${colLetter(headers.length)}1`;
-    const range = tab ? `${encodeURIComponent(tab)}!${colRange}` : colRange;
+    // Sheets A1 notation: wrap tab in single quotes (escape any internal '),
+    // then URL-encode the whole range exactly once. Skips the quoting when no
+    // tab is configured (Sheets writes to the first/default sheet).
+    const rawRange = tab ? `'${tab.replace(/'/g, "''")}'!${colRange}` : colRange;
+    const range = encodeURIComponent(rawRange);
 
     const res = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
@@ -68,7 +72,13 @@ Deno.serve(async (req) => {
 
     if (!res.ok) {
       const err = await res.text();
-      return Response.json({ error: 'Failed to write header', status: res.status, details: err }, { status: 400 });
+      // Return 200 with success:false so the frontend can read the body via res.data
+      // instead of axios throwing on 4xx/5xx and losing the Sheets API error detail.
+      return Response.json({
+        success: false,
+        error: `Sheets API ${res.status}: ${err.slice(0, 300)}`,
+        details: err.slice(0, 500),
+      });
     }
 
     return Response.json({

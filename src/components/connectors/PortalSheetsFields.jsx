@@ -26,9 +26,19 @@ export default function PortalSheetsFields({ portalKey, spreadsheetId, tabName, 
     try {
       const res = await base44.functions.invoke('sheetsSetupHeader', { portal_key: portalKey });
       if (res.data?.success) toast.success(res.data.message || 'Header row created');
-      else toast.error(res.data?.error || 'Failed');
-    } catch (err) { toast.error(err.message); }
-    finally { setCreating(false); }
+      else toast.error(res.data?.error || res.data?.details || 'Failed');
+    } catch (err) {
+      // Axios throws on 4xx/5xx — surface the backend's actual error body
+      // (e.g. Sheets API "Unable to parse range"), not the generic "Request failed".
+      const backendMsg =
+        err?.response?.data?.error ||
+        err?.response?.data?.details ||
+        err?.message ||
+        'Failed';
+      toast.error(backendMsg);
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
