@@ -40,8 +40,14 @@ Deno.serve(async (req) => {
       const project = td.project || o.project || {};
       const wordCount = td.wordCount ?? td.words ?? td.sourceWordCount ?? null;
       const price = o.amount ?? o.totalAmount ?? td.amount ?? null;
+      // Junction task vs offer: the v1/task/[id]?$include=assets,notes endpoint
+      // needs the TASK id, which is distinct from offer id. We expose it so the
+      // detail panel can pull notes + assets without touching _raw.
+      const taskId = td.id ?? o.taskId ?? o.task?.id ?? null;
       return {
         id: o.id,
+        offer_id: o.id,
+        task_id: taskId,
         name: td.name || o.name || `Offer #${o.id}`,
         project_name: project.name || td.projectName || '',
         client_name: project.client?.name || project.clientName || '',

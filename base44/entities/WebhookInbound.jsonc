@@ -1,0 +1,62 @@
+{
+  "name": "WebhookInbound",
+  "type": "object",
+  "description": "Log of every inbound webhook received from a connected portal. Provides idempotency (via delivery_id) and an audit trail for debugging real-time event flow.",
+  "properties": {
+    "portal": {
+      "type": "string",
+      "description": "Portal key the event came from (e.g. 'symfonie')."
+    },
+    "delivery_id": {
+      "type": "string",
+      "description": "Provider-supplied delivery ID (Symfonie sends ?delivery=...). Used for idempotency \u2014 same delivery_id from same portal is processed at most once."
+    },
+    "event_type": {
+      "type": "string",
+      "description": "Event name from the provider (e.g. 'TaskOrdered', 'TaskCanceled', 'ping')."
+    },
+    "entity_type": {
+      "type": "string",
+      "description": "Symfonie 'entityType' query param (e.g. 'task', 'transition')."
+    },
+    "trigger_type": {
+      "type": "string",
+      "description": "Symfonie 'triggerType' query param (e.g. 'before', 'after')."
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Provider task/job ID extracted from the payload, when present. Used to correlate with AcceptedTask."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "received",
+        "processed",
+        "duplicate",
+        "rejected",
+        "error"
+      ],
+      "default": "received"
+    },
+    "action_taken": {
+      "type": "string",
+      "description": "Human-readable summary of what the receiver did (e.g. 'invalidated pending cache', 'marked AcceptedTask 12345 as canceled')."
+    },
+    "error": {
+      "type": "string"
+    },
+    "received_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "raw_payload": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Full request body as received. Capped at the entity 200KB soft limit by the platform."
+    }
+  },
+  "required": [
+    "portal",
+    "event_type"
+  ]
+}

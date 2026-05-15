@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { format, isValid } from 'date-fns';
 import { CheckCircle2, ChevronDown, ChevronUp, Calendar, Clock, Layers } from 'lucide-react';
 import { EM, fmtNumber } from '@/lib/format';
+import JunctionTaskDetail from './JunctionTaskDetail';
 
 // Safe date formatter — returns null if the value is missing or invalid,
 // preventing "RangeError: Invalid time value" from date-fns format().
@@ -261,6 +262,12 @@ export default function TaskDetailCard({ task, accepting, onAccept, selected, on
             <FinanceRowsTable rows={task.finance_rows} />
             <PoNumbersStrip rows={task.finance_rows} />
           </div>
+
+          {task.portal === 'junction' && (
+            <div className="border-t border-line-1 pt-4">
+              <JunctionTaskDetail taskId={task.task_id} />
+            </div>
+          )}
         </div>
       )}
     </div>
