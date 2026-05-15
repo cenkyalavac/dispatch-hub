@@ -223,6 +223,46 @@ Deno.serve(async (req) => {
 
     const results = { accepted: [], rejected: [], skipped: [], errors: [] };
 
+    // Pre-resolve leverage bands in ONE batch instead of N sequential invokes.
+    // Old path: for each accepted task we'd `base44.functions.invoke('symfonieGetTaskAnalysis', {task_id})`.
+    // 50 accepts = 50 cross-function invokes + 50 separate Azure AD token rounds.
+    // New path: pre-filter the tasks that will match an accept rule, call the
+    // helper once with `task_ids=[...]`, stash the result, and stitch bands
+    // onto each saved AcceptedTask inline. Bands are still optional — helper
+    // failure is non-fatal, tasks just save with band=0.
+    const candidateAcceptIds = [];
+    for (const raw of rawTasks) {
+      const id = Number(raw.Id);
+      if (existingIds.has(id)) continue;
+      // Cheap match: only check the accept-rule(s). We re-run the full rule
+      // chain per task below, but pre-checking accept-action rules is enough
+      // to know if this task COULD need bands.
+      const previewTask = {
+        project_name: raw.Project?.Name || '',
+        task_name: raw.Name || '',
+        source_language: raw.SourceLanguageCode || '',
+        target_language: raw.TargetLanguageCode || '',
+      };
+      if (rules.some(r => r.action === 'accept' && matchesRule(r, previewTask))) {
+        candidateAcceptIds.push(id);
+      }
+    }
+
+    const bandsByTaskId = {};
+    if (candidateAcceptIds.length > 0) {
+      try {
+        const aRes = await base44.asServiceRole.functions.invoke('symfonieGetTaskAnalysis', {
+          task_ids: candidateAcceptIds,
+        });
+        const analysisResults = aRes?.data?.results || {};
+        for (const [id, payload] of Object.entries(analysisResults)) {
+          if (payload?.analysis_found) bandsByTaskId[Number(id)] = payload;
+        }
+      } catch (e) {
+        console.error('Batch WordCountAnalyses fetch failed:', e.message);
+      }
+    }
+
     for (const raw of rawTasks) {
       const taskId = Number(raw.Id);
 
@@ -305,22 +345,16 @@ Deno.serve(async (req) => {
 
         console.log(`Task ${taskId} "${raw.Name}" accepted via rule "${matchedRule.name}"`);
 
-        // Belazy parity: pull the latest WordCountAnalysis and stamp the leverage
-        // bands onto this task BEFORE we persist + sheet-sync. Failure here is
-        // non-fatal — bands stay zero and the task still gets recorded.
-        try {
-          const aRes = await base44.asServiceRole.functions.invoke('symfonieGetTaskAnalysis', { task_id: taskId });
-          const a = aRes?.data;
-          if (a && a.analysis_found) {
-            Object.assign(task, {
-              lev_context: a.lev_context, lev_rep: a.lev_rep, lev_match100: a.lev_match100,
-              lev_9599: a.lev_9599, lev_8594: a.lev_8594, lev_7584: a.lev_7584,
-              lev_5074: a.lev_5074, lev_no_match: a.lev_no_match,
-              parser_type: a.parser_type || '',
-            });
-          }
-        } catch (e) {
-          console.error(`WordCountAnalyses fetch failed for ${taskId}:`, e.message);
+        // Belazy parity: stitch pre-resolved leverage bands onto this task.
+        // Resolved in a single batched invoke above — see `bandsByTaskId`.
+        const a = bandsByTaskId[taskId];
+        if (a) {
+          Object.assign(task, {
+            lev_context: a.lev_context, lev_rep: a.lev_rep, lev_match100: a.lev_match100,
+            lev_9599: a.lev_9599, lev_8594: a.lev_8594, lev_7584: a.lev_7584,
+            lev_5074: a.lev_5074, lev_no_match: a.lev_no_match,
+            parser_type: a.parser_type || '',
+          });
         }
 
         const saved = await base44.asServiceRole.entities.AcceptedTask.create(task);

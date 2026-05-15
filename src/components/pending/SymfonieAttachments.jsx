@@ -13,6 +13,18 @@ import { fmtNumber } from '@/lib/format';
 // the file bytes through the symfonieAttachments function (Symfonie needs a
 // Bearer token, so we can't link to the raw URL from the browser).
 
+// FileType enum (Symfonie /Api/help/V5/enum/FileType):
+//   0=Other, 1=Reference, 2=Source, 3=Target, 4=Analysis
+// Each kind gets a color cue so reviewers can scan a task's HO bundle at a glance:
+// source files are the deliverables, references are the brief, analysis is WC.
+const KIND_STYLE = {
+  source:    'bg-accent-soft text-accent-ink border-accent/20',
+  target:    'bg-success-soft text-success border-success/20',
+  reference: 'bg-surface-3 text-ink-2 border-line-2',
+  analysis:  'bg-warning-soft text-warning border-warning/20',
+  other:     'bg-surface-2 text-ink-3 border-line-1',
+};
+
 function fmtBytes(n) {
   if (!n || n <= 0) return null;
   if (n < 1024) return `${n} B`;
@@ -72,7 +84,11 @@ function AttachmentRow({ att, taskId }) {
       <div className="flex-1 min-w-0">
         <p className="text-ink-1 truncate" title={att.name}>{att.name || `Attachment #${att.id}`}</p>
         <div className="flex items-center gap-2 mt-0.5 text-[10px] text-ink-3">
-          {att.kind && <span className="uppercase tracking-wider">{att.kind}</span>}
+          {att.kind && (
+            <span className={`uppercase tracking-wider px-1.5 py-0.5 rounded border ${KIND_STYLE[att.kind] || KIND_STYLE.other}`}>
+              {att.kind}
+            </span>
+          )}
           {sizeStr && <span className="tabular-nums">{sizeStr}</span>}
           {dateStr && <span>{dateStr}</span>}
           {att.uploaded_by && <span className="font-mono truncate max-w-[140px]" title={att.uploaded_by}>{att.uploaded_by}</span>}
