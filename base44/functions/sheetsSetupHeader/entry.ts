@@ -22,6 +22,11 @@ Deno.serve(async (req) => {
         error: 'Your session has expired. Please refresh the page and sign in again before retrying.',
       }, { status: 401 });
     }
+    // Admin gate — this endpoint writes to production Google Sheets and resets
+    // header rows. Regular users must not be able to corrupt the log sheet.
+    if (user.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
 
     const { portal_key } = await req.json().catch(() => ({}));
     if (!portal_key) {

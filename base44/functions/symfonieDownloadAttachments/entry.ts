@@ -101,6 +101,14 @@ async function resolveHandoffDir(base44, { account, project, task_id, task_name 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    // Admin gate — exposes raw task attachments (PII/IP) and Dropbox writes.
+    // Allow scheduled/system calls (no user context) since symfonieAcceptTask
+    // and symfonieProcessTasks invoke this via base44.asServiceRole.
+    const user = await base44.auth.me().catch(() => null);
+    if (user !== null && user?.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
+
     const { task_id, task_name, project_name, account_name, project_id, job_id } = await req.json();
 
     if (!task_id) {

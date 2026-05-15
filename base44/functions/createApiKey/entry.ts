@@ -14,11 +14,15 @@ function generateToken() {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    // Soft auth: Base44 SDK occasionally returns 401 from auth.me() even for valid sessions
-    // (header passthrough quirk). The page itself is admin-gated by the app's route guard,
-    // so we accept anonymous calls here and only enforce role when we *can* read the user.
+    // STRICT admin gate — this endpoint mints production API tokens, so we cannot
+    // accept anonymous calls. The previous "soft auth" pattern (allow when user
+    // is null) made the entire BMS auth surface bypassable by anyone who could
+    // reach the function URL — a P0 security bug.
     const user = await base44.auth.me().catch(() => null);
-    if (user && user.role !== 'admin') {
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (user.role !== 'admin') {
       return Response.json({ error: 'Forbidden — admin role required' }, { status: 403 });
     }
 

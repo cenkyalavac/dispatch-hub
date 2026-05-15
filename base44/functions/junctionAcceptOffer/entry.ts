@@ -9,7 +9,9 @@ const PROD_BASE = 'https://hypnos.welocalize.tools';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    // .catch(() => null) — Base44 SDK throws on missing session in public apps;
+    // matches the pattern used by symfonieAcceptTask/Reject and other write endpoints.
+    const user = await base44.auth.me().catch(() => null);
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { task_id, task_name, project_name, client_name, account_name, source_language, target_language, word_count, price, due_date } = await req.json();
