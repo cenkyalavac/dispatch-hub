@@ -72,10 +72,14 @@ export default function PendingTasks() {
 
   // Rate-limit dostu: 5 dk cache, otomatik refetch yok, 503 olunca cache'i koru.
   // Symfonie "no available server" verince sessizce eski veriyi göster.
+  // forceRefresh: set before manually clicking Refresh so the backend skips
+  // its CachedSnapshot and pulls fresh from Symfonie. Reset after the call.
+  const [forceRefresh, setForceRefresh] = useState(false);
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['pending-tasks', selectedPortal, fetchFn],
     queryFn: async () => {
-      const res = await base44.functions.invoke(fetchFn, {});
+      const res = await base44.functions.invoke(fetchFn, forceRefresh ? { force_refresh: true } : {});
+      setForceRefresh(false);
       if (res.data?.error) throw new Error(res.data.error);
       return res.data;
     },
@@ -255,7 +259,7 @@ export default function PendingTasks() {
             <Download className="w-3.5 h-3.5" /> CSV
           </button>
           <button
-            onClick={() => { refetch(); }}
+            onClick={() => { setForceRefresh(true); refetch(); }}
             disabled={isFetching}
             className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab disabled:opacity-40"
           >

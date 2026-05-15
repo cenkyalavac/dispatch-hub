@@ -105,7 +105,15 @@ Deno.serve(async (req) => {
     //   - Project, Assignees, Requestors, Tags, JobName all arrive inline (no $expand needed)
     //   - Project is NOT a real navigation property — it rejects $expand explicitly, but the data is there anyway
     //   - FinanceRows must be explicitly expanded
-    const url = `${BASE_URL}/Tasks?$filter=State eq 'Order'&$expand=FinanceRows&$orderby=CreatedAt desc&$top=200`;
+    // BeLazy parity filter — must match symfonieProcessTasks exactly so the UI
+    // can't show "pending" tasks that the scheduler would silently reject
+    // (locked tasks fail the Accept command; orders >30d are virtually always
+    // cancelled upstream). Inconsistency here used to surface as ghost rows.
+    const oneMonthAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const filter = encodeURIComponent(
+      `State eq 'Order' and LockState eq 'Unlocked' and OrderDate ge ${oneMonthAgoIso}`
+    );
+    const url = `${BASE_URL}/Tasks?$filter=${filter}&$expand=FinanceRows&$orderby=CreatedAt desc&$top=200`;
     const tasks = await fetchAllPages(url, token);
 
     // Each task carries inline { Project: { Id, Name, Code, ProjectState } } — but no Customer.
