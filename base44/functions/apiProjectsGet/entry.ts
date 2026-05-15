@@ -38,21 +38,28 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    // Faz 2: apply FieldMapping rules. Match is case-insensitive on source_value.
-    // Mapping scope: tenant_id matches; portal == project.portal OR portal == '*'.
+    // BeLazy doctrine (api.belazy.cat/getting-started/belazy-basics/mapping):
+    //   "The `destination` representation will only ever include values that you
+    //    uploaded into BeLazy, and prevent any unmapped data from causing errors."
+    // i.e. destination is NEVER a passthrough — unmapped source values must surface
+    // as nulls + an `unmapped` list so the downstream BMS can refuse to import the
+    // project (or surface a remediation card) instead of receiving garbage IDs.
     const allMappings = await base44.asServiceRole.entities.FieldMapping.filter({
       tenant_id: auth.key.tenant_id, is_active: true,
     });
     const portalMaps = allMappings.filter(m => m.portal === project.portal || m.portal === '*');
     const applied = [];
+    const unmapped = [];
     const translate = (field, value) => {
-      if (!value) return value;
+      if (!value) return null;
       const hit = portalMaps.find(m => m.field === field && String(m.source_value).toLowerCase() === String(value).toLowerCase());
       if (hit) {
         applied.push({ field, from: value, to: hit.destination_value });
         return hit.destination_value;
       }
-      return value; // passthrough
+      // No mapping → destination value is unresolvable. Record it and return null.
+      unmapped.push({ field, source_value: value });
+      return null;
     };
 
     // Attachments count (catalog only — full list via apiAttachmentsList).
@@ -86,6 +93,7 @@ Deno.serve(async (req) => {
           client_name:     translate('client_name',     project.client_name),
         },
         mapping_applied: applied,
+        unmapped,
         attachments_count: attCount,
       },
     });
