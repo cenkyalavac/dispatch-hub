@@ -42,6 +42,15 @@ export default function Connectors() {
     queryFn: () => base44.entities.Portal.list('name'),
   });
 
+  // Client lookup — used to render "for <Client>" on each card and to flag
+  // unassigned connectors. Both active and inactive clients are loaded so a
+  // soft-disabled client still shows its name on legacy mappings.
+  const { data: clients = [] } = useQuery({
+    queryKey: ['clients-all'],
+    queryFn: () => base44.entities.Client.list('display_name', 500),
+  });
+  const clientById = new Map(clients.map(c => [c.id, c]));
+
   const saveMutation = useMutation({
     mutationFn: (data) =>
       editing?.id
@@ -256,6 +265,7 @@ export default function Connectors() {
               portal={p}
               testing={testingKey === p.key}
               missingSecrets={computeMissing(p)}
+              clientName={p.client_id ? clientById.get(p.client_id)?.display_name : null}
               onTest={handleTest}
               onToggle={handleToggle}
               onDelete={handleDelete}

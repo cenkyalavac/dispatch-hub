@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
+import { base44 } from '@/api/base44Client';
+import { useQuery } from '@tanstack/react-query';
 import FormField from '@/components/ui/FormField';
 import PortalDropboxFields from './PortalDropboxFields';
 import PortalSheetsFields from './PortalSheetsFields';
 import PortalSheetRoutes from './PortalSheetRoutes';
 
+// `vendor` is kept on the schema for backwards compatibility with legacy rows
+// but no longer surfaced in the UI — Client is the canonical attribution now.
 const empty = {
-  key: '', name: '', vendor: '', description: '',
+  key: '', name: '', client_id: '', description: '',
   icon: 'Globe', color: 'blue', is_active: true,
   auth_type: 'oauth2_client_credentials', docs_url: '',
   dropbox_base_path: '', dropbox_folder_template: '',
@@ -26,6 +30,15 @@ const fieldCls = 'w-full h-9 px-3 rounded-md border border-line-1 bg-surface-1 t
 export default function ConnectorFormDialog({ open, onClose, onSave, initial, isPending }) {
   const [form, setForm] = useState(empty);
   const isEdit = !!initial?.id;
+
+  // Active clients populate the attribution dropdown. Inactive ones are hidden
+  // so you can't accidentally tag a new connector to an archived customer, but
+  // if the connector is already mapped to an inactive client we still surface it.
+  const { data: clients = [] } = useQuery({
+    queryKey: ['clients'],
+    queryFn: () => base44.entities.Client.list('-created_date'),
+    enabled: open,
+  });
 
   useEffect(() => { if (open) setForm(initial ? { ...empty, ...initial } : empty); }, [open, initial]);
 
@@ -74,13 +87,31 @@ export default function ConnectorFormDialog({ open, onClose, onSave, initial, is
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="Vendor">
-              <input className={fieldCls} value={form.vendor || ''} onChange={e => update('vendor', e.target.value)} placeholder="Welocalize" />
+            <FormField label="Client" helper="Which end-customer this connector belongs to.">
+              <select
+                className={fieldCls}
+                value={form.client_id || ''}
+                onChange={e => update('client_id', e.target.value || null)}
+              >
+                <option value="">— Unassigned —</option>
+                {clients
+                  .filter(c => c.is_active || c.id === form.client_id)
+                  .map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.display_name}{!c.is_active ? ' (inactive)' : ''}
+                    </option>
+                  ))}
+              </select>
             </FormField>
             <FormField label="Docs URL">
               <input className={fieldCls} value={form.docs_url || ''} onChange={e => update('docs_url', e.target.value)} placeholder="https://…" />
             </FormField>
           </div>
+          {clients.length === 0 && (
+            <p className="text-[11px] text-ink-3 italic-editorial -mt-2">
+              No clients yet — create one on the Clients page first to assign this connector.
+            </p>
+          )}
 
           <FormField label="Description" helper="One short line, shown on the card.">
             <input className={fieldCls} value={form.description || ''} onChange={e => update('description', e.target.value)} placeholder="What this connector does" />
