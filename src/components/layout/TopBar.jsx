@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, useLocation, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Command, Hexagon, Settings, Bell, Users as UsersIcon, ChevronDown } from 'lucide-react';
+import { Command, Hexagon, Settings, Users as UsersIcon, ChevronDown } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import CommandPalette from './CommandPalette';
+import NotificationBell from '@/components/notifications/NotificationBell';
 
 // Pending is a dropdown — one item per active portal. Clicking opens that
 // portal's dedicated pending page (/pending/:key, or /globallink/pending for
@@ -151,17 +152,7 @@ export default function TopBar() {
           >
             <UsersIcon className="w-3.5 h-3.5" />
           </NavLink>
-          <NavLink
-            to="/notifications"
-            aria-label="Notifications"
-            className={({ isActive }) =>
-              `inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-line-1 transition-colors duration-tab text-[12px] font-medium
-               ${isActive ? 'bg-surface-2 text-ink-1' : 'bg-surface-1 text-ink-3 hover:bg-surface-2 hover:text-ink-1'}`
-            }
-          >
-            <Bell className="w-3.5 h-3.5" />
-            <span>Notifications</span>
-          </NavLink>
+          <NotificationBell />
           <NavLink
             to="/settings"
             aria-label="Settings"

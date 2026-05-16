@@ -1,0 +1,76 @@
+{
+  "name": "UserNotification",
+  "type": "object",
+  "description": "In-app notification record. Created when something meaningful happens to a task or project (e.g. Symfonie pushed a new due date on an already-accepted task). Surfaced to users in the bell menu and on the Notifications page.",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "due_date_changed",
+        "task_canceled",
+        "task_assignment_changed",
+        "info"
+      ],
+      "default": "info",
+      "description": "Notification category. Used for icons, grouping, and filtering."
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "danger"
+      ],
+      "default": "info"
+    },
+    "title": {
+      "type": "string",
+      "description": "Short headline, e.g. 'Due date moved earlier'."
+    },
+    "body": {
+      "type": "string",
+      "description": "Human-readable detail line, e.g. '#12345 The Big Project \u2014 moved from May 20 to May 17 (3 days earlier).'"
+    },
+    "portal": {
+      "type": "string",
+      "description": "Source portal key (symfonie, junction, globallink)."
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Source-portal task id as a string."
+    },
+    "accepted_task_id": {
+      "type": "string",
+      "description": "FK to AcceptedTask.id, when this notification is tied to one."
+    },
+    "project_id": {
+      "type": "string",
+      "description": "FK to Project.id, when this notification is tied to one."
+    },
+    "old_value": {
+      "type": "string",
+      "description": "Previous value (e.g. previous ISO due_date). Free-form so different notification types can reuse it."
+    },
+    "new_value": {
+      "type": "string",
+      "description": "New value (e.g. new ISO due_date)."
+    },
+    "delta_label": {
+      "type": "string",
+      "description": "Human-friendly delta, e.g. '3 days earlier' or '6 hours later'."
+    },
+    "read_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the user marked this notification as read. Null while unread."
+    },
+    "link_url": {
+      "type": "string",
+      "description": "Deep link to the related page inside the app (e.g. /tasks?id=...)."
+    }
+  },
+  "required": [
+    "type",
+    "title"
+  ]
+}

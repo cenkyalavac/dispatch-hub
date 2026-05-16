@@ -25,6 +25,7 @@
         "type": "string",
         "enum": [
           "project.accepted",
+          "project.updated",
           "project.synchronized",
           "project.delivered",
           "project.failed_to_sync"
