@@ -14,6 +14,7 @@ import Connectors from './pages/Connectors.jsx';
 import PortalDetail from './pages/PortalDetail.jsx';
 import History from './pages/History.jsx';
 import ApiAccess from './pages/ApiAccess.jsx';
+import Documentation from './pages/Documentation.jsx';
 import Mappings from './pages/Mappings.jsx';
 import Issues from './pages/Issues.jsx';
 import PortalProbe from './pages/PortalProbe.jsx';
@@ -89,6 +90,7 @@ const AuthenticatedApp = () => {
         <Route path="/portals/:key" element={<PortalDetail />} />
         <Route path="/history" element={<History />} />
         <Route path="/api" element={<ApiAccess />} />
+        <Route path="/api/docs" element={<Documentation />} />
         <Route path="/mappings" element={<Mappings />} />
         <Route path="/friendly-names" element={<FriendlyNames />} />
         <Route path="/issues" element={<Issues />} />

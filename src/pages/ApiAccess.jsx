@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Webhook, KeyRound, BookOpen } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Plus, Webhook, KeyRound, BookOpen, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -117,26 +118,28 @@ export default function ApiAccess() {
         ))}
       </section>
 
-      {/* Endpoints reference */}
-      <section className="bg-surface-1 border border-line-1 rounded-md p-5 mb-6">
-        <div className="flex items-center gap-2 mb-3">
-          <BookOpen className="w-4 h-4 text-ink-3" />
-          <h2 className="text-[14px] font-semibold text-ink-1">Endpoints</h2>
+      {/* Pointer to the dedicated Documentation page — the full endpoint
+          reference, webhook event catalog, signature verification, and retry
+          model used to live inline on this page. They've moved so this page
+          stays operational (keys, hooks, deliveries) and the reference stays
+          stable. */}
+      <Link
+        to="/api/docs"
+        className="group block bg-surface-1 border border-line-1 rounded-md p-4 mb-6 hover:bg-surface-2 transition-colors duration-tab"
+      >
+        <div className="flex items-center gap-3">
+          <span className="w-8 h-8 rounded-md bg-accent-soft text-accent-ink flex items-center justify-center shrink-0">
+            <BookOpen className="w-4 h-4" />
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-semibold text-ink-1">API Documentation</p>
+            <p className="text-[12px] text-ink-3 italic-editorial">
+              Endpoints, webhook events, signature verification, retries — the full reference.
+            </p>
+          </div>
+          <ArrowRight className="w-4 h-4 text-ink-3 group-hover:text-ink-1 group-hover:translate-x-0.5 transition-all duration-tab" />
         </div>
-        <p className="text-[12px] text-ink-3 italic-editorial mb-3">
-          Authenticate with <code className="font-mono bg-surface-2 px-1 rounded">Authorization: Apikey &lt;token&gt;</code>. POST a JSON body. Function URLs are on the Functions dashboard.
-        </p>
-        <ul className="text-[12px] font-mono text-ink-2 space-y-1.5">
-          <li><span className="text-accent">apiProjectsList</span> — list projects (default state=accepted)</li>
-          <li><span className="text-accent">apiProjectsGet</span> — origin + mapped destination + attachments_count</li>
-          <li><span className="text-accent">apiProjectsAcknowledge</span> — accepted → synchronized</li>
-          <li><span className="text-accent">apiProjectsDeliver</span> — synchronized → delivered</li>
-          <li><span className="text-accent">apiMappingsList</span> — list field mappings (Faz 2)</li>
-          <li><span className="text-accent">apiAttachmentsList</span> — list a project's attachments (Faz 2)</li>
-          <li><span className="text-accent">apiAttachmentsDownload</span> — short-lived Dropbox URL (Faz 2)</li>
-          <li><span className="text-accent">apiSpec</span> — public JSON spec (no auth)</li>
-        </ul>
-      </section>
+      </Link>
 
       {/* API keys */}
       <section className="bg-surface-1 border border-line-1 rounded-md p-5 mb-6">

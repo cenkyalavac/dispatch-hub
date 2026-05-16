@@ -6,6 +6,7 @@ import SubNav from './SubNav';
 // (Rules under a portal's own tab, Diagnostics in TopBar/Settings).
 const SUB_NAVS_API = [
   { to: '/api',            label: 'Keys & webhooks', end: true },
+  { to: '/api/docs',       label: 'Documentation' },
   { to: '/mappings',       label: 'Field mappings' },
   { to: '/friendly-names', label: 'Friendly names' },
 ];
