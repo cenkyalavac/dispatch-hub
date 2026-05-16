@@ -53,18 +53,24 @@ Deno.serve(async (req) => {
           .catch(() => ({ s, items: [] }))
       ));
       for (const { s, items } of pairs) {
-        if (!items || items.length === 0) {
+        // Newer broker returns a single object with top-level
+        // languageDirectionPreview; older format returned items[]. Support both
+        // so the pending list stays accurate across broker upgrades.
+        const langItems = (items && items.length > 0)
+          ? items
+          : (s?.languageDirectionPreview ? [s] : []);
+        if (langItems.length === 0) {
           tasks.push({
             id: `${s.ticket}`,
             name: s.submissionName || `Submission ${s.submissionId}`,
-            project_name: s.submissionName || '',
-            client_name: s.clientName || s.organizationName || '',
+            project_name: s.projectName || s.submissionName || '',
+            client_name: s.paClientName || s.clientName || s.organizationName || '',
             source_language: s.sourceLocale || s.sourceLanguage || '',
             target_language: '',
             word_count: Number(s.wordCount) || 0,
             price_max_usd: null,
             price_min_usd: null,
-            due_date: s.dueDate || null,
+            due_date: s.dueDate?.date ? new Date(s.dueDate.date).toISOString() : (s.dueDate || null),
             created_at: s.createdAt || null,
             workflow_name: '',
             service_tag: '',
@@ -72,29 +78,48 @@ Deno.serve(async (req) => {
             cat_tool: '',
             assigned_to: '',
             portal: 'globallink',
+            submission_id: String(s.submissionId ?? ''),
+            submission_ticket: s.ticket,
             _raw: s,
           });
           continue;
         }
-        for (const it of items) {
+        for (const it of langItems) {
+          const ldp = it.languageDirectionPreview || {};
+          const tgtLoc = it.targetLanguage?.locale || ldp.targetLanguage?.locale || '';
+          const srcLoc = it.sourceLanguage?.locale || ldp.sourceLanguage?.locale || s.sourceLocale || '';
+          const phaseDue = it.subPhaseStatusDataHolders?.[0]?.phaseStatusData?.[0]?.phaseDueDate?.date
+                        ?? it.phaseStatusData?.[0]?.phaseDueDate?.date
+                        ?? it.phaseDueDate
+                        ?? null;
+          const dueIso = typeof phaseDue === 'number' ? new Date(phaseDue).toISOString()
+                        : (phaseDue?.date ? new Date(phaseDue.date).toISOString() : (phaseDue || s.dueDate?.date ? new Date(s.dueDate.date).toISOString() : (s.dueDate || null)));
+          const phaseName = it.subPhaseStatusDataHolders?.[0]?.phaseStatusData?.[0]?.phaseName
+                        || it.phaseStatusData?.[0]?.phaseName
+                        || it.phase || '';
+          const workflowName = it.subPhaseStatusDataHolders?.[0]?.workflow || it.workflow || '';
           tasks.push({
-            id: `${s.ticket}:${it.targetLanguage?.locale || it.languageDirectionPreview || ''}`,
+            id: `${s.ticket}:${tgtLoc}`,
             name: s.submissionName || `Submission ${s.submissionId}`,
-            project_name: s.submissionName || '',
-            client_name: s.clientName || s.organizationName || '',
-            source_language: it.sourceLanguage?.locale || s.sourceLocale || '',
-            target_language: it.targetLanguage?.locale || '',
-            word_count: Number(it.wordCount) || Number(s.wordCount) || 0,
+            project_name: s.projectName || s.submissionName || '',
+            client_name: s.paClientName || s.clientName || s.organizationName || '',
+            source_language: srcLoc,
+            target_language: tgtLoc,
+            word_count: Number(s.wordCount) || 0,
             price_max_usd: null,
             price_min_usd: null,
-            due_date: it.phaseDueDate || s.dueDate || null,
+            due_date: dueIso,
             created_at: s.createdAt || null,
-            workflow_name: it.workflow || '',
-            service_tag: it.phase || '',
-            task_type: it.phase || '',
+            workflow_name: workflowName,
+            service_tag: phaseName,
+            task_type: phaseName,
             cat_tool: '',
             assigned_to: '',
             portal: 'globallink',
+            phase_name: phaseName,
+            submission_id: String(s.submissionId ?? ''),
+            submission_ticket: s.ticket,
+            account_id: s.paClientTicket || '',
             _raw: { submission: s, language: it },
           });
         }
