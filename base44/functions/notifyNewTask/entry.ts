@@ -252,10 +252,17 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
-    // Soft auth: allow admin users + service-role callers (asServiceRole.functions.invoke
-    // surfaces a synthetic 'service+...' user with role!='admin' — treat it as elevated).
+    // Auth: this function is invoked only by other backend functions
+    // (symfonieProcessTasks, junctionProcessOffers, globallinkPoll). It runs
+    // server-side and never accepts direct frontend traffic. We allow:
+    //   - admin users (manual debug invokes)
+    //   - service callers (no user context — scheduled runs)
+    //   - synthetic 'service+...' users surfaced by asServiceRole.functions.invoke
+    //   - is_service flag (Base44 SDK surfaces this for nested invokes)
     // Reject anonymous app users only.
-    const isService = !user || (typeof user.email === 'string' && user.email.startsWith('service+'));
+    const isService = !user
+      || user.is_service === true
+      || (typeof user.email === 'string' && user.email.startsWith('service+'));
     if (!isService && user?.role !== 'admin') {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }

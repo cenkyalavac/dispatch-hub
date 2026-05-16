@@ -362,7 +362,11 @@ Deno.serve(async (req) => {
           });
         }
 
-        base44.functions.invoke('notifyNewTask', {
+        // Service-role invoke: nested user-context invokes don't carry the
+        // caller's token, so notifyNewTask sees an anonymous request and
+        // returns 403. asServiceRole provides a synthetic service user that
+        // notifyNewTask's gate explicitly allows.
+        base44.asServiceRole.functions.invoke('notifyNewTask', {
           portal: 'symfonie',
           task_id: taskId,
           task_payload: notifyPayload,

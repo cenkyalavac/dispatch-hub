@@ -204,6 +204,10 @@ Deno.serve(async (req) => {
         details.skipped.push({ id: offerId, name: task.task_name, source_language: task.source_language, target_language: task.target_language, project_name: task.project_name });
         // Fire a notification for human review (one-click accept link in email).
         // Fire-and-forget — notification failure never blocks the poll.
+        // Service-role invoke: nested `base44.functions.invoke` doesn't carry the
+        // caller's user token in this platform, so notifyNewTask sees an
+        // anonymous request and returns 403. asServiceRole provides a synthetic
+        // service user that notifyNewTask's gate explicitly allows.
         base44.asServiceRole.functions.invoke('notifyNewTask', {
           portal: 'junction',
           task_id: offerId,
