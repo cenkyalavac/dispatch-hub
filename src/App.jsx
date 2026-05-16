@@ -53,8 +53,28 @@ const AuthenticatedApp = () => {
     if (authError.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
     } else if (authError.type === 'auth_required') {
+      // Kick off the redirect, but also render a visible Sign-in screen so
+      // the user isn't staring at a blank page if the redirect is blocked
+      // (popup blocker, iframe, slow network). Previously this returned null
+      // and showed nothing, which is exactly the symptom that prompted this
+      // pass — "I couldn't tell I wasn't logged in."
       navigateToLogin();
-      return null;
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background px-6">
+          <div className="max-w-sm w-full bg-surface-1 border border-line-1 rounded-md p-8 shadow-sm text-center">
+            <h1 className="text-[18px] font-semibold tracking-tight text-ink-1 mb-2">Sign in to Dispatch Hub</h1>
+            <p className="text-[13px] text-ink-3 italic-editorial mb-5">
+              Redirecting you to sign in… if nothing happens in a moment, click the button below.
+            </p>
+            <button
+              onClick={() => navigateToLogin()}
+              className="inline-flex items-center justify-center w-full h-9 rounded-md bg-accent text-white text-[13px] font-medium hover:bg-[var(--accent-hover)] transition-colors duration-tab"
+            >
+              Sign in
+            </button>
+          </div>
+        </div>
+      );
     }
   }
 

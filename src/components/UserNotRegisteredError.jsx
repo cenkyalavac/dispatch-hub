@@ -1,31 +1,34 @@
-import React from 'react';
+import { ShieldAlert, LogOut } from 'lucide-react';
+import { useAuth } from '@/lib/AuthContext';
 
-const UserNotRegisteredError = () => {
+// Shown when the signed-in Base44 account isn't on Dispatch Hub's user list.
+// Re-skinned to the OKLCH design system and given a "Sign out & try again"
+// action so the user doesn't get stuck on a dead-end screen.
+export default function UserNotRegisteredError() {
+  const { logout } = useAuth();
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-white to-slate-50">
-      <div className="max-w-md w-full p-8 bg-white rounded-lg shadow-lg border border-slate-100">
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 mb-6 rounded-full bg-orange-100">
-            <svg className="w-8 h-8 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-4">Access Restricted</h1>
-          <p className="text-slate-600 mb-8">
-            You are not registered to use this application. Please contact the app administrator to request access.
-          </p>
-          <div className="p-4 bg-slate-50 rounded-md text-sm text-slate-600">
-            <p>If you believe this is an error, you can:</p>
-            <ul className="list-disc list-inside mt-2 space-y-1">
-              <li>Verify you are logged in with the correct account</li>
-              <li>Contact the app administrator for access</li>
-              <li>Try logging out and back in again</li>
-            </ul>
-          </div>
+    <div className="min-h-screen flex items-center justify-center bg-background px-6">
+      <div className="max-w-md w-full bg-surface-1 border border-line-1 rounded-md p-8 shadow-sm">
+        <div className="flex items-center justify-center w-12 h-12 rounded-full bg-warning-soft mb-5">
+          <ShieldAlert className="w-5 h-5 text-warning" />
         </div>
+        <h1 className="text-[20px] font-semibold tracking-tight text-ink-1 mb-2">Access restricted</h1>
+        <p className="text-[13px] text-ink-2 leading-relaxed mb-5">
+          You're signed in, but your account isn't on Dispatch Hub's user list yet. Ask an admin to invite you,
+          or sign in with a different account.
+        </p>
+        <div className="bg-surface-2 border border-line-1 rounded-md px-4 py-3 mb-5 text-[12px] text-ink-3 italic-editorial leading-relaxed">
+          Tip: the invite email goes to the exact address you sign in with. If you have more than one Base44
+          account, pick the one your admin invited.
+        </div>
+        <button
+          onClick={() => logout(true)}
+          className="inline-flex items-center justify-center gap-2 w-full h-9 rounded-md bg-accent text-white text-[13px] font-medium hover:bg-[var(--accent-hover)] transition-colors duration-tab"
+        >
+          <LogOut className="w-4 h-4" /> Sign out and try a different account
+        </button>
       </div>
     </div>
   );
-};
-
-export default UserNotRegisteredError;
+}
