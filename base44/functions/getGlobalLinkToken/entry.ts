@@ -1,9 +1,16 @@
 // Internal helper endpoint — reads the most recent cached GlobalLink JWT
-// from the CachedToken entity. Used by other Hub backend functions
-// (e.g. GlobalLink adapter) via base44.functions.invoke('getGlobalLinkToken').
+// + CSRF from the CachedToken entity.
 //
-// Throws if no token has ever been pushed by the broker, or if the cached
-// token is past its expires_at (with a 30s safety buffer).
+// STATUS (2026-05): currently NOT called by any active GlobalLink code path.
+// All GlobalLink calls (poll, claim, approve, getOffers, testAuth) go through
+// broker /proxy/pd, where cookies / JWT / CSRF live in the broker's persistent
+// Chromium page-context and are attached automatically.
+//
+// Kept as a debug/diagnostic surface and a forward-compat hook for any future
+// direct-PD path that would need the raw credentials (e.g. file download
+// flow via /PD/files/* which doesn't go through the proxy). If we confirm
+// no direct-PD path is ever needed, this function + the globallink_csrf
+// CachedToken row can be removed together.
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
