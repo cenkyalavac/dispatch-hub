@@ -328,19 +328,19 @@ All endpoints are `POST /PD/<name>.pd` with `Content-Type: application/json` bod
 - `Reps95% - 99%` etc. = repetitions WITHIN a fuzzy band — **per Cenk's rule, merge into the same fuzzy band column**
 - `noMatch` = new translation
 
-**WWC formula** (industry-standard, Cenk-aligned):
+**WWC formula** (MTPE-aligned, Cenk's canonical — must match `functions/globallinkPoll.js` + `lib/leverage.js` + `AcceptedTask.weighted_wc`):
 
 ```
 WWC = ctx*0
-    + rep*0.2
-    + 100*0.2
-    + (95-99 + Reps95-99)*0.4
-    + (85-94 + Reps85-94)*0.6
-    + (75-84 + Reps75-84)*0.8
-    + (50-74 + Reps50-74)*1.0
-    + noMatch*1.0
+    + rep*0
+    + 100*0
+    + (95-99 + Reps95-99) * 0.2
+    + (85-94 + Reps85-94) * 0.35
+    + (75-84 + Reps75-84) * 0.45
+    + (50-74 + Reps50-74 + noMatch) * 0.6
 ```
 
+Context / pure-rep / 100% bands carry zero weight (free under MTPE).
 WWC is NOT returned by TP — calculate client-side.
 
 **Total WC** = sum of all bands (Reps merged) — also recompute client-side; `cumulativeTmStatistics.totalWordCount` (in `items[]`) does match.
