@@ -8,7 +8,7 @@ import DropboxFolderPicker from '@/components/dropbox/DropboxFolderPicker';
 
 // Hard root the picker is bounded to. Users can only choose folders under
 // this path on the shared Dropbox account.
-const DROPBOX_ROOT = '/El Turco Team Folder/Projects';
+const DROPBOX_ROOT = '/Projects';
 
 const KEY_BASE = 'dropbox_base_path';
 const KEY_TEMPLATE = 'dropbox_folder_template';
