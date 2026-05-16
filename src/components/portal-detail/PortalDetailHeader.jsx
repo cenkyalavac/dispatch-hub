@@ -37,7 +37,7 @@ export default function PortalDetailHeader({ portal, onToggleActive }) {
               <span className="text-[10px] font-mono uppercase tracking-wider text-ink-4">{portal.key}</span>
             </div>
             <p className="text-[13px] text-ink-3 mt-1 italic-editorial">
-              {portal.description || (portal.vendor ? `by ${portal.vendor}` : 'No description')}
+              {portal.description || 'No description'}
             </p>
           </div>
         </div>

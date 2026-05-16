@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Save, Languages, AlertTriangle, Plus, X, Trash2, Plug, Code, CheckCircle2, RotateCcw, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import FormField from '@/components/ui/FormField';
@@ -19,6 +19,11 @@ export default function SettingsTab({ portal, onDeleted }) {
   const qc = useQueryClient();
   const [form, setForm] = useState(() => normalize(portal));
   const [familyInput, setFamilyInput] = useState('');
+  // Client attribution dropdown — same source of truth as Connectors page form.
+  const { data: clients = [] } = useQuery({
+    queryKey: ['clients'],
+    queryFn: () => base44.entities.Client.list('-created_date'),
+  });
   // Track the most-recent save so the bottom bar can confirm "Saved · 12:04:15" instead
   // of relying on the toast alone (which the user may miss while scrolling).
   const [savedAt, setSavedAt] = useState(null);
@@ -90,8 +95,21 @@ export default function SettingsTab({ portal, onDeleted }) {
           <FormField label="Name" required>
             <input className={fieldCls} value={form.name} onChange={(e) => set('name', e.target.value)} />
           </FormField>
-          <FormField label="Vendor">
-            <input className={fieldCls} value={form.vendor || ''} onChange={(e) => set('vendor', e.target.value)} />
+          <FormField label="Client" required helper="Which end-customer this connector belongs to.">
+            <select
+              className={fieldCls}
+              value={form.client_id || ''}
+              onChange={(e) => set('client_id', e.target.value || '')}
+            >
+              <option value="">— Select a client —</option>
+              {clients
+                .filter((c) => c.is_active || c.id === form.client_id)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.display_name}{!c.is_active ? ' (inactive)' : ''}
+                  </option>
+                ))}
+            </select>
           </FormField>
           <div className="col-span-2">
             <FormField label="Description">
@@ -342,7 +360,7 @@ function normalize(portal) {
     id: portal.id,
     key: portal.key,
     name: portal.name || '',
-    vendor: portal.vendor || '',
+    client_id: portal.client_id || '',
     description: portal.description || '',
     docs_url: portal.docs_url || '',
     auth_type: portal.auth_type || 'none',
