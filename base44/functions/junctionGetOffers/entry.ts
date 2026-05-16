@@ -89,12 +89,21 @@ Deno.serve(async (req) => {
     //   /v2/offer/available → flat    { offerId, taskId, taskLabel, programLabel,
     //                                   projectName, accountName, sourceLocale,
     //                                   targetLocale, dueDate, subtotal,
-    //                                   weightedWordCount, ... }
+    //                                   weightedWordCount, unitQuantityTotal,
+    //                                   unitOfMeasure, rejectable, ... }
     //   /v2/offer/rosters   → flat (same shape as /available, observed empty)
     //
-    // We probe nested fields FIRST (back-compat for the /me caller), then fall
-    // back to the flat fields. A flat-shape `o.id` is missing, so for /available
-    // we synthesise `id` from `offerId` — the rest of the app keys on `id`.
+    // FIELD MEANING (verified live with a real Spotify LQA offer):
+    //   programLabel = umbrella program / account-level grouping
+    //                  e.g. "Spotify Transcreation" — what the user perceives as "the client".
+    //   projectName  = the actual project code/identifier
+    //                  e.g. "SPOTIFY_2605_P2037" — what the PM references.
+    //   accountName  = the legal client entity, e.g. "Spotify AB".
+    //
+    // We previously hoisted programLabel into project_name, which buried the
+    // real project code. Now: project_name = projectName (the code),
+    // project_code mirrors it for the row UI, and the program label flows
+    // through workflow_name only when no actual workflow is provided.
     const tasks = offers.map(o => {
       const td = o.taskDetail || o.task || {};
       const project = td.project || o.project || {};
@@ -102,36 +111,67 @@ Deno.serve(async (req) => {
       const taskId = td.id ?? o.taskId ?? o.task?.id ?? null;
       // Flat shape uses `subtotal` for line total; nested has `amount`.
       const price = o.amount ?? o.totalAmount ?? td.amount ?? o.subtotal ?? null;
-      const wordCount = td.wordCount
+      // word_count is portal-agnostic — but Junction units vary by task type:
+      //   • Translation offers carry an explicit unitOfMeasure (WORD/WORDS),
+      //     and `unitQuantityTotal` is the word count.
+      //   • LQA offers come with unitOfMeasure = null and `unitQuantityTotal`
+      //     in MINUTES (e.g. 0.1 means "tenth of a minute"). Surfacing that as
+      //     "0.1 w" is a flat-out lie.
+      // Policy: only trust `unitQuantityTotal` when the unit is explicitly
+      // WORD/WORDS. Null/empty/anything else → 0. Translation jobs are
+      // unaffected; LQA jobs correctly show 0 words.
+      const unit = (o.unitOfMeasure || td.unitOfMeasure || '').toUpperCase();
+      const isWordUnit = unit === 'WORD' || unit === 'WORDS';
+      const rawWc = td.wordCount
         ?? td.words
         ?? td.sourceWordCount
         ?? o.weightedWordCount
-        ?? o.unitQuantityTotal
-        ?? null;
+        ?? (isWordUnit ? o.unitQuantityTotal : null)
+        ?? 0;
+      const wordCount = rawWc;
       // taskLabel = human-readable task type (e.g. "LQA Review") in flat shape;
       // matches Symfonie's task_name semantics for the row UI.
       const name = td.name || o.name || o.taskLabel || `Offer #${offerId}`;
-      const projectName = project.name || td.projectName || o.programLabel || o.projectName || '';
-      const clientName = project.client?.name
+      // project_name should carry the actual project code (PM-facing identifier).
+      // project_code mirrors it so PendingTaskRow's hierarchical "Account › Project (code) › Job" still works.
+      const projectName = project.name || td.projectName || o.projectName || o.programLabel || '';
+      const projectCode = o.projectName || project.code || td.projectCode || '';
+      // Account = the program/umbrella the client groups its work under, falling
+      // back to the legal client entity. Junction's `accountName` is the legal
+      // entity (Spotify AB); `programLabel` is the program (Spotify Transcreation).
+      // The program is what humans recognize, so it takes precedence.
+      const accountName = o.programLabel
+        || project.client?.name
         || project.clientName
         || o.accountName
         || o.companyName
         || '';
+      // Workflow: prefer an explicit workflow field; never alias the task label
+      // into it (taskLabel is task type, not workflow). Empty string is fine.
+      const workflow = td.workflow || td.workflowName || '';
       return {
         id: offerId,
         offer_id: offerId,
         task_id: taskId,
         name,
         project_name: projectName,
-        client_name: clientName,
+        project_code: projectCode,
+        // client_name kept for back-compat with downstream code that didn't
+        // know about account_name (rules, sheets, BMS API).
+        client_name: accountName,
+        account_name: accountName,
         source_language: td.sourceLocale || td.sourceLanguage || o.sourceLocale || '',
         target_language: td.targetLocale || td.targetLanguage || o.targetLocale || '',
         word_count: wordCount,
+        // unit_of_measure left as-is from upstream — null/empty for LQA, "WORD"
+        // for translation. Helps a future UI distinguish "0 words" (LQA) from
+        // "0 words (still loading)" without re-fetching.
+        unit_of_measure: unit || null,
         price_max_usd: price,
         price_min_usd: price,
         due_date: o.dueDate || td.dueDate || null,
         created_at: o.createdAt || o.startDate || null,
-        workflow_name: td.workflow || td.workflowName || o.taskLabel || '',
+        workflow_name: workflow,
         service_tag: td.serviceTag || td.service || o.contentSpecialty || '',
         task_type: td.taskType || o.taskLabel || '',
         cat_tool: td.catTool || '',
@@ -140,7 +180,6 @@ Deno.serve(async (req) => {
         // can hide the manual reject button on locked pool offers.
         rejectable: o.rejectable ?? true,
         portal: 'junction',
-        _raw: o,
       };
     });
 

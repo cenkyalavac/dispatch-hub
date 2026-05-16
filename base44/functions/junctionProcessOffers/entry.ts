@@ -158,20 +158,33 @@ Deno.serve(async (req) => {
       if (processedIds.has(Number(offerId))) continue;
       const td = offer.taskDetail || offer.task || {};
       const project = td.project || offer.project || {};
+      // Field meaning (matches junctionGetOffers — single source of truth):
+      //   project_name  = real project code (projectName: "SPOTIFY_2605_P2037")
+      //   client_name   = program/account label (programLabel: "Spotify Transcreation"),
+      //                   not the legal entity — rules typically target the
+      //                   human-friendly program.
+      //   word_count    = only set when unitOfMeasure is explicitly WORD/WORDS;
+      //                   LQA tasks (unitOfMeasure=null, unitQuantityTotal in
+      //                   minutes) return 0 so numeric rules don't fire on
+      //                   "0.1 minutes" thinking it's a word count.
+      const unit = (offer.unitOfMeasure || td.unitOfMeasure || '').toUpperCase();
+      const isWordUnit = unit === 'WORD' || unit === 'WORDS';
+      const rawWc = td.wordCount
+        ?? offer.weightedWordCount
+        ?? (isWordUnit ? offer.unitQuantityTotal : null)
+        ?? 0;
       const task = {
         task_id: offerId,
         task_name: td.name || offer.taskLabel || `Offer #${offerId}`,
-        project_name: project.name || td.projectName || offer.programLabel || offer.projectName || '',
-        client_name: project.client?.name || project.clientName || offer.accountName || offer.companyName || '',
+        project_name: project.name || td.projectName || offer.projectName || offer.programLabel || '',
+        client_name: offer.programLabel || project.client?.name || project.clientName || offer.accountName || offer.companyName || '',
         source_language: td.sourceLocale || td.sourceLanguage || offer.sourceLocale || '',
         target_language: td.targetLocale || td.targetLanguage || offer.targetLocale || '',
-        // taskLabel does not have a wordCount equivalent in flat shape — weightedWordCount
-        // is the closest signal; unitQuantityTotal is words for word-priced tasks.
-        word_count: td.wordCount || offer.weightedWordCount || offer.unitQuantityTotal || 0,
+        word_count: rawWc || 0,
         // Flat uses `subtotal` for the line total (USD); nested uses `amount`.
         price: offer.amount || td.amount || offer.subtotal || 0,
         due_date: offer.dueDate || td.dueDate || null,
-        workflow_name: td.workflow || td.workflowName || offer.taskLabel || '',
+        workflow_name: td.workflow || td.workflowName || '',
       };
 
       const matched = rules.find(r => matchesRule(task, r));

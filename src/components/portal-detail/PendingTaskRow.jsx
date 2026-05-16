@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { formatDistanceToNow, format } from 'date-fns';
-import { Clock, User, Lock, Briefcase, ExternalLink, ChevronDown, ChevronRight, Check, Loader2 } from 'lucide-react';
+import { Clock, User, Lock, Briefcase, ExternalLink, ChevronDown, ChevronRight, Check, X, Loader2 } from 'lucide-react';
 import { EM, fmtNumber } from '@/lib/format';
 import { useFriendlyNames } from '@/lib/friendly';
 
@@ -42,7 +42,7 @@ function dueBadge(due) {
 // Row is portal-agnostic: it does NOT know about Symfonie or Junction internals.
 // The caller (PendingTab) decides which detail component to render via
 // `DetailComponent` — keeps connectors fully isolated from each other.
-export default function PendingTaskRow({ task, portalKey, onAccept, isAccepting, DetailComponent }) {
+export default function PendingTaskRow({ task, portalKey, onAccept, isAccepting, onReject, isRejecting, DetailComponent }) {
   const [expanded, setExpanded] = useState(false);
 
   // Tag the task with its portal key so the friendly resolver can pick the
@@ -149,7 +149,7 @@ export default function PendingTaskRow({ task, portalKey, onAccept, isAccepting,
             {onAccept && (
               <button
                 onClick={(e) => { e.stopPropagation(); onAccept(task); }}
-                disabled={isAccepting}
+                disabled={isAccepting || isRejecting}
                 className="inline-flex items-center gap-1 h-7 px-2.5 rounded text-[11px] font-medium bg-accent text-white hover:bg-[var(--accent-hover)] transition-colors duration-tab disabled:opacity-50"
               >
                 {isAccepting ? (
@@ -159,6 +159,32 @@ export default function PendingTaskRow({ task, portalKey, onAccept, isAccepting,
                 )}
                 Accept
               </button>
+            )}
+            {/* Reject button: only when the portal exposes a reject_function AND
+                the offer is rejectable. Junction's /available pool offers carry
+                `rejectable: false` (locked) — show a muted Lock badge instead
+                so the user understands why the button is missing. */}
+            {onReject && task.rejectable !== false && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onReject(task); }}
+                disabled={isAccepting || isRejecting}
+                className="inline-flex items-center gap-1 h-7 px-2.5 rounded text-[11px] font-medium border border-line-1 bg-surface-1 text-ink-2 hover:bg-danger-soft hover:text-danger hover:border-danger/30 transition-colors duration-tab disabled:opacity-50"
+              >
+                {isRejecting ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <X className="w-3 h-3" />
+                )}
+                Reject
+              </button>
+            )}
+            {onReject && task.rejectable === false && (
+              <span
+                className="inline-flex items-center gap-1 h-7 px-2 rounded text-[10px] text-ink-4 bg-surface-2"
+                title="This offer cannot be manually rejected — Junction has locked it."
+              >
+                <Lock className="w-2.5 h-2.5" /> locked
+              </span>
             )}
           </div>
         </div>

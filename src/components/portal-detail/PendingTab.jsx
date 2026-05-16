@@ -60,7 +60,7 @@ function GLRow({ task }) {
 // Header is always rendered so Refresh is reachable even while loading —
 // previously the Refresh button only appeared after the first successful fetch,
 // which is exactly the case where users most want to retry.
-function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComponent, onAccept, acceptingId, DetailComponent, snapshotAge, headerExtra }) {
+function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComponent, onAccept, acceptingId, onReject, rejectingId, DetailComponent, snapshotAge, headerExtra }) {
   return (
     <section className="bg-surface-1 border border-line-1 rounded-md">
       <header className="flex items-center justify-between px-4 py-2.5 border-b border-line-1">
@@ -116,6 +116,8 @@ function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComp
               portalKey={portal.key}
               onAccept={onAccept}
               isAccepting={onAccept && acceptingId === it.id}
+              onReject={onReject}
+              isRejecting={onReject && rejectingId === it.id}
               DetailComponent={DetailComponent}
             />
           ))}
@@ -139,6 +141,7 @@ function GlobalLinkPending({ portal }) {
 function FetchFnPending({ portal }) {
   const qc = useQueryClient();
   const [acceptingId, setAcceptingId] = useState(null);
+  const [rejectingId, setRejectingId] = useState(null);
   // Junction has three offer surfaces (me/available/rosters). For other portals
   // this state is set once and ignored — the fetch payload doesn't include it.
   const isJunction = portal.key === 'junction';
@@ -202,6 +205,18 @@ function FetchFnPending({ portal }) {
     return `${h}h ago`;
   })();
 
+  // Shared optimistic-remove helper — every action (accept/reject) drops the
+  // row from the active list and invalidates downstream counters.
+  const dropRowFromCache = (taskId) => {
+    const listKey = ['portal-pending', portal.key, isJunction ? offerType : null];
+    qc.setQueryData(listKey, (old) => {
+      if (!old?.tasks) return old;
+      return { ...old, tasks: old.tasks.filter((t) => t.id !== taskId) };
+    });
+    if (isJunction) qc.invalidateQueries({ queryKey: ['junction-counts'] });
+    qc.invalidateQueries({ queryKey: ['recent-accepted'] });
+  };
+
   // Accept handler is wired only when the portal declares an accept_function.
   // Each portal's accept fn has its own payload contract — we just pass through
   // the canonical fields the row already has. Optimistic remove on success so
@@ -232,22 +247,47 @@ function FetchFnPending({ portal }) {
           if (payload.handoff?.error) {
             toast.warning('Handoff to Dropbox failed — accept succeeded but files were not downloaded.');
           }
-          // Optimistically drop the row from the cached list. Junction's
-          // queryKey carries the active offerType as a third element — we must
-          // match it exactly or the optimistic update is a silent no-op.
-          const listKey = ['portal-pending', portal.key, isJunction ? offerType : null];
-          qc.setQueryData(listKey, (old) => {
-            if (!old?.tasks) return old;
-            return { ...old, tasks: old.tasks.filter((t) => t.id !== task.id) };
-          });
-          // Junction counts in the segment switch are now stale — refresh.
-          if (isJunction) qc.invalidateQueries({ queryKey: ['junction-counts'] });
-          // Plus invalidate history/recent so other panels reflect it.
-          qc.invalidateQueries({ queryKey: ['recent-accepted'] });
+          dropRowFromCache(task.id);
         } catch (e) {
           toast.error(e.message || 'Accept failed');
         } finally {
           setAcceptingId(null);
+        }
+      }
+    : null;
+
+  // Reject handler — wired only when the portal declares a reject_function.
+  // Same shape as Accept but calls the per-portal reject endpoint. Junction
+  // rejects need a category; we default to "capacity" which the API accepts
+  // without an explanation note.
+  const handleReject = portal.reject_function
+    ? async (task) => {
+        if (!confirm(`Reject "${task.name || task.task_name || `#${task.id}`}"?`)) return;
+        setRejectingId(task.id);
+        try {
+          const res = await base44.functions.invoke(portal.reject_function, {
+            task_id: task.id,
+            task_name: task.name || task.task_name || '',
+            project_name: task.project_name || '',
+            account_name: task.account_name || task.client_name || '',
+            client_name: task.client_name || task.account_name || '',
+            source_language: task.source_language || '',
+            target_language: task.target_language || '',
+            word_count: task.word_count || 0,
+            price: task.price ?? task.price_max_usd ?? 0,
+            due_date: task.due_date || null,
+            reason_category: 'capacity',
+          });
+          const payload = res.data || {};
+          if (payload.error || payload.success === false) {
+            throw new Error(payload.error || 'Reject failed');
+          }
+          toast.success(`Rejected: ${task.name || task.task_name || `#${task.id}`}`);
+          dropRowFromCache(task.id);
+        } catch (e) {
+          toast.error(e.message || 'Reject failed');
+        } finally {
+          setRejectingId(null);
         }
       }
     : null;
@@ -266,6 +306,8 @@ function FetchFnPending({ portal }) {
       RowComponent={PendingTaskRow}
       onAccept={handleAccept}
       acceptingId={acceptingId}
+      onReject={handleReject}
+      rejectingId={rejectingId}
       DetailComponent={DETAIL_BY_PORTAL[portal.key]}
       snapshotAge={snapshotAge}
       headerExtra={isJunction ? (
