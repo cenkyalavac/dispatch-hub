@@ -57,35 +57,45 @@ Deno.serve(async (req) => {
       return Response.json({ skipped: 'not an AcceptedTask update event' });
     }
 
-    // If payload was too large, re-fetch the entity.
+    // If payload was too large or missing, re-fetch the entity.
     let current = data;
     if (payload_too_large || !current) {
       current = await base44.asServiceRole.entities.AcceptedTask.get(event.entity_id).catch(() => null);
       if (!current) return Response.json({ error: 'task not found' }, { status: 404 });
     }
 
-    // Bail if due_date didn't actually change.
+    // Always ensure we have a usable id — the entity automation payload's
+    // top-level `data` doesn't always carry the entity id field, so fall back
+    // to the event's entity_id (which is always present on update events).
+    const taskId = current.id || event.entity_id;
+
+    // Bail if due_date didn't actually change. Compare timestamps when both
+    // sides are present so reformatted ISO strings (e.g. trailing zeros) don't
+    // produce false positives. `changed_fields` from the trigger is the
+    // authoritative signal — the timestamp compare is a defensive fallback
+    // for when an admin manually invokes this without changed_fields.
     const fields = changed_fields || [];
-    const dueChanged = fields.includes('due_date') ||
-      (old_data && old_data.due_date !== current.due_date);
+    const oldDue = old_data?.due_date || '';
+    const newDue = current.due_date || '';
+    const sameInstant = oldDue && newDue && new Date(oldDue).getTime() === new Date(newDue).getTime();
+    const dueChanged = (fields.includes('due_date') || (old_data && old_data.due_date !== current.due_date)) && !sameInstant;
     if (!dueChanged) {
       return Response.json({ skipped: 'due_date unchanged' });
     }
 
-    const oldDue = old_data?.due_date || '';
-    const newDue = current.due_date || '';
     const deltaLabel = oldDue && newDue ? fmtDeltaLabel(oldDue, newDue) : '';
 
-    const taskLabel = current.task_name || `#${current.task_id || event.entity_id}`;
+    const taskLabel = current.task_name || `#${current.task_id || taskId}`;
     const portalLabel = current.portal || '';
 
     // 1. Find the linked Project (if any) by accepted_task_id.
     const projects = await base44.asServiceRole.entities.Project
-      .filter({ accepted_task_id: current.id }, '-created_date', 1)
+      .filter({ accepted_task_id: taskId }, '-created_date', 1)
       .catch(() => []);
     const project = projects[0] || null;
 
-    // 2. Create the in-app notification.
+    // 2. Create the in-app notification — "earlier" deadlines are a warning
+    //    (PM needs to react), "later" or new is info.
     await base44.asServiceRole.entities.UserNotification.create({
       type: 'due_date_changed',
       severity: deltaLabel.includes('earlier') ? 'warning' : 'info',
@@ -93,34 +103,45 @@ Deno.serve(async (req) => {
       body: `${portalLabel ? `[${portalLabel}] ` : ''}${taskLabel} — ${fmtDate(oldDue)} → ${fmtDate(newDue)}${deltaLabel ? ` (${deltaLabel})` : ''}`,
       portal: portalLabel,
       task_id: current.task_id != null ? String(current.task_id) : '',
-      accepted_task_id: current.id,
+      accepted_task_id: taskId,
       project_id: project?.id || '',
       old_value: oldDue,
       new_value: newDue,
       delta_label: deltaLabel,
-      link_url: `/tasks?id=${current.id}`,
+      link_url: `/tasks?id=${taskId}`,
     }).catch((e) => console.error('UserNotification.create failed:', e.message));
 
     // 3. Update the Project's due_date so BMS API consumers see the new value.
-    if (project && project.due_date !== newDue) {
-      await base44.asServiceRole.entities.Project
-        .update(project.id, { due_date: newDue })
-        .catch((e) => console.error('Project.update failed:', e.message));
+    //    Use timestamp compare so equal-but-differently-formatted ISO strings
+    //    don't trigger spurious writes/webhooks.
+    let webhookFired = false;
+    if (project) {
+      const projInstant = project.due_date ? new Date(project.due_date).getTime() : null;
+      const newInstant = newDue ? new Date(newDue).getTime() : null;
+      if (projInstant !== newInstant) {
+        await base44.asServiceRole.entities.Project
+          .update(project.id, { due_date: newDue })
+          .catch((e) => console.error('Project.update failed:', e.message));
 
-      // 4. Fire the BMS webhook (project.updated). dispatchWebhook is internal —
-      //    call it via the regular functions API so the caller's auth context
-      //    (the admin running the automation) passes through; asServiceRole
-      //    invoke strips the user and trips the admin-only guard on the inside.
-      await base44.functions.invoke('dispatchWebhook', {
-        tenant_id: project.tenant_id || 'default',
-        event: 'project.updated',
-        project_id: project.id,
-      }).catch((e) => console.error('dispatchWebhook invoke failed:', e.message));
+        // 4. Fire the BMS webhook (project.updated). dispatchWebhook is
+        //    internal — invoke via the regular functions API so the caller's
+        //    auth context (the admin running the automation) passes through;
+        //    asServiceRole invoke strips the user and trips the admin-only
+        //    guard on the inside.
+        await base44.functions.invoke('dispatchWebhook', {
+          tenant_id: project.tenant_id || 'default',
+          event: 'project.updated',
+          project_id: project.id,
+        }).catch((e) => console.error('dispatchWebhook invoke failed:', e.message));
+        webhookFired = true;
+      }
     }
 
-    // 5. Update the Sheets row in place (Due Date column only).
+    // 5. Update the Sheets row in place. Independent of Project — the row
+    //    belongs to the AcceptedTask, so even if no Project is linked or its
+    //    due_date already matched, the spreadsheet still needs the new value.
     await base44.functions.invoke('sheetsUpdateTaskRow', {
-      accepted_task_id: current.id,
+      accepted_task_id: taskId,
     }).catch((e) => console.error('sheetsUpdateTaskRow invoke failed:', e.message));
 
     return Response.json({
@@ -128,7 +149,8 @@ Deno.serve(async (req) => {
       old_due: oldDue,
       new_due: newDue,
       delta: deltaLabel,
-      project_updated: !!project,
+      project_linked: !!project,
+      webhook_fired: webhookFired,
     });
   } catch (error) {
     console.error('handleDueDateChange error:', error.message);
