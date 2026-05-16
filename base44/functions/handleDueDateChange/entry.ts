@@ -8,6 +8,8 @@
 //      subscribed will be told in real time.
 //   4. Triggers sheetsUpdateTaskRow to overwrite the Due Date cell in the
 //      task's row on Google Sheets.
+//   5. Sends an email to all admin users via Resend so the change is visible
+//      outside the app too. Fire-and-forget — failure is logged, never blocks.
 //
 // Safe to be a no-op when nothing changed — guarded by changed_fields.
 //
@@ -144,6 +146,56 @@ Deno.serve(async (req) => {
       accepted_task_id: taskId,
     }).catch((e) => console.error('sheetsUpdateTaskRow invoke failed:', e.message));
 
+    // 6. Email admins via Resend. Fire-and-forget — if Resend is unconfigured
+    //    or the request fails, the in-app notification still went through and
+    //    we don't want to error the automation. We address each admin via "to"
+    //    rather than bcc so the email feels personal in their inbox.
+    let emailSent = 0;
+    try {
+      const resendKey = Deno.env.get('RESEND_KEY');
+      const fromAddr = Deno.env.get('RESEND_FROM');
+      if (resendKey && fromAddr) {
+        const admins = await base44.asServiceRole.entities.User
+          .filter({ role: 'admin' }, '-created_date', 100)
+          .catch(() => []);
+        const recipients = admins.map((u) => u.email).filter(Boolean);
+        if (recipients.length > 0) {
+          const isEarlier = deltaLabel.includes('earlier');
+          const subject = `[${portalLabel || 'task'}] Due date ${isEarlier ? 'moved earlier' : 'changed'}: ${taskLabel}`;
+          const appUrl = Deno.env.get('APP_PUBLIC_URL') || '';
+          const link = appUrl ? `${appUrl}/tasks?id=${taskId}` : '';
+          const html = `
+            <div style="font-family:-apple-system,Segoe UI,sans-serif;color:#1a1a1a;line-height:1.5;max-width:560px">
+              <h2 style="margin:0 0 8px;font-size:18px;font-weight:600">Due date ${isEarlier ? 'moved earlier' : 'changed'}</h2>
+              <p style="margin:0 0 16px;color:#555;font-size:14px">
+                ${portalLabel ? `<strong>[${portalLabel}]</strong> ` : ''}${taskLabel}
+              </p>
+              <table style="border-collapse:collapse;font-size:14px;margin:0 0 16px">
+                <tr><td style="padding:4px 12px 4px 0;color:#777">Previous</td><td style="padding:4px 0">${fmtDate(oldDue)}</td></tr>
+                <tr><td style="padding:4px 12px 4px 0;color:#777">New</td><td style="padding:4px 0;font-weight:600">${fmtDate(newDue)}</td></tr>
+                ${deltaLabel ? `<tr><td style="padding:4px 12px 4px 0;color:#777">Delta</td><td style="padding:4px 0;color:${isEarlier ? '#b45309' : '#555'}">${deltaLabel}</td></tr>` : ''}
+              </table>
+              ${link ? `<p style="margin:0"><a href="${link}" style="display:inline-block;padding:8px 14px;background:#1a1a1a;color:#fff;border-radius:6px;text-decoration:none;font-size:13px">Open task</a></p>` : ''}
+              <p style="margin:24px 0 0;color:#999;font-size:12px">Automatic notification from Dispatch Hub.</p>
+            </div>`;
+          // Single API call addressed to all admins — Resend accepts an array
+          // of "to" addresses, so we get one send-quota hit instead of N.
+          const r = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${resendKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ from: fromAddr, to: recipients, subject, html }),
+          });
+          if (r.ok) emailSent = recipients.length;
+          else console.error('Resend send failed:', r.status, (await r.text()).slice(0, 200));
+        }
+      }
+    } catch (e) {
+      console.error('email notify failed:', e.message);
+    }
+
     return Response.json({
       ok: true,
       old_due: oldDue,
@@ -151,6 +203,7 @@ Deno.serve(async (req) => {
       delta: deltaLabel,
       project_linked: !!project,
       webhook_fired: webhookFired,
+      email_sent_to: emailSent,
     });
   } catch (error) {
     console.error('handleDueDateChange error:', error.message);
