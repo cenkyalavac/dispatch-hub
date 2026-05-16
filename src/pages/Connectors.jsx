@@ -42,12 +42,10 @@ export default function Connectors() {
     queryFn: () => base44.entities.Portal.list('name'),
   });
 
-  // Client lookup — used to render "for <Client>" on each card and to flag
-  // unassigned connectors. Both active and inactive clients are loaded so a
-  // soft-disabled client still shows its name on legacy mappings.
+  // Pulled here (not inside each card) so all cards share a single fetch.
   const { data: clients = [] } = useQuery({
-    queryKey: ['clients-all'],
-    queryFn: () => base44.entities.Client.list('display_name', 500),
+    queryKey: ['clients'],
+    queryFn: () => base44.entities.Client.list('-created_date'),
   });
   const clientById = new Map(clients.map(c => [c.id, c]));
 
@@ -263,9 +261,9 @@ export default function Connectors() {
             <ConnectorCard
               key={p.id}
               portal={p}
+              client={p.client_id ? clientById.get(p.client_id) : null}
               testing={testingKey === p.key}
               missingSecrets={computeMissing(p)}
-              clientName={p.client_id ? clientById.get(p.client_id)?.display_name : null}
               onTest={handleTest}
               onToggle={handleToggle}
               onDelete={handleDelete}

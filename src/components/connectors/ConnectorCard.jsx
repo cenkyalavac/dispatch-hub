@@ -35,7 +35,7 @@ function parseJwtDays(message) {
   return m ? Number(m[1]) : null;
 }
 
-export default function ConnectorCard({ portal, testing, onTest, onToggle, onDelete, missingSecrets = [], clientName }) {
+export default function ConnectorCard({ portal, testing, onTest, onToggle, onDelete, missingSecrets = [], client = null }) {
   const colors = COLOR_MAP[portal.color] || COLOR_MAP.blue;
   const status = STATUS_MAP[portal.connection_status || 'not_configured'];
   const StatusIcon = status.icon;
@@ -55,10 +55,15 @@ export default function ConnectorCard({ portal, testing, onTest, onToggle, onDel
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-semibold text-base text-foreground">{portal.name}</h3>
-                {clientName ? (
-                  <span className="text-xs text-muted-foreground">for {clientName}</span>
-                ) : portal.client_id ? null : (
-                  <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">No client</span>
+                {/* Client attribution — replaces the legacy "by {vendor}" tag.
+                    Falls back to a muted hint when nothing is mapped so the
+                    gap is visible at a glance. */}
+                {client ? (
+                  <span className="text-xs text-muted-foreground">for <span className="font-medium text-foreground/80">{client.display_name}</span></span>
+                ) : portal.client_id ? (
+                  <span className="text-xs text-amber-700">client missing</span>
+                ) : (
+                  <span className="text-xs text-amber-700 italic">unassigned client</span>
                 )}
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">{portal.description || 'No description'}</p>
