@@ -232,11 +232,16 @@ function FetchFnPending({ portal }) {
           if (payload.handoff?.error) {
             toast.warning('Handoff to Dropbox failed — accept succeeded but files were not downloaded.');
           }
-          // Optimistically drop the row from the cached list.
-          qc.setQueryData(['portal-pending', portal.key], (old) => {
+          // Optimistically drop the row from the cached list. Junction's
+          // queryKey carries the active offerType as a third element — we must
+          // match it exactly or the optimistic update is a silent no-op.
+          const listKey = ['portal-pending', portal.key, isJunction ? offerType : null];
+          qc.setQueryData(listKey, (old) => {
             if (!old?.tasks) return old;
             return { ...old, tasks: old.tasks.filter((t) => t.id !== task.id) };
           });
+          // Junction counts in the segment switch are now stale — refresh.
+          if (isJunction) qc.invalidateQueries({ queryKey: ['junction-counts'] });
           // Plus invalidate history/recent so other panels reflect it.
           qc.invalidateQueries({ queryKey: ['recent-accepted'] });
         } catch (e) {

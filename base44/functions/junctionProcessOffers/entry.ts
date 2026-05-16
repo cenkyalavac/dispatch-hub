@@ -90,19 +90,49 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, skipped: true, reason: 'Portal disabled', summary: { accepted: 0, rejected: 0, skipped: 0, errors: 0 } });
     }
 
-    // 1. Fetch offers — endpoint returns the full list; query params are rejected.
-    const offersRes = await fetch(`${apiBase}/v2/offer/me`, {
-      headers: authHeaders(jwt, apiKey),
-    });
-    if (!offersRes.ok) {
-      const text = await offersRes.text();
+    // 1. Fetch offers — three surfaces:
+    //    /me        → offers exclusively addressed to this account
+    //    /available → first-come-first-served pool (Spotify LQA et al land here)
+    //    /rosters   → team-visible offers
+    // Polling only /me historically meant /available offers (the real-world
+    // majority on Welocalize) were never auto-processed. We fan out in parallel
+    // and dedupe by offer id so the same offer can't be double-counted if it
+    // ever appears on more than one surface.
+    const OFFER_PATHS = ['/v2/offer/me', '/v2/offer/available', '/v2/offer/rosters'];
+    const settled = await Promise.allSettled(
+      OFFER_PATHS.map((p) => fetch(`${apiBase}${p}`, { headers: authHeaders(jwt, apiKey) }))
+    );
+    // If ALL three surfaces fail we bail loudly. Partial failure is logged but
+    // we still process whatever we got back — common case: /me 200, /rosters 403.
+    const fetchErrors = [];
+    const offerLists = await Promise.all(settled.map(async (s, i) => {
+      if (s.status !== 'fulfilled') {
+        fetchErrors.push(`${OFFER_PATHS[i]}: ${s.reason?.message || 'fetch failed'}`);
+        return [];
+      }
+      const r = s.value;
+      if (!r.ok) {
+        const text = await r.text().catch(() => '');
+        fetchErrors.push(`${OFFER_PATHS[i]}: HTTP ${r.status} ${text.slice(0, 120)}`);
+        return [];
+      }
+      const data = await r.json().catch(() => ({}));
+      return Array.isArray(data) ? data : (data?.data || []);
+    }));
+    if (fetchErrors.length === OFFER_PATHS.length) {
       return Response.json(
-        { success: false, error: `Junction HTTP ${offersRes.status}: ${text.slice(0, 200)}` },
+        { success: false, error: `All Junction offer endpoints failed: ${fetchErrors.join(' | ')}` },
         { status: 502 }
       );
     }
-    const offersData = await offersRes.json();
-    const offers = Array.isArray(offersData) ? offersData : (offersData?.data || []);
+    // Dedupe by offer id across the three lists.
+    const seen = new Set();
+    const offers = offerLists.flat().filter((o) => {
+      const id = o.id ?? o.offerId;
+      if (id == null || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
 
     // 2. Get active rules for junction
     const rules = (await base44.asServiceRole.entities.Rule.filter({ is_active: true, portal: 'junction' }))
@@ -233,7 +263,13 @@ Deno.serve(async (req) => {
         .catch((e) => console.error('sheetsSyncPending trigger failed:', e.message));
     }
 
-    return Response.json({ success: true, summary, details, total_offers: offers.length });
+    return Response.json({
+      success: true,
+      summary,
+      details,
+      total_offers: offers.length,
+      ...(fetchErrors.length > 0 ? { partial_fetch_errors: fetchErrors } : {}),
+    });
   } catch (error) {
     return Response.json({ success: false, error: error.message }, { status: 500 });
   }
