@@ -1,19 +1,15 @@
 import { Switch } from '@/components/ui/switch';
 import {
-  CheckCircle2, AlertCircle, XCircle, Loader2, ExternalLink, Play, Trash2, ArrowUpRight,
+  CheckCircle2, AlertCircle, XCircle, ExternalLink, ArrowUpRight,
   Globe, Building2, Network, Plug, Boxes, Briefcase, Cloud,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import JwtExpiryBadge from './JwtExpiryBadge';
 import SheetRoutesSummary from './SheetRoutesSummary';
 
 const ICON_MAP = { Globe, Building2, Network, Plug, Boxes, Briefcase, Cloud };
 
-// One quiet pill style for every status — colour conveyed through OKLCH soft
-// tokens (success-soft / danger-soft / warning-soft / surface-2) instead of
-// Tailwind's emerald/red palette so the cards sit naturally next to Tasks,
-// Mappings and History.
 const STATUS_MAP = {
   connected:      { Icon: CheckCircle2, pill: 'bg-success-soft text-success border-success/20', label: 'Connected' },
   error:          { Icon: XCircle,      pill: 'bg-danger-soft text-danger border-danger/20',    label: 'Error' },
@@ -28,16 +24,20 @@ const AUTH_LABEL = {
   none: 'No auth',
 };
 
-// Parses "[jwt:N]" tail handleTest stores on connection_message for JWT auth.
 function parseJwtDays(message) {
   if (!message) return null;
   const m = message.match(/\[jwt:(-?\d+)\]/);
   return m ? Number(m[1]) : null;
 }
 
+// onTest / onDelete props are accepted but unused — kept so the page-level
+// handlers remain wired (delete now lives only in the detail-page danger zone;
+// test now lives only on the detail-page Overview tab). The whole card is the
+// "Open" affordance — click anywhere outside the toggle/docs link to navigate.
 export default function ConnectorCard({
-  portal, testing, onTest, onToggle, onDelete, missingSecrets = [], client = null,
+  portal, onToggle, missingSecrets = [], client = null,
 }) {
+  const navigate = useNavigate();
   const status = STATUS_MAP[portal.connection_status || 'not_configured'];
   const StatusIcon = status.Icon;
   const Icon = ICON_MAP[portal.icon] || Globe;
@@ -45,16 +45,31 @@ export default function ConnectorCard({
   const jwtDays = parseJwtDays(portal.connection_message);
   const cleanMessage = portal.connection_message?.replace(/\s*\[jwt:-?\d+\]\s*$/, '').trim();
 
+  const openDetail = () => navigate(`/portals/${portal.key}`);
+  const onKeyDown = (e) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(); }
+  };
+  // Stop the card's onClick from firing when interactive children are used.
+  const stop = (e) => e.stopPropagation();
+
   return (
-    <article className="bg-surface-1 border border-line-1 rounded-md flex flex-col overflow-hidden">
-      {/* Header: identity + toggle. No gradient, no ring — surface-1 only. */}
+    <article
+      role="link"
+      tabIndex={0}
+      onClick={openDetail}
+      onKeyDown={onKeyDown}
+      className="group bg-surface-1 border border-line-1 rounded-md flex flex-col overflow-hidden cursor-pointer hover:border-ink-4 hover:shadow-sm transition-all duration-tab"
+      aria-label={`Open ${portal.name}`}
+    >
       <header className="flex items-start gap-3 px-5 pt-4 pb-3">
         <div className="w-9 h-9 rounded-md bg-accent-soft flex items-center justify-center flex-shrink-0">
           <Icon className="w-4 h-4 text-accent-ink" />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="text-[14px] font-semibold tracking-tight text-ink-1 truncate">
+          <h3 className="text-[14px] font-semibold tracking-tight text-ink-1 truncate inline-flex items-center gap-1.5">
             {portal.name}
+            <ArrowUpRight className="w-3.5 h-3.5 text-ink-4 opacity-0 group-hover:opacity-100 transition-opacity duration-tab" />
           </h3>
           <p className="text-[12px] text-ink-3 italic-editorial mt-0.5 truncate">
             {client ? (
@@ -66,13 +81,15 @@ export default function ConnectorCard({
             )}
           </p>
         </div>
-        <Switch
-          checked={portal.is_active}
-          onCheckedChange={(v) => onToggle?.(portal, v)}
-        />
+        <div onClick={stop} onKeyDown={stop}>
+          <Switch
+            checked={portal.is_active}
+            onCheckedChange={(v) => onToggle?.(portal, v)}
+            aria-label={`Toggle ${portal.name}`}
+          />
+        </div>
       </header>
 
-      {/* Status row: pill + key/auth badges. One line. */}
       <div className="px-5 pb-3 flex items-center gap-2 flex-wrap">
         <span className={`inline-flex items-center gap-1.5 h-6 px-2 rounded border text-[11px] font-medium ${status.pill}`}>
           <StatusIcon className="w-3 h-3" />
@@ -89,7 +106,6 @@ export default function ConnectorCard({
         {jwtDays !== null && <JwtExpiryBadge days={jwtDays} />}
       </div>
 
-      {/* Body: description / message / warnings — all editorial, low contrast. */}
       <div className="px-5 pb-4 space-y-2 flex-1">
         {portal.description && (
           <p className="text-[12px] text-ink-2 leading-relaxed">{portal.description}</p>
@@ -107,8 +123,7 @@ export default function ConnectorCard({
         <SheetRoutesSummary portal={portal} />
       </div>
 
-      {/* Meta strip: tested-when + API docs link. */}
-      <div className="px-5 pb-3 flex items-center justify-between text-[11px] text-ink-3">
+      <div className="px-5 py-3 border-t border-line-1 flex items-center justify-between text-[11px] text-ink-3">
         <span>
           {portal.last_checked_at
             ? `Tested ${formatDistanceToNow(new Date(portal.last_checked_at), { addSuffix: true })}`
@@ -119,40 +134,11 @@ export default function ConnectorCard({
             href={portal.docs_url}
             target="_blank"
             rel="noreferrer"
+            onClick={stop}
             className="inline-flex items-center gap-1 hover:text-ink-1 transition-colors duration-tab"
           >
             API docs <ExternalLink className="w-3 h-3" />
           </a>
-        )}
-      </div>
-
-      {/* Actions: border-t separator. Open primary, Test ghost, Delete ghost-danger. */}
-      <div className="flex items-stretch border-t border-line-1">
-        <Link
-          to={`/portals/${portal.key}`}
-          className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 text-[12px] font-medium text-accent hover:bg-accent-soft transition-colors duration-tab"
-        >
-          Open <ArrowUpRight className="w-3.5 h-3.5" />
-        </Link>
-        <button
-          type="button"
-          onClick={() => onTest?.(portal)}
-          disabled={testing || hasMissing}
-          className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 text-[12px] font-medium text-ink-2 hover:bg-surface-2 border-l border-line-1 transition-colors duration-tab disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {testing
-            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Testing</>
-            : <><Play className="w-3.5 h-3.5" /> Test</>}
-        </button>
-        {onDelete && (
-          <button
-            type="button"
-            onClick={() => onDelete?.(portal)}
-            className="inline-flex items-center justify-center h-10 px-4 text-[12px] font-medium text-danger hover:bg-danger-soft border-l border-line-1 transition-colors duration-tab"
-            aria-label="Remove connector"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
         )}
       </div>
     </article>
