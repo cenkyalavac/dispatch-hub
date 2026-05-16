@@ -1,9 +1,14 @@
 import { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Save, FolderTree } from 'lucide-react';
+import { Save, FolderTree, FolderSearch } from 'lucide-react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
+import DropboxFolderPicker from '@/components/dropbox/DropboxFolderPicker';
+
+// Hard root the picker is bounded to. Users can only choose folders under
+// this path on the shared Dropbox account.
+const DROPBOX_ROOT = '/El Turco Team Folder/Projects';
 
 const KEY_BASE = 'dropbox_base_path';
 const KEY_TEMPLATE = 'dropbox_folder_template';
@@ -18,6 +23,7 @@ export default function HandoffPathSection() {
   const [basePath, setBasePath] = useState('');
   const [template, setTemplate] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
 
   const { data: settings = [], isLoading } = useQuery({
     queryKey: ['app-settings'],
@@ -65,7 +71,10 @@ export default function HandoffPathSection() {
     }
   };
 
-  const fullPreview = `/${basePath.replace(/^\/+|\/+$/g, '')}/${renderTemplate(template).replace(/^\/+/, '')}`;
+  // Preview is now anchored at the shared Dropbox root so users see the full
+  // absolute path their handoffs will land at.
+  const cleanBase = basePath.replace(/^\/+|\/+$/g, '');
+  const fullPreview = `${DROPBOX_ROOT}${cleanBase ? '/' + cleanBase : ''}/${renderTemplate(template).replace(/^\/+/, '')}`;
   const input = 'w-full h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] font-mono outline-none placeholder:text-ink-4';
 
   return (
@@ -84,12 +93,43 @@ export default function HandoffPathSection() {
         <div className="mt-4 space-y-3">
           <div>
             <label className="text-[10px] uppercase tracking-wider text-ink-3">Base path (under root)</label>
-            <input
-              value={basePath}
-              onChange={(e) => setBasePath(e.target.value)}
-              placeholder="Symfonie"
-              className={`${input} mt-1`}
-            />
+            <div className="flex gap-2 mt-1">
+              <input
+                value={basePath}
+                onChange={(e) => setBasePath(e.target.value)}
+                placeholder="Symfonie"
+                className={input}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPicker((v) => !v)}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[12px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab whitespace-nowrap"
+              >
+                <FolderSearch className="w-3.5 h-3.5" />
+                {showPicker ? 'Hide browser' : 'Browse Dropbox'}
+              </button>
+            </div>
+            {showPicker && (
+              <div className="mt-3">
+                <p className="text-[11px] text-ink-3 italic-editorial mb-2">
+                  Pick a folder under <code className="font-mono not-italic">{DROPBOX_ROOT}</code>. The selection
+                  fills the base path above, relative to this root.
+                </p>
+                <DropboxFolderPicker
+                  rootPath={DROPBOX_ROOT}
+                  value={`${DROPBOX_ROOT}/${basePath.replace(/^\/+|\/+$/g, '')}`}
+                  onSelect={(absPath) => {
+                    // Store as a path relative to the root so the existing
+                    // {root}/{base}/{template} composition keeps working.
+                    const rel = absPath === DROPBOX_ROOT
+                      ? ''
+                      : absPath.slice(DROPBOX_ROOT.length).replace(/^\/+/, '');
+                    setBasePath(rel);
+                    toast.success(rel ? `Selected: ${rel}` : 'Selected the root folder');
+                  }}
+                />
+              </div>
+            )}
           </div>
           <div>
             <label className="text-[10px] uppercase tracking-wider text-ink-3">Folder template</label>
