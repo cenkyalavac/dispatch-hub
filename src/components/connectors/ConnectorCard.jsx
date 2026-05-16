@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import JwtExpiryBadge from './JwtExpiryBadge';
 import SheetRoutesSummary from './SheetRoutesSummary';
+import BrokerHealthBadge from './BrokerHealthBadge';
 
 const ICON_MAP = { Globe, Building2, Network, Plug, Boxes, Briefcase, Cloud };
 
@@ -104,6 +105,7 @@ export default function ConnectorCard({
           </span>
         )}
         {jwtDays !== null && <JwtExpiryBadge days={jwtDays} />}
+        {portal.key === 'globallink' && <BrokerHealthBadge lastSyncAt={portal.last_sync_at} />}
       </div>
 
       <div className="px-5 pb-4 space-y-2 flex-1">

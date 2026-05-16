@@ -193,7 +193,8 @@ Deno.serve(async (req) => {
       if (!res.ok) {
         const err = await res.text();
         console.error(`Sheets append failed for ${dest.spreadsheet_id}:`, res.status, err);
-        for (const t of tasks) skipped.push({ task_id: t.task_id, portal: t.portal, reason: `HTTP ${res.status}` });
+        const reason = `HTTP ${res.status}`;
+        for (const t of tasks) skipped.push({ task_id: t.task_id, portal: t.portal, reason, _failed_task: t });
         continue;
       }
 
@@ -204,7 +205,46 @@ Deno.serve(async (req) => {
       synced += tasks.length;
     }
 
-    return Response.json({ success: true, synced, writes, skipped });
+    // Surface sheet-write failures to the bell menu so silent data loss is
+    // visible. We only notify for "real" failures (HTTP errors with a captured
+    // task object) — "No spreadsheet configured" is a config-level issue
+    // already visible on the portal card and would spam the inbox.
+    //
+    // Idempotency: each AcceptedTask.id gets at most one open notification.
+    // Cron runs every 5 minutes; without this guard, a wedged sheet would
+    // produce 288 bell entries per day per task.
+    let notified = 0;
+    const realFailures = skipped.filter((s) => s._failed_task);
+    if (realFailures.length > 0) {
+      const failedIds = realFailures.map((s) => s._failed_task.id);
+      const existing = await base44.asServiceRole.entities.UserNotification
+        .filter({ accepted_task_id: { $in: failedIds } }, '-created_date', 1000)
+        .catch(() => []);
+      const alreadyNotified = new Set(
+        existing
+          .filter((n) => !n.read_at && (n.body || '').startsWith('Sheet sync failed'))
+          .map((n) => n.accepted_task_id)
+      );
+      for (const s of realFailures) {
+        const t = s._failed_task;
+        if (alreadyNotified.has(t.id)) continue;
+        await base44.asServiceRole.entities.UserNotification.create({
+          type: 'info',
+          severity: 'warning',
+          title: 'Sheet sync failed',
+          body: `Sheet sync failed (${s.reason}) — ${t.portal} #${t.task_id} ${t.task_name || ''}`.trim(),
+          portal: t.portal,
+          task_id: String(t.task_id ?? ''),
+          accepted_task_id: t.id,
+          link_url: `/tasks?id=${t.id}`,
+        }).catch((e) => console.error('UserNotification create failed:', e.message));
+        notified++;
+      }
+    }
+
+    // Strip internal _failed_task before returning (kept only for notification logic above).
+    const skippedOut = skipped.map(({ _failed_task, ...rest }) => rest);
+    return Response.json({ success: true, synced, writes, skipped: skippedOut, notified });
 
   } catch (error) {
     console.error('sheetsSyncPending error:', error.message);
