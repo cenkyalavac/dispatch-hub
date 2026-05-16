@@ -362,11 +362,12 @@ Deno.serve(async (req) => {
           });
         }
 
-        // Service-role invoke: nested user-context invokes don't carry the
-        // caller's token, so notifyNewTask sees an anonymous request and
-        // returns 403. asServiceRole provides a synthetic service user that
-        // notifyNewTask's gate explicitly allows.
-        base44.asServiceRole.functions.invoke('notifyNewTask', {
+        // Use regular functions.invoke — asServiceRole.functions.invoke is
+        // rejected by the platform's invoke layer with a blanket 403 before
+        // reaching the target function (verified during handleDueDateChange
+        // debug). The scheduled-context invoke passes through and
+        // notifyNewTask's permissive auth gate accepts the service caller.
+        base44.functions.invoke('notifyNewTask', {
           portal: 'symfonie',
           task_id: taskId,
           task_payload: notifyPayload,
@@ -427,7 +428,7 @@ Deno.serve(async (req) => {
             accepted_at: task.accepted_at,
             origin: task,
           });
-          base44.asServiceRole.functions.invoke('dispatchWebhook', {
+          base44.functions.invoke('dispatchWebhook', {
             tenant_id: 'default', event: 'project.accepted', project_id: project.id,
           }).catch((e) => console.error('webhook dispatch failed:', e.message));
         } catch (e) {
@@ -436,7 +437,7 @@ Deno.serve(async (req) => {
 
         // Handoff: Dropbox'a indir + ProjectAttachment katalogu (basarisiz olsa bile accept bozulmasin)
         try {
-          await base44.asServiceRole.functions.invoke('symfonieDownloadAttachments', {
+          await base44.functions.invoke('symfonieDownloadAttachments', {
             task_id: taskId,
             task_name: raw.Name || '',
             project_name: task.project_name || '',
@@ -471,7 +472,7 @@ Deno.serve(async (req) => {
     // Batch sheet sync once per run — fire-and-forget; sheetsSyncPending picks up
     // every newly-created AcceptedTask via `sheets_synced: false` filter.
     if (results.accepted.length > 0) {
-      base44.asServiceRole.functions.invoke('sheetsSyncPending', {})
+      base44.functions.invoke('sheetsSyncPending', {})
         .catch((e) => console.error('sheetsSyncPending trigger failed:', e.message));
     }
 

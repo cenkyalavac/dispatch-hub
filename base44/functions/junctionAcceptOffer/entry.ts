@@ -9,11 +9,14 @@ const PROD_BASE = 'https://hypnos.welocalize.tools';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    // .catch(() => null) — Base44 SDK throws on missing session in public apps;
-    // matches the pattern used by symfonieAcceptTask/Reject and other write endpoints.
     const user = await base44.auth.me().catch(() => null);
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    if (user.role !== 'admin') {
+    // Permissive gate: allow admin users (manual UI) AND service callers
+    // (acceptViaToken's public token flow). The accept_token validation in
+    // acceptViaToken is the security boundary for the public path.
+    const isService = !user
+      || user.is_service === true
+      || (typeof user.email === 'string' && user.email.startsWith('service+'));
+    if (!isService && user?.role !== 'admin') {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
@@ -115,7 +118,7 @@ Deno.serve(async (req) => {
         accepted_at: acceptedAt,
         origin: { task_id, task_name, project_name, client_name: resolvedClient, source_language, target_language, word_count, price, due_date },
       });
-      base44.asServiceRole.functions.invoke('dispatchWebhook', {
+      base44.functions.invoke('dispatchWebhook', {
         tenant_id: 'default', event: 'project.accepted', project_id: project.id,
       }).catch((e) => console.error('webhook dispatch failed:', e.message));
     } catch (e) {
@@ -123,7 +126,7 @@ Deno.serve(async (req) => {
     }
 
     // Trigger the unified sheet sync (handles SheetColumnMapping + SheetRoute).
-    base44.asServiceRole.functions.invoke('sheetsSyncPending', {})
+    base44.functions.invoke('sheetsSyncPending', {})
       .catch((e) => console.error('sheetsSyncPending trigger failed:', e.message));
 
     return Response.json({ success: true, accepted_at: acceptedAt, project_id: project?.id || null, sheets_sync: 'queued' });

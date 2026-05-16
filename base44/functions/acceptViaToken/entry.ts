@@ -156,8 +156,12 @@ Deno.serve(async (req) => {
 
   let acceptOk = false, acceptErr = null;
   try {
-    const r = await base44.asServiceRole.functions.invoke(acceptFn, payload);
-    // Service-role invokes return the function's body in `.data`.
+    // Use regular functions.invoke — asServiceRole.functions.invoke is
+    // rejected by the platform's invoke layer with a blanket 403. The
+    // public token flow has no end-user identity, but the target accept
+    // functions (symfonieAcceptTask, junctionAcceptOffer, globallinkApproveOne)
+    // either need their own auth or are gated to allow service callers.
+    const r = await base44.functions.invoke(acceptFn, payload);
     if (r?.data?.success) acceptOk = true;
     else acceptErr = r?.data?.error || 'Accept function returned no success flag';
   } catch (e) {
