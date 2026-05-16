@@ -1,0 +1,26 @@
+{
+  "name": "Client",
+  "type": "object",
+  "description": "Translation agency's own end-clients. Each Portal (connector) is mapped to one Client so accepted tasks and projects can be attributed back to the customer this work belongs to.",
+  "properties": {
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable client name shown across the UI (e.g. 'Apple Inc.', 'Global Solutions')."
+    },
+    "slug": {
+      "type": "string",
+      "description": "URL-safe stable identifier (e.g. 'apple-inc'). Unique across clients. Use this when referencing the client in other systems."
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "display_name",
+    "slug"
+  ]
+}

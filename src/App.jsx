@@ -21,6 +21,7 @@ import Notifications from './pages/Notifications.jsx';
 import Users from './pages/Users.jsx';
 import AcceptToken from './pages/AcceptToken.jsx';
 import FriendlyNames from './pages/FriendlyNames.jsx';
+import Clients from './pages/Clients.jsx';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -94,6 +95,7 @@ const AuthenticatedApp = () => {
         <Route path="/probe" element={<PortalProbe />} />
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/users" element={<Users />} />
+        <Route path="/clients" element={<Clients />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
