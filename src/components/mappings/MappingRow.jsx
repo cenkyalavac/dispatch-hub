@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Trash2, Pencil, Check, X } from 'lucide-react';
+import { Trash2, Pencil, Check, X, AlertTriangle, MinusCircle } from 'lucide-react';
+import { isIdentityMapping } from '@/lib/mapping-analysis';
 
 const FIELD_LABEL = {
   source_language: 'Source lang',
@@ -9,7 +10,8 @@ const FIELD_LABEL = {
   service_tag: 'Service',
 };
 
-export default function MappingRow({ mapping, onToggle, onDelete, onSave }) {
+export default function MappingRow({ mapping, onToggle, onDelete, onSave, hasConflict = false }) {
+  const isIdentity = isIdentityMapping(mapping) && mapping.is_active;
   const [editing, setEditing] = useState(false);
   const [sourceValue, setSourceValue] = useState(mapping.source_value || '');
   const [destinationValue, setDestinationValue] = useState(mapping.destination_value || '');
@@ -91,8 +93,14 @@ export default function MappingRow({ mapping, onToggle, onDelete, onSave }) {
     );
   }
 
+  const rowBorder = hasConflict
+    ? 'border-warning/40'
+    : isIdentity
+      ? 'border-line-2'
+      : 'border-line-1';
+
   return (
-    <div className={`bg-surface-1 border border-line-1 rounded-md px-4 py-3 flex items-center gap-3 ${!mapping.is_active ? 'opacity-60' : ''}`}>
+    <div className={`bg-surface-1 border ${rowBorder} rounded-md px-4 py-3 flex items-center gap-3 ${!mapping.is_active ? 'opacity-60' : ''}`}>
       <span className="text-[10px] uppercase tracking-wider bg-surface-2 text-ink-3 px-1.5 py-0.5 rounded">
         {mapping.portal === '*' ? 'any' : mapping.portal}
       </span>
@@ -102,6 +110,22 @@ export default function MappingRow({ mapping, onToggle, onDelete, onSave }) {
       <code className="text-[12px] font-mono text-ink-1 bg-surface-2 px-2 py-0.5 rounded">{mapping.source_value}</code>
       <span className="text-ink-3 text-[12px]">→</span>
       <code className="text-[12px] font-mono text-accent bg-accent-soft px-2 py-0.5 rounded">{mapping.destination_value}</code>
+      {hasConflict && (
+        <span
+          title="Another active mapping shadows this one (same portal + field + source). The resolver returns the first match."
+          className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider bg-warning-soft text-warning px-1.5 py-0.5 rounded"
+        >
+          <AlertTriangle className="w-3 h-3" /> Conflict
+        </span>
+      )}
+      {isIdentity && !hasConflict && (
+        <span
+          title="Destination is identical to source — this mapping is a no-op."
+          className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider bg-surface-2 text-ink-3 px-1.5 py-0.5 rounded"
+        >
+          <MinusCircle className="w-3 h-3" /> No-op
+        </span>
+      )}
       {mapping.notes && (
         <span className="text-[11px] text-ink-3 italic-editorial truncate flex-1">{mapping.notes}</span>
       )}

@@ -1,19 +1,40 @@
 import { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftRight, Search } from 'lucide-react';
+import { ArrowLeftRight, AlertTriangle, MinusCircle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import MappingForm from '@/components/mappings/MappingForm';
-import MappingRow from '@/components/mappings/MappingRow';
+import MappingGroup from '@/components/mappings/MappingGroup';
 import SuggestedMappings from '@/components/mappings/SuggestedMappings';
 import EmptyState from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
+import ListToolbar, { ToolbarSelect } from '@/components/ui/ListToolbar';
+import { findConflictIds, isIdentityMapping, groupByField } from '@/lib/mapping-analysis';
+
+const FIELD_ORDER = ['source_language', 'target_language', 'client_name', 'workflow_name', 'service_tag'];
+
+// Tiny pill used in the health summary strip.
+function HealthPill({ icon: Icon, tone, label, count }) {
+  const TONES = {
+    good:    'bg-success-soft text-success',
+    warning: 'bg-warning-soft text-warning',
+    neutral: 'bg-surface-2 text-ink-3',
+  };
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded ${TONES[tone]}`}>
+      <Icon className="w-3 h-3" />
+      <span className="tabular-nums font-medium">{count}</span>
+      <span className="opacity-80">{label}</span>
+    </span>
+  );
+}
 
 export default function Mappings() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [filterField, setFilterField] = useState('all');
+  const [filterPortal, setFilterPortal] = useState('all');
 
   const { data: portals = [] } = useQuery({
     queryKey: ['portals-all'],
@@ -25,10 +46,19 @@ export default function Mappings() {
     queryFn: () => base44.entities.FieldMapping.list('-created_date', 500),
   });
 
+  // Conflicts and identity flags are computed against the FULL set — not the
+  // filtered view — so the badges remain meaningful regardless of the search.
+  const conflictIds = useMemo(() => findConflictIds(mappings), [mappings]);
+  const identityCount = useMemo(
+    () => mappings.filter(m => m.is_active && isIdentityMapping(m)).length,
+    [mappings],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return mappings.filter(m => {
       if (filterField !== 'all' && m.field !== filterField) return false;
+      if (filterPortal !== 'all' && m.portal !== filterPortal) return false;
       if (!q) return true;
       return (
         m.source_value?.toLowerCase().includes(q) ||
@@ -37,7 +67,12 @@ export default function Mappings() {
         m.notes?.toLowerCase().includes(q)
       );
     });
-  }, [mappings, search, filterField]);
+  }, [mappings, search, filterField, filterPortal]);
+
+  const grouped = useMemo(() => groupByField(filtered, FIELD_ORDER), [filtered]);
+
+  const hasActiveFilters = !!search || filterField !== 'all' || filterPortal !== 'all';
+  const clearAll = () => { setSearch(''); setFilterField('all'); setFilterPortal('all'); };
 
   const createMapping = async (data) => {
     await base44.entities.FieldMapping.create({ tenant_id: 'default', is_active: true, ...data });
@@ -63,11 +98,12 @@ export default function Mappings() {
     toast.success('Mapping updated');
   };
 
-  const input = 'h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4';
+  const rowHandlers = { onToggle: toggleMapping, onDelete: deleteMapping, onSave: saveMapping };
+  const activeCount = mappings.filter(m => m.is_active).length;
 
   return (
     <div className="px-8 py-7 max-w-5xl">
-      <header className="mb-7">
+      <header className="mb-5">
         <h1 className="text-[22px] font-semibold tracking-tight text-ink-1 flex items-center gap-2">
           <ArrowLeftRight className="w-5 h-5 text-ink-3" /> Field mappings
         </h1>
@@ -76,30 +112,49 @@ export default function Mappings() {
         </p>
       </header>
 
+      {/* Health summary — the at-a-glance "is my mapping table healthy?" answer. */}
+      {mappings.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap mb-5">
+          <HealthPill icon={CheckCircle2} tone="good" label="active" count={activeCount} />
+          {conflictIds.size > 0 && (
+            <HealthPill icon={AlertTriangle} tone="warning" label="in conflict" count={conflictIds.size} />
+          )}
+          {identityCount > 0 && (
+            <HealthPill icon={MinusCircle} tone="neutral" label="no-op (source = destination)" count={identityCount} />
+          )}
+        </div>
+      )}
+
       <SuggestedMappings />
 
       <MappingForm portals={portals.filter(p => p.is_active)} onSubmit={createMapping} />
 
-      <div className="flex items-center gap-3 mb-3">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-3" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search source, destination, portal, notes"
-            className={`${input} w-full pl-9`}
-          />
-        </div>
-        <select value={filterField} onChange={(e) => setFilterField(e.target.value)} className={input}>
-          <option value="all">All fields</option>
-          <option value="source_language">Source language</option>
-          <option value="target_language">Target language</option>
-          <option value="client_name">Client name</option>
-          <option value="workflow_name">Workflow</option>
-          <option value="service_tag">Service tag</option>
-        </select>
-        <span className="text-[12px] text-ink-3 tabular-nums">{filtered.length} / {mappings.length}</span>
-      </div>
+      <ListToolbar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="Search source, destination, portal, notes"
+        totalCount={mappings.length}
+        filteredCount={filtered.length}
+        hasActiveFilters={hasActiveFilters}
+        onClear={clearAll}
+        filters={
+          <>
+            <ToolbarSelect value={filterPortal} onChange={setFilterPortal} ariaLabel="Filter by portal">
+              <option value="all">All portals</option>
+              <option value="*">Any (wildcard)</option>
+              {portals.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
+            </ToolbarSelect>
+            <ToolbarSelect value={filterField} onChange={setFilterField} ariaLabel="Filter by field">
+              <option value="all">All fields</option>
+              <option value="source_language">Source language</option>
+              <option value="target_language">Target language</option>
+              <option value="client_name">Client name</option>
+              <option value="workflow_name">Workflow</option>
+              <option value="service_tag">Service tag</option>
+            </ToolbarSelect>
+          </>
+        }
+      />
 
       {isLoading ? (
         <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12" />)}</div>
@@ -111,9 +166,15 @@ export default function Mappings() {
             : 'Adjust your search or field filter.'}
         />
       ) : (
-        <div className="space-y-2">
-          {filtered.map(m => (
-            <MappingRow key={m.id} mapping={m} onToggle={toggleMapping} onDelete={deleteMapping} onSave={saveMapping} />
+        <div>
+          {grouped.map(([field, rows]) => (
+            <MappingGroup
+              key={field}
+              field={field}
+              mappings={rows}
+              conflictIds={conflictIds}
+              {...rowHandlers}
+            />
           ))}
         </div>
       )}
