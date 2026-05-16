@@ -213,33 +213,33 @@ Deno.serve(async (req) => {
     // Idempotency: each AcceptedTask.id gets at most one open notification.
     // Cron runs every 5 minutes; without this guard, a wedged sheet would
     // produce 288 bell entries per day per task.
+    // Per-task idempotency check: one filter call per failed task. Avoids
+    // depending on $in operator support in the entity API — if the lookup
+    // fails for any reason, we err on the side of NOT spamming the bell
+    // (treat as "already notified").
     let notified = 0;
     const realFailures = skipped.filter((s) => s._failed_task);
-    if (realFailures.length > 0) {
-      const failedIds = realFailures.map((s) => s._failed_task.id);
+    for (const s of realFailures) {
+      const t = s._failed_task;
       const existing = await base44.asServiceRole.entities.UserNotification
-        .filter({ accepted_task_id: { $in: failedIds } }, '-created_date', 1000)
-        .catch(() => []);
-      const alreadyNotified = new Set(
-        existing
-          .filter((n) => !n.read_at && (n.body || '').startsWith('Sheet sync failed'))
-          .map((n) => n.accepted_task_id)
+        .filter({ accepted_task_id: t.id }, '-created_date', 10)
+        .catch(() => null);
+      if (existing === null) continue; // lookup failed — skip to avoid spam
+      const hasOpenAlert = existing.some(
+        (n) => !n.read_at && (n.body || '').startsWith('Sheet sync failed')
       );
-      for (const s of realFailures) {
-        const t = s._failed_task;
-        if (alreadyNotified.has(t.id)) continue;
-        await base44.asServiceRole.entities.UserNotification.create({
-          type: 'info',
-          severity: 'warning',
-          title: 'Sheet sync failed',
-          body: `Sheet sync failed (${s.reason}) — ${t.portal} #${t.task_id} ${t.task_name || ''}`.trim(),
-          portal: t.portal,
-          task_id: String(t.task_id ?? ''),
-          accepted_task_id: t.id,
-          link_url: `/tasks?id=${t.id}`,
-        }).catch((e) => console.error('UserNotification create failed:', e.message));
-        notified++;
-      }
+      if (hasOpenAlert) continue;
+      await base44.asServiceRole.entities.UserNotification.create({
+        type: 'info',
+        severity: 'warning',
+        title: 'Sheet sync failed',
+        body: `Sheet sync failed (${s.reason}) — ${t.portal} #${t.task_id} ${t.task_name || ''}`.trim(),
+        portal: t.portal,
+        task_id: String(t.task_id ?? ''),
+        accepted_task_id: t.id,
+        link_url: `/tasks?id=${t.id}`,
+      }).catch((e) => console.error('UserNotification create failed:', e.message));
+      notified++;
     }
 
     // Strip internal _failed_task before returning (kept only for notification logic above).
