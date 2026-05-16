@@ -27,12 +27,17 @@ async function authenticateKey(base44, token, scopeNeeded) {
   return { key };
 }
 
-function serializeProject(p) {
+function serializeProject(p, clientById) {
+  const c = p.client_id ? clientById.get(p.client_id) : null;
   return {
     id: p.id,
     external_id: p.external_id,
     state: p.state,
     portal: p.portal,
+    // Agency end-customer attribution. `client` is null when the originating
+    // portal isn't mapped to a Client yet — BMS clients should treat that as
+    // "unassigned" rather than guessing from project_name/client_name.
+    client: c ? { id: c.id, slug: c.slug, display_name: c.display_name } : null,
     name: p.name,
     client_name: p.client_name,
     project_name: p.project_name,
@@ -63,11 +68,32 @@ Deno.serve(async (req) => {
     const limit = Math.min(Number(body.limit) || 100, 500);
 
     const filter = { tenant_id: auth.key.tenant_id, state };
+    // Optional client filter — BMS clients pass either the Client.id or the
+    // human-friendly slug ("apple-inc"). We resolve slug → id once and apply
+    // it as an entity filter so the page-cap doesn't truncate cross-client
+    // result sets.
+    if (body.client_id) {
+      filter.client_id = String(body.client_id);
+    } else if (body.client_slug) {
+      const slugMatch = await base44.asServiceRole.entities.Client.filter({ slug: String(body.client_slug) });
+      if (slugMatch.length === 0) {
+        return Response.json({ error: `No client with slug "${body.client_slug}"` }, { status: 404 });
+      }
+      filter.client_id = slugMatch[0].id;
+    }
     const projects = await base44.asServiceRole.entities.Project.filter(filter, '-accepted_at', limit);
+
+    // Hydrate clients in one shot so each row doesn't trigger its own fetch.
+    const clientIds = [...new Set(projects.map(p => p.client_id).filter(Boolean))];
+    const clientById = new Map();
+    if (clientIds.length > 0) {
+      const clients = await base44.asServiceRole.entities.Client.list('-created_date', 500);
+      clients.forEach(c => clientById.set(c.id, c));
+    }
 
     return Response.json({
       count: projects.length,
-      projects: projects.map(serializeProject),
+      projects: projects.map(p => serializeProject(p, clientById)),
     });
   } catch (error) {
     console.error('apiProjectsList error:', error.message);

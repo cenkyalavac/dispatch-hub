@@ -89,6 +89,9 @@ Deno.serve(async (req) => {
       console.log('junctionProcessOffers skipped: portal is_active=false');
       return Response.json({ success: true, skipped: true, reason: 'Portal disabled', summary: { accepted: 0, rejected: 0, skipped: 0, errors: 0 } });
     }
+    // Client attribution: tag every AcceptedTask + Project with this portal's
+    // Client.id so the BMS can filter projects by end-customer.
+    const portalClientId = junctionPortal?.client_id || null;
 
     // 1. Fetch offers — three surfaces:
     //    /me        → offers exclusively addressed to this account
@@ -234,6 +237,7 @@ Deno.serve(async (req) => {
         const { service_tag, task_type, ...persistedTask } = task;
         const savedTask = await base44.asServiceRole.entities.AcceptedTask.create({
           portal: 'junction',
+          client_id: portalClientId,
           ...persistedTask,
           accepted_at: acceptedAt,
           matched_rule: matched.name,
@@ -247,6 +251,7 @@ Deno.serve(async (req) => {
           try {
             const project = await base44.asServiceRole.entities.Project.create({
               tenant_id: 'default',
+              client_id: portalClientId,
               accepted_task_id: savedTask.id,
               portal: 'junction',
               external_id: `junction:${offerId}`,

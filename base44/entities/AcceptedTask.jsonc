@@ -7,6 +7,10 @@
       "description": "Kaynak portal (symfonie, junction, globallink, ...)",
       "default": "symfonie"
     },
+    "client_id": {
+      "type": "string",
+      "description": "FK to Client.id \u2014 the agency end-client this task belongs to. Propagated from the originating Portal at accept time."
+    },
     "task_id": {
       "type": "integer",
       "description": "Portal Task ID"

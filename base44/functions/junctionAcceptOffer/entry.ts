@@ -34,6 +34,9 @@ Deno.serve(async (req) => {
     if (portalRows[0]?.is_active === false) {
       return Response.json({ success: false, error: 'Junction connector is paused' }, { status: 409 });
     }
+    // Client attribution: tag every AcceptedTask + Project with the Client.id
+    // mapped to this portal so the BMS knows which end-customer this work serves.
+    const portalClientId = portalRows[0]?.client_id || null;
 
     const jwt = Deno.env.get('JUNCTION_JWT');
     const apiKey = Deno.env.get('JUNCTION_API_KEY');
@@ -81,6 +84,7 @@ Deno.serve(async (req) => {
 
     const savedTask = await base44.asServiceRole.entities.AcceptedTask.create({
       portal: 'junction',
+      client_id: portalClientId,
       task_id: offerId,
       task_name: task_name || `Offer #${task_id}`,
       project_name: project_name || '',
@@ -102,6 +106,7 @@ Deno.serve(async (req) => {
     try {
       project = await base44.asServiceRole.entities.Project.create({
         tenant_id: 'default',
+        client_id: portalClientId,
         accepted_task_id: savedTask.id,
         portal: 'junction',
         external_id: `junction:${offerId}`,

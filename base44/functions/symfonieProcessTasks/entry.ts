@@ -139,6 +139,9 @@ Deno.serve(async (req) => {
     // handled by sheetsSyncPending which reads its own copy).
     const portalRows = await base44.asServiceRole.entities.Portal.filter({ key: 'symfonie' });
     const portal = portalRows[0] || null;
+    // Client attribution: every rule-accepted task + project gets the Client.id
+    // mapped to this portal so the BMS can filter by end-customer.
+    const portalClientId = portal?.client_id || null;
 
     // Kill switch: if the portal is toggled off, do nothing. The scheduler still ticks,
     // but no tasks are fetched, accepted, or rejected.
@@ -304,6 +307,7 @@ Deno.serve(async (req) => {
 
       const task = {
         task_id: taskId,
+        client_id: portalClientId,
         task_name: raw.Name || '',
         project_name: raw.Project?.Name || raw.JobName || raw.ProjectName || '',
         client_name: projectInfo?.Customer?.Name || '',
@@ -412,6 +416,7 @@ Deno.serve(async (req) => {
         try {
           project = await base44.asServiceRole.entities.Project.create({
             tenant_id: 'default',
+            client_id: portalClientId,
             accepted_task_id: saved.id,
             portal: 'symfonie',
             external_id: `symfonie:${taskId}`,

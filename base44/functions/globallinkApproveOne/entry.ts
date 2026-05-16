@@ -120,6 +120,9 @@ Deno.serve(async (req) => {
     const portalRows = await base44.asServiceRole.entities.Portal.filter({ key: 'globallink' });
     const portal = portalRows[0] || null;
     const families = portal?.allowed_language_families || [];
+    // Client attribution: propagated onto every AcceptedTask + Project below
+    // so BMS clients can filter by end-customer.
+    const portalClientId = portal?.client_id || null;
     const claimable = filterLocalesByFamilies(availableLocales, families);
 
     if (claimable.length === 0) {
@@ -263,6 +266,7 @@ Deno.serve(async (req) => {
       // null/zero on the destination; downstream code already handles that.
       const acceptedTask = await base44.asServiceRole.entities.AcceptedTask.create({
         portal: 'globallink',
+        client_id: portalClientId,
         task_id: Number(matchRow.submission_id) || matchRow.submission_ticket,
         task_name: matchRow.submission_name || `Submission ${matchRow.submission_id || matchRow.submission_ticket}`,
         project_name: matchRow.project_name || matchRow.submission_name || '',
@@ -308,6 +312,7 @@ Deno.serve(async (req) => {
       try {
         const project = await base44.asServiceRole.entities.Project.create({
           tenant_id: 'default',
+          client_id: portalClientId,
           accepted_task_id: acceptedTask.id,
           portal: 'globallink',
           external_id: `globallink:${row.submission_ticket}:${claimedLocale}`,

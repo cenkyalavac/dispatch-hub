@@ -68,6 +68,15 @@ Deno.serve(async (req) => {
       .then(r => r.length)
       .catch(() => 0);
 
+    // Agency end-customer attribution. Resolved from the Client entity via
+    // the FK set at accept time. null when the originating portal wasn't
+    // mapped to a client yet.
+    let client = null;
+    if (project.client_id) {
+      const c = await base44.asServiceRole.entities.Client.get(project.client_id).catch(() => null);
+      if (c) client = { id: c.id, slug: c.slug, display_name: c.display_name };
+    }
+
     // Friendly rumuz block — separate from BMS `destination` (which stays
     // null-on-miss for safety). Friendly passes through to the raw value on
     // miss, so downstream BMS UIs can always render a human label.
@@ -116,6 +125,7 @@ Deno.serve(async (req) => {
         external_id: project.external_id,
         state: project.state,
         portal: project.portal,
+        client,
         name: project.name,
         client_name: project.client_name,
         project_name: project.project_name,

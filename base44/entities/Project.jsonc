@@ -8,6 +8,10 @@
       "description": "Owning tenant. Defaults to 'default' until multi-tenant is enabled.",
       "default": "default"
     },
+    "client_id": {
+      "type": "string",
+      "description": "FK to Client.id \u2014 the agency end-client this project belongs to. Propagated from the originating Portal at accept time. BMS systems filter on this to attribute projects to the correct end-customer."
+    },
     "accepted_task_id": {
       "type": "string",
       "description": "Source AcceptedTask record id (1:1)."

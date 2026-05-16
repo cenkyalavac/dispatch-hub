@@ -58,6 +58,9 @@ Deno.serve(async (req) => {
     if (portalRows[0]?.is_active === false) {
       return Response.json({ error: 'Symfonie connector is paused' }, { status: 409 });
     }
+    // Client attribution: every AcceptedTask + Project carries the Client.id
+    // mapped to this portal so the BMS can filter projects by end-customer.
+    const portalClientId = portalRows[0]?.client_id || null;
 
     const token = await getToken();
 
@@ -127,6 +130,7 @@ Deno.serve(async (req) => {
     // Save to AcceptedTask
     const taskRecord = {
       portal: 'symfonie',
+      client_id: portalClientId,
       task_id: taskIdNum,
       task_name: task_name || symfonieTask?.Name || '',
       project_name: project_name || symfonieTask?.Project?.Name || '',
@@ -166,6 +170,7 @@ Deno.serve(async (req) => {
     try {
       project = await base44.asServiceRole.entities.Project.create({
         tenant_id: 'default',
+        client_id: portalClientId,
         accepted_task_id: saved.id,
         portal: 'symfonie',
         external_id: `symfonie:${taskIdNum}`,
