@@ -7,8 +7,12 @@ import { toast } from 'sonner';
 import TodayPanel from '@/components/dashboard/TodayPanel';
 import ActionNeededPanel from '@/components/dashboard/ActionNeededPanel';
 import TopListsPanel from '@/components/dashboard/TopListsPanel';
+import RecentDeliveriesPanel from '@/components/dashboard/RecentDeliveriesPanel';
+import WebhookTimelinePanel from '@/components/dashboard/WebhookTimelinePanel';
 import { Skeleton } from '@/components/ui/skeleton';
-import { EM } from '@/lib/format';
+import { EM, fmtNumber } from '@/lib/format';
+import { usePendingTotals } from '@/lib/pending-totals';
+import { Inbox } from 'lucide-react';
 
 // Lean operational overview. Three focused panels:
 //   1. Today — accepted / rejected / errors since local midnight
@@ -38,6 +42,7 @@ export default function Dashboard() {
 
   const loading = portalsLoading || tasksLoading;
   const selectedPortalObj = portals.find(p => p.key === selectedPortal);
+  const pendingTotals = usePendingTotals(portals);
 
   const handleRun = async () => {
     if (selectedPortal === 'all' || !selectedPortalObj?.process_function) {
@@ -108,6 +113,15 @@ export default function Dashboard() {
           <p className="text-[13px] text-ink-3 mt-1 italic-editorial">
             What needs your attention right now.
           </p>
+          {!pendingTotals.isLoading && pendingTotals.connectorCount > 0 && (
+            <p className="mt-2 inline-flex items-center gap-1.5 text-[12px] text-ink-2 bg-surface-2 border border-line-1 rounded-md px-2.5 py-1">
+              <Inbox className="w-3 h-3 text-ink-3" />
+              <span className="tabular-nums font-medium">{fmtNumber(pendingTotals.total)}</span>
+              <span className="text-ink-3">
+                pending across {pendingTotals.connectorCount} connector{pendingTotals.connectorCount === 1 ? '' : 's'}
+              </span>
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <select
@@ -140,6 +154,13 @@ export default function Dashboard() {
           <>
             <TodayPanel tasks={allTasks} />
             <ActionNeededPanel portals={portals} />
+            {/* Two-up: shipped-this-week + recent webhooks. Side by side on
+                desktop so the eye scans success (left) → integration health
+                (right). Stacks on mobile. */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <RecentDeliveriesPanel />
+              <WebhookTimelinePanel />
+            </div>
             <TopListsPanel tasks={allTasks} />
           </>
         )}
