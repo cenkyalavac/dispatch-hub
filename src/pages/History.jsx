@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, Search, Download } from 'lucide-react';
+import { RefreshCw, Download } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import ErrorState from '@/components/ui/ErrorState';
+import ListToolbar, { ToolbarSelect } from '@/components/ui/ListToolbar';
 import HistoryRow from '@/components/history/HistoryRow';
-import { fmtNumber } from '@/lib/format';
 import { downloadCsv } from '@/lib/csv';
 
 const HISTORY_HEADERS = ['ID','Task','Project','Account','Source','Target','Workflow','State','Updated'];
@@ -80,6 +80,9 @@ export default function History() {
     );
   }, [tasks, search]);
 
+  const hasActiveFilters = !!search;
+  const clearAll = () => setSearch('');
+
   return (
     <div className="px-8 py-7 max-w-6xl">
       <header className="flex items-end justify-between mb-7 flex-wrap gap-4">
@@ -90,21 +93,6 @@ export default function History() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={selectedPortal}
-            onChange={(e) => setSelectedPortal(e.target.value)}
-            className="h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
-          >
-            {historyPortals.length === 0 && <option value="">No history portals</option>}
-            {historyPortals.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
-          </select>
-          <select
-            value={days}
-            onChange={(e) => setDays(Number(e.target.value))}
-            className="h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
-          >
-            {DAY_OPTIONS.map(d => <option key={d} value={d}>Last {d} days</option>)}
-          </select>
           <button
             onClick={() => downloadCsv(`history_${selectedPortal}_${days}d_${new Date().toISOString().slice(0, 10)}`, HISTORY_HEADERS, filtered.map(historyRow))}
             disabled={filtered.length === 0}
@@ -122,22 +110,26 @@ export default function History() {
         </div>
       </header>
 
-      <div className="flex items-center gap-3 mb-3">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-3" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search task, project, account"
-            className="w-full h-9 pl-9 pr-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4"
-          />
-        </div>
-        {!isLoading && !isError && (
-          <span className="text-[12px] text-ink-3 tabular-nums">
-            {fmtNumber(filtered.length)} / {fmtNumber(tasks.length)}
-          </span>
-        )}
-      </div>
+      <ListToolbar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="Search task, project, account"
+        totalCount={!isLoading && !isError ? tasks.length : undefined}
+        filteredCount={filtered.length}
+        hasActiveFilters={hasActiveFilters}
+        onClear={clearAll}
+        filters={
+          <>
+            <ToolbarSelect value={selectedPortal} onChange={setSelectedPortal} ariaLabel="Portal">
+              {historyPortals.length === 0 && <option value="">No history portals</option>}
+              {historyPortals.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
+            </ToolbarSelect>
+            <ToolbarSelect value={String(days)} onChange={(v) => setDays(Number(v))} ariaLabel="Time range">
+              {DAY_OPTIONS.map(d => <option key={d} value={d}>Last {d} days</option>)}
+            </ToolbarSelect>
+          </>
+        }
+      />
 
       {!historyFn ? (
         <EmptyState

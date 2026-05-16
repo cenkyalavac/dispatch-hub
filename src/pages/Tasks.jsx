@@ -1,12 +1,13 @@
 import { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, XCircle, Search, Download } from 'lucide-react';
+import { CheckCircle2, XCircle, Download } from 'lucide-react';
 import { format } from 'date-fns';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import ErrorState from '@/components/ui/ErrorState';
+import ListToolbar, { ToolbarSelect } from '@/components/ui/ListToolbar';
 import { EM, fmtNumber } from '@/lib/format';
 import { downloadCsv } from '@/lib/csv';
 
@@ -31,10 +32,16 @@ export default function Tasks() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [portalFilter, setPortalFilter] = useState('all');
+  const [clientFilter, setClientFilter] = useState('all');
 
   const { data: portals = [] } = useQuery({
     queryKey: ['portals'],
     queryFn: () => base44.entities.Portal.list(),
+  });
+
+  const { data: clients = [] } = useQuery({
+    queryKey: ['clients-active'],
+    queryFn: () => base44.entities.Client.filter({ is_active: true }, 'display_name', 200),
   });
 
   const { data: tasks = [], isLoading, isError, error, refetch } = useQuery({
@@ -53,9 +60,20 @@ export default function Tasks() {
         t.project_name?.toLowerCase().includes(q) ||
         t.client_name?.toLowerCase().includes(q);
       const matchStatus = statusFilter === 'all' || t.status === statusFilter;
-      return matchSearch && matchStatus;
+      const matchClient = clientFilter === 'all' || t.client_id === clientFilter;
+      return matchSearch && matchStatus && matchClient;
     });
-  }, [tasks, search, statusFilter]);
+  }, [tasks, search, statusFilter, clientFilter]);
+
+  const hasActiveFilters =
+    portalFilter !== 'all' || statusFilter !== 'all' || clientFilter !== 'all' || !!search;
+
+  const clearAll = () => {
+    setSearch('');
+    setPortalFilter('all');
+    setStatusFilter('all');
+    setClientFilter('all');
+  };
 
   return (
     <div className="px-8 py-7 max-w-7xl">
@@ -75,38 +93,34 @@ export default function Tasks() {
         </button>
       </header>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2 mb-5">
-        <div className="relative flex-1 min-w-[240px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-3" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search task, project or client"
-            className="w-full h-9 pl-9 pr-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4"
-          />
-        </div>
-        <select
-          value={portalFilter}
-          onChange={(e) => setPortalFilter(e.target.value)}
-          className="h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
-        >
-          <option value="all">All portals</option>
-          {portals.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
-        </select>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
-        >
-          <option value="all">All statuses</option>
-          <option value="accepted">Accepted</option>
-          <option value="rejected">Rejected</option>
-        </select>
-        <div className="ml-auto self-center text-[12px] text-ink-3 tabular-nums">
-          {fmtNumber(filtered.length)} / {fmtNumber(tasks.length)}
-        </div>
-      </div>
+      <ListToolbar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="Search task, project or client"
+        totalCount={tasks.length}
+        filteredCount={filtered.length}
+        hasActiveFilters={hasActiveFilters}
+        onClear={clearAll}
+        filters={
+          <>
+            <ToolbarSelect value={portalFilter} onChange={setPortalFilter} ariaLabel="Filter by portal">
+              <option value="all">All portals</option>
+              {portals.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
+            </ToolbarSelect>
+            {clients.length > 0 && (
+              <ToolbarSelect value={clientFilter} onChange={setClientFilter} ariaLabel="Filter by client">
+                <option value="all">All clients</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.display_name}</option>)}
+              </ToolbarSelect>
+            )}
+            <ToolbarSelect value={statusFilter} onChange={setStatusFilter} ariaLabel="Filter by status">
+              <option value="all">All statuses</option>
+              <option value="accepted">Accepted</option>
+              <option value="rejected">Rejected</option>
+            </ToolbarSelect>
+          </>
+        }
+      />
 
       {isLoading ? (
         <div className="space-y-1.5">
