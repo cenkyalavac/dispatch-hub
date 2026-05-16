@@ -57,6 +57,12 @@ export default function FriendlyNames() {
     toast.success('Friendly name deleted');
   };
 
+  const saveItem = async (it, patch) => {
+    await base44.entities.FriendlyName.update(it.id, patch);
+    qc.invalidateQueries({ queryKey: ['friendly-names'] });
+    toast.success('Friendly name updated');
+  };
+
   const input = 'h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4';
 
   return (
@@ -108,7 +114,7 @@ export default function FriendlyNames() {
       ) : (
         <div className="space-y-2">
           {filtered.map((it) => (
-            <FriendlyNameRow key={it.id} item={it} onToggle={toggleItem} onDelete={deleteItem} />
+            <FriendlyNameRow key={it.id} item={it} onToggle={toggleItem} onDelete={deleteItem} onSave={saveItem} />
           ))}
         </div>
       )}
