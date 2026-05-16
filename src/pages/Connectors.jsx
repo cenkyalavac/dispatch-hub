@@ -3,10 +3,10 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 // useMutation is still used for save/delete mutations below — toggle now uses
 // a plain async function so its ordering against the test call is deterministic.
-import { Plus, Plug, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Plus, Plug } from 'lucide-react';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
+import EmptyState from '@/components/ui/EmptyState';
 import ConnectorCard from '@/components/connectors/ConnectorCard';
 import ConnectorFormDialog from '@/components/connectors/ConnectorFormDialog';
 
@@ -216,32 +216,35 @@ export default function Connectors() {
     (portal.required_secrets || []).filter(s => !KNOWN_SECRETS.has(s) && !OPTIONAL_SECRETS.has(s));
 
   return (
-    <div className="p-8 max-w-5xl">
-      <div className="flex items-start justify-between mb-8">
+    <div className="px-8 py-7 max-w-5xl">
+      <header className="flex items-end justify-between mb-7 flex-wrap gap-4">
         <div>
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-accent text-accent-foreground text-xs font-medium mb-2">
-            <Plug className="w-3 h-3" />
-            Integration Hub
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">Connectors</h1>
-          <p className="text-muted-foreground text-sm mt-1">Manage translation portal integrations and verify their connections.</p>
+          <h1 className="text-[22px] font-semibold tracking-tight text-ink-1 flex items-center gap-2">
+            <Plug className="w-5 h-5 text-ink-3" /> Connectors
+          </h1>
+          <p className="text-[13px] text-ink-3 mt-1 italic-editorial">
+            Manage translation portal integrations and verify their connections.
+          </p>
         </div>
-        <Button onClick={handleNew} className="gap-2">
-          <Plus className="w-4 h-4" /> Add Connector
-        </Button>
-      </div>
+        <button
+          onClick={handleNew}
+          className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-accent text-white text-[13px] font-medium hover:bg-[var(--accent-hover)] transition-colors duration-tab"
+        >
+          <Plus className="w-4 h-4" /> Add connector
+        </button>
+      </header>
 
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2].map(i => <div key={i} className="h-56 bg-secondary rounded-xl animate-pulse" />)}
+          {[1, 2].map(i => <Skeleton key={i} className="h-56" />)}
         </div>
       ) : portals.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="py-16 text-center text-muted-foreground">
-            <Plug className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">No connectors yet.</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          title="No connectors yet"
+          body="Add a connector to start receiving translation tasks from a portal."
+          cta={() => <><Plus className="w-4 h-4" /> Add connector</>}
+          action={handleNew}
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {portals.map(p => (
