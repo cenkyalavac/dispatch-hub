@@ -108,8 +108,10 @@ Deno.serve(async (req) => {
         .catch((e) => console.error('Project.update failed:', e.message));
 
       // 4. Fire the BMS webhook (project.updated). dispatchWebhook is internal —
-      //    call it via the functions API so we get its auth wiring for free.
-      await base44.asServiceRole.functions.invoke('dispatchWebhook', {
+      //    call it via the regular functions API so the caller's auth context
+      //    (the admin running the automation) passes through; asServiceRole
+      //    invoke strips the user and trips the admin-only guard on the inside.
+      await base44.functions.invoke('dispatchWebhook', {
         tenant_id: project.tenant_id || 'default',
         event: 'project.updated',
         project_id: project.id,
@@ -117,7 +119,7 @@ Deno.serve(async (req) => {
     }
 
     // 5. Update the Sheets row in place (Due Date column only).
-    await base44.asServiceRole.functions.invoke('sheetsUpdateTaskRow', {
+    await base44.functions.invoke('sheetsUpdateTaskRow', {
       accepted_task_id: current.id,
     }).catch((e) => console.error('sheetsUpdateTaskRow invoke failed:', e.message));
 
