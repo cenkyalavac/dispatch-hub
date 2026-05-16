@@ -51,7 +51,10 @@ Deno.serve(async (req) => {
     });
 
     // Fire the project.synchronized webhook asynchronously.
-    base44.asServiceRole.functions.invoke('dispatchWebhook', {
+    // Use regular functions.invoke — asServiceRole.functions.invoke is rejected
+    // by the platform's invoke layer with a blanket 403. dispatchWebhook's
+    // permissive auth gate accepts the API-key authenticated caller (null user).
+    base44.functions.invoke('dispatchWebhook', {
       tenant_id: auth.key.tenant_id,
       event: 'project.synchronized',
       project_id: project.id,

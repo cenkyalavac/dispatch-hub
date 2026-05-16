@@ -92,8 +92,19 @@ Deno.serve(async (req) => {
                         ?? it.phaseStatusData?.[0]?.phaseDueDate?.date
                         ?? it.phaseDueDate
                         ?? null;
-          const dueIso = typeof phaseDue === 'number' ? new Date(phaseDue).toISOString()
-                        : (phaseDue?.date ? new Date(phaseDue.date).toISOString() : (phaseDue || s.dueDate?.date ? new Date(s.dueDate.date).toISOString() : (s.dueDate || null)));
+          // Same coercion shape as globallinkPoll — the previous nested ternary
+          // had ambiguous precedence and could pass a raw epoch number through.
+          const _coerceDue = (v) => {
+            if (v == null) return null;
+            if (typeof v === 'number') return new Date(v).toISOString();
+            if (typeof v === 'object' && v.date) return new Date(v.date).toISOString();
+            if (typeof v === 'string') {
+              const d = new Date(v);
+              return isNaN(d.getTime()) ? null : d.toISOString();
+            }
+            return null;
+          };
+          const dueIso = _coerceDue(phaseDue) || _coerceDue(s.dueDate);
           const phaseName = it.subPhaseStatusDataHolders?.[0]?.phaseStatusData?.[0]?.phaseName
                         || it.phaseStatusData?.[0]?.phaseName
                         || it.phase || '';

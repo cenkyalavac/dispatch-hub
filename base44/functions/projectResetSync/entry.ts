@@ -33,7 +33,10 @@ Deno.serve(async (req) => {
     });
 
     // Re-fire project.accepted so any subscribed BMS sees it again. Fire-and-forget.
-    base44.asServiceRole.functions.invoke('dispatchWebhook', {
+    // Use regular functions.invoke — asServiceRole.functions.invoke is rejected
+    // by the platform's invoke layer with a blanket 403. dispatchWebhook's
+    // permissive auth gate accepts admin callers (this endpoint is admin-only).
+    base44.functions.invoke('dispatchWebhook', {
       tenant_id: project.tenant_id || 'default',
       event: 'project.accepted',
       project_id: project.id,
