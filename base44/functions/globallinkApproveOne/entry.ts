@@ -264,7 +264,15 @@ Deno.serve(async (req) => {
       // — which reads exclusively from AcceptedTask — can write them out as
       // configurable columns. Anything missing on the source row becomes a
       // null/zero on the destination; downstream code already handles that.
-      const acceptedTask = await base44.asServiceRole.entities.AcceptedTask.create({
+      //
+      // Persist guard: GlobalLink has already claimed the submission at this
+      // point. If AcceptedTask.create throws, the submission is claimed on PD
+      // but invisible to us — CRITICAL. Record the issue and re-raise so the
+      // calling UI sees the error; external_ref carries submission_ticket
+      // plus the locale so an operator can manually reconcile per language.
+      let acceptedTask;
+      try {
+      acceptedTask = await base44.asServiceRole.entities.AcceptedTask.create({
         portal: 'globallink',
         client_id: portalClientId,
         task_id: Number(matchRow.submission_id) || matchRow.submission_ticket,
@@ -301,6 +309,19 @@ Deno.serve(async (req) => {
         phase_name:   matchRow.phase_name   || '',
         workflow_name: matchRow.workflow_name || '',
       });
+      } catch (persistErr) {
+        base44.functions.invoke('recordSystemIssue', {
+          type: 'accept_persist_failure',
+          severity: 'critical',
+          portal: 'globallink',
+          function_name: 'globallinkApproveOne',
+          external_ref: `${row.submission_ticket}:${claimedLocale}`,
+          dedup_key: `accept:${row.submission_ticket}:${claimedLocale}`,
+          title: `GlobalLink submission ${row.submission_id || row.submission_ticket} claimed but persist failed (${claimedLocale})`,
+          description: `Submission "${matchRow.submission_name || row.submission_ticket}" / ${claimedLocale} was claimed on GlobalLink PD successfully, but AcceptedTask.create threw: ${persistErr.message}\n\nThis submission/locale is now claimed on PD but invisible to the Hub. Recover by manually creating an AcceptedTask row with submission_ticket=${row.submission_ticket}, target_language=${claimedLocale}.`,
+        }).catch((e) => console.error('recordSystemIssue failed:', e.message));
+        throw persistErr;
+      }
 
       await base44.asServiceRole.entities.GlobalLinkSubmission.update(matchRow.id, {
         status: 'claimed',

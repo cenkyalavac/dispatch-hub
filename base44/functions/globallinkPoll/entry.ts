@@ -305,9 +305,29 @@ Deno.serve(async (req) => {
     }
 
     console.log(`globallinkPoll done: created=${summary.created} updated=${summary.updated} retired=${summary.retired} errors=${summary.errors}`);
+
+    // Happy-path auto-resolve: any open poll_failure for this portal is now stale.
+    base44.functions.invoke('resolveSystemIssues', { type: 'poll_failure', portal: 'globallink' })
+      .catch((e) => console.error('resolveSystemIssues failed:', e.message));
+
     return Response.json({ success: true, summary, total_submissions: submissions.length });
   } catch (error) {
     console.error('globallinkPoll error:', error.message);
+    // Visibility: a broken poll silently means "no new offers seen". Record an
+    // issue so an operator notices broker/PD/cron failures before they cost
+    // us submissions. Auto-resolves on the next successful run.
+    try {
+      const b = createClientFromRequest(req);
+      b.functions.invoke('recordSystemIssue', {
+        type: 'poll_failure',
+        severity: 'warning',
+        portal: 'globallink',
+        function_name: 'globallinkPoll',
+        dedup_key: 'poll',
+        title: 'GlobalLink poll failed',
+        description: error.message,
+      }).catch((e) => console.error('recordSystemIssue failed:', e.message));
+    } catch { /* never let issue recording mask the original error */ }
     return Response.json({ success: false, error: error.message }, { status: 500 });
   }
 });

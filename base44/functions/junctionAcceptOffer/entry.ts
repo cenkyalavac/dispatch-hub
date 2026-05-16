@@ -82,24 +82,43 @@ Deno.serve(async (req) => {
 
     const acceptedAt = new Date().toISOString();
 
-    const savedTask = await base44.asServiceRole.entities.AcceptedTask.create({
-      portal: 'junction',
-      client_id: portalClientId,
-      task_id: offerId,
-      task_name: task_name || `Offer #${task_id}`,
-      project_name: project_name || '',
-      client_name: resolvedClient,
-      source_language: source_language || '',
-      target_language: target_language || '',
-      word_count: word_count || 0,
-      price: price || 0,
-      due_date: due_date || null,
-      workflow_name: workflow_name || '',
-      accepted_at: acceptedAt,
-      matched_rule: 'Manual',
-      status: 'accepted',
-      sheets_synced: false,
-    });
+    // Persist guard: Junction has already accepted the offer at this point.
+    // If AcceptedTask.create throws, the offer is claimed on Junction but
+    // invisible to us — CRITICAL. SystemIssue emails admins; external_ref
+    // carries the offer_id so the operator can manually reconcile.
+    let savedTask;
+    try {
+      savedTask = await base44.asServiceRole.entities.AcceptedTask.create({
+        portal: 'junction',
+        client_id: portalClientId,
+        task_id: offerId,
+        task_name: task_name || `Offer #${task_id}`,
+        project_name: project_name || '',
+        client_name: resolvedClient,
+        source_language: source_language || '',
+        target_language: target_language || '',
+        word_count: word_count || 0,
+        price: price || 0,
+        due_date: due_date || null,
+        workflow_name: workflow_name || '',
+        accepted_at: acceptedAt,
+        matched_rule: 'Manual',
+        status: 'accepted',
+        sheets_synced: false,
+      });
+    } catch (persistErr) {
+      base44.functions.invoke('recordSystemIssue', {
+        type: 'accept_persist_failure',
+        severity: 'critical',
+        portal: 'junction',
+        function_name: 'junctionAcceptOffer',
+        external_ref: String(offerId),
+        dedup_key: `accept:${offerId}`,
+        title: `Junction offer ${offerId} claimed upstream but persist failed`,
+        description: `Offer "${task_name || `#${offerId}`}" was Accepted on Junction successfully, but AcceptedTask.create threw: ${persistErr.message}\n\nThis offer is now claimed on Junction but invisible to the Hub. Recover by manually creating an AcceptedTask row with task_id=${offerId}.`,
+      }).catch((e) => console.error('recordSystemIssue failed:', e.message));
+      throw persistErr;
+    }
 
     // BMS Integration: project record for downstream BMS consumption.
     let project = null;

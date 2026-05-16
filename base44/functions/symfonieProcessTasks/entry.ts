@@ -487,6 +487,10 @@ Deno.serve(async (req) => {
     // Count numbers to derive how many tasks were genuinely new this run.
     const alreadyProcessedCount = results.skipped.filter(s => typeof s === 'number').length;
 
+    // Happy-path auto-resolve: any open poll_failure for this portal is stale.
+    base44.functions.invoke('resolveSystemIssues', { type: 'poll_failure', portal: 'symfonie' })
+      .catch((e) => console.error('resolveSystemIssues failed:', e.message));
+
     return Response.json({
       success: true,
       summary: {
@@ -502,6 +506,18 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('symfonieProcessTasks error:', error.message);
+    try {
+      const b = createClientFromRequest(req);
+      b.functions.invoke('recordSystemIssue', {
+        type: 'poll_failure',
+        severity: 'warning',
+        portal: 'symfonie',
+        function_name: 'symfonieProcessTasks',
+        dedup_key: 'poll',
+        title: 'Symfonie poll failed',
+        description: error.message,
+      }).catch((e) => console.error('recordSystemIssue failed:', e.message));
+    } catch { /* never mask the original error */ }
     return Response.json({ error: error.message }, { status: 500 });
   }
 });

@@ -300,6 +300,10 @@ Deno.serve(async (req) => {
         .catch((e) => console.error('sheetsSyncPending trigger failed:', e.message));
     }
 
+    // Happy-path auto-resolve: any open poll_failure for this portal is stale.
+    base44.functions.invoke('resolveSystemIssues', { type: 'poll_failure', portal: 'junction' })
+      .catch((e) => console.error('resolveSystemIssues failed:', e.message));
+
     return Response.json({
       success: true,
       summary,
@@ -308,6 +312,18 @@ Deno.serve(async (req) => {
       ...(fetchErrors.length > 0 ? { partial_fetch_errors: fetchErrors } : {}),
     });
   } catch (error) {
+    try {
+      const b = createClientFromRequest(req);
+      b.functions.invoke('recordSystemIssue', {
+        type: 'poll_failure',
+        severity: 'warning',
+        portal: 'junction',
+        function_name: 'junctionProcessOffers',
+        dedup_key: 'poll',
+        title: 'Junction poll failed',
+        description: error.message,
+      }).catch((e) => console.error('recordSystemIssue failed:', e.message));
+    } catch { /* never mask the original error */ }
     return Response.json({ success: false, error: error.message }, { status: 500 });
   }
 });

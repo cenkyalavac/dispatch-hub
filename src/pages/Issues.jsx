@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { RefreshCw, Search, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Search, AlertTriangle, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import IssueRow from '@/components/issues/IssueRow';
+import SystemIssueRow from '@/components/issues/SystemIssueRow';
 import BulkActionBar from '@/components/pending/BulkActionBar';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
@@ -16,18 +17,31 @@ export default function Issues() {
   const [search, setSearch] = useState('');
   const [portalFilter, setPortalFilter] = useState('all');
   const [resettingIds, setResettingIds] = useState(new Set());
+  const [resolvingIds, setResolvingIds] = useState(new Set());
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
 
-  const { data: projects = [], isLoading, isError, error, refetch, isFetching } = useQuery({
+  // Two independent data sources surfaced side-by-side:
+  //   - Project.failed_to_sync  → BMS couldn't pick up an accepted project
+  //   - SystemIssue (open)      → upstream-of-BMS failures (polls, accept-persist, broker)
+  const { data: projects = [], isLoading: projLoading, isError: projError, error: projErr, refetch: refetchProjects, isFetching: projFetching } = useQuery({
     queryKey: ['failed-projects'],
     queryFn: () => base44.entities.Project.filter({ state: 'failed_to_sync' }, '-accepted_at', 200),
     staleTime: 30_000,
   });
 
+  const { data: systemIssuesRaw = [], isLoading: sysLoading, isError: sysError, error: sysErr, refetch: refetchSystem, isFetching: sysFetching } = useQuery({
+    queryKey: ['system-issues'],
+    queryFn: () => base44.entities.SystemIssue.list('-last_seen_at', 200),
+    staleTime: 30_000,
+  });
+  // Filter "open" client-side — the entity API doesn't reliably filter on null.
+  const systemIssues = useMemo(() => systemIssuesRaw.filter(i => !i.resolved_at), [systemIssuesRaw]);
+  const criticalCount = systemIssues.filter(i => i.severity === 'critical').length;
+
   const portals = useMemo(() => [...new Set(projects.map(p => p.portal))], [projects]);
 
-  const filtered = useMemo(() => {
+  const filteredProjects = useMemo(() => {
     const q = search.trim().toLowerCase();
     return projects.filter(p => {
       if (portalFilter !== 'all' && p.portal !== portalFilter) return false;
@@ -70,18 +84,16 @@ export default function Issues() {
       return next;
     });
   };
-
   const toggleSelectAll = () => {
-    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(filtered.map(p => p.id)));
+    if (selectedIds.size === filteredProjects.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filteredProjects.map(p => p.id)));
   };
 
   const handleBulkReset = async () => {
-    const targets = filtered.filter(p => selectedIds.has(p.id));
+    const targets = filteredProjects.filter(p => selectedIds.has(p.id));
     if (targets.length === 0) return;
     setBulkBusy(true);
     let ok = 0, fail = 0;
-    // Sequential — keeps the dispatchWebhook calls from stampeding the BMS at once.
     for (const p of targets) {
       try {
         const r = await resetOne(p);
@@ -94,124 +106,206 @@ export default function Issues() {
     qc.invalidateQueries({ queryKey: ['failed-projects'] });
   };
 
+  const handleResolveIssue = async (issue) => {
+    setResolvingIds(prev => new Set([...prev, issue.id]));
+    try {
+      const res = await base44.functions.invoke('resolveSystemIssues', { issue_id: issue.id });
+      if (res.data?.ok) {
+        toast.success('Issue resolved');
+        qc.invalidateQueries({ queryKey: ['system-issues'] });
+      } else {
+        toast.error(res.data?.error || 'Resolve failed');
+      }
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setResolvingIds(prev => { const s = new Set(prev); s.delete(issue.id); return s; });
+    }
+  };
+
+  const refetchAll = () => { refetchProjects(); refetchSystem(); };
+  const anyFetching = projFetching || sysFetching;
+
   return (
     <div className="px-8 py-7 max-w-6xl">
       <header className="flex items-end justify-between mb-7 flex-wrap gap-4">
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight text-ink-1">Issues</h1>
           <p className="text-[13px] text-ink-3 mt-1 italic-editorial">
-            Projects the BMS couldn't pick up. Reset them to <code className="not-italic font-mono">accepted</code> to retry.
+            Operational alerts and projects the BMS couldn't pick up.
           </p>
         </div>
         <button
-          onClick={() => refetch()}
-          disabled={isFetching}
+          onClick={refetchAll}
+          disabled={anyFetching}
           className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-2 hover:bg-surface-2 transition-colors duration-tab disabled:opacity-40"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
+          <RefreshCw className={`w-3.5 h-3.5 ${anyFetching ? 'animate-spin' : ''}`} /> Refresh
         </button>
       </header>
 
-      {!isLoading && projects.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
-          <div className="bg-danger-soft border border-danger/30 rounded-md p-3.5">
-            <div className="flex items-center gap-1.5">
-              <AlertTriangle className="w-3 h-3 text-danger" />
-              <p className="text-[10px] uppercase tracking-wider text-danger">Failed</p>
-            </div>
-            <p className="text-[22px] font-semibold tabular-nums mt-0.5 text-danger">{fmtNumber(projects.length)}</p>
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className={`border rounded-md p-3.5 ${criticalCount > 0 ? 'bg-danger-soft border-danger/30' : 'bg-surface-1 border-line-1'}`}>
+          <div className="flex items-center gap-1.5">
+            <AlertCircle className={`w-3 h-3 ${criticalCount > 0 ? 'text-danger' : 'text-ink-3'}`} />
+            <p className={`text-[10px] uppercase tracking-wider ${criticalCount > 0 ? 'text-danger' : 'text-ink-3'}`}>Critical</p>
           </div>
-          <div className="bg-surface-1 border border-line-1 rounded-md p-3.5">
-            <p className="text-[10px] uppercase tracking-wider text-ink-3">Portals affected</p>
-            <p className="text-[22px] font-semibold tabular-nums mt-0.5 text-ink-1">{portals.length}</p>
-          </div>
-          <div className="bg-surface-1 border border-line-1 rounded-md p-3.5">
-            <p className="text-[10px] uppercase tracking-wider text-ink-3">Showing</p>
-            <p className="text-[22px] font-semibold tabular-nums mt-0.5 text-ink-1">{fmtNumber(filtered.length)}</p>
-          </div>
+          <p className={`text-[22px] font-semibold tabular-nums mt-0.5 ${criticalCount > 0 ? 'text-danger' : 'text-ink-1'}`}>{fmtNumber(criticalCount)}</p>
         </div>
-      )}
-
-      <div className="flex items-center gap-3 mb-3">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-3" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search project, client, error message"
-            className="w-full h-9 pl-9 pr-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4"
-          />
+        <div className="bg-surface-1 border border-line-1 rounded-md p-3.5">
+          <div className="flex items-center gap-1.5">
+            <AlertTriangle className="w-3 h-3 text-warning" />
+            <p className="text-[10px] uppercase tracking-wider text-ink-3">System issues</p>
+          </div>
+          <p className="text-[22px] font-semibold tabular-nums mt-0.5 text-ink-1">{fmtNumber(systemIssues.length)}</p>
         </div>
-        {portals.length > 1 && (
-          <select
-            value={portalFilter}
-            onChange={e => setPortalFilter(e.target.value)}
-            className="h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
-          >
-            <option value="all">All portals</option>
-            {portals.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-        )}
+        <div className={`border rounded-md p-3.5 ${projects.length > 0 ? 'bg-danger-soft border-danger/30' : 'bg-surface-1 border-line-1'}`}>
+          <p className={`text-[10px] uppercase tracking-wider ${projects.length > 0 ? 'text-danger' : 'text-ink-3'}`}>Failed BMS syncs</p>
+          <p className={`text-[22px] font-semibold tabular-nums mt-0.5 ${projects.length > 0 ? 'text-danger' : 'text-ink-1'}`}>{fmtNumber(projects.length)}</p>
+        </div>
+        <div className="bg-surface-1 border border-line-1 rounded-md p-3.5">
+          <p className="text-[10px] uppercase tracking-wider text-ink-3">Portals affected</p>
+          <p className="text-[22px] font-semibold tabular-nums mt-0.5 text-ink-1">{portals.length}</p>
+        </div>
       </div>
 
-      <BulkActionBar
-        count={selectedIds.size}
-        busy={bulkBusy}
-        onAccept={handleBulkReset}
-        acceptLabel="Reset selected"
-        canReject={false}
-        onClear={() => setSelectedIds(new Set())}
-      />
-
-      {isError ? (
-        <ErrorState error={error} onRetry={refetch} />
-      ) : isLoading ? (
-        <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-14" />)}</div>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          title={projects.length === 0 ? 'No issues' : 'No matches'}
-          body={projects.length === 0
-            ? "Every project synced cleanly — nothing to recover."
-            : 'Refine your search or clear the filter.'}
-        />
-      ) : (
-        <div className="bg-surface-1 border border-line-1 rounded-md overflow-hidden">
-          <table className="w-full text-[12px]">
-            <thead>
-              <tr className="bg-surface-2 border-b border-line-1 text-[10px] uppercase tracking-wider text-ink-3">
-                <th className="px-3 py-2 w-8">
-                  <input
-                    type="checkbox"
-                    checked={filtered.length > 0 && selectedIds.size === filtered.length}
-                    ref={el => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < filtered.length; }}
-                    onChange={toggleSelectAll}
-                    className="w-4 h-4 accent-[var(--accent)] cursor-pointer"
-                    aria-label="Select all"
-                  />
-                </th>
-                <th className="px-2 py-2 w-6" />
-                <th className="text-left px-3 py-2 font-medium">Project</th>
-                <th className="text-left px-3 py-2 font-medium">Portal</th>
-                <th className="text-left px-3 py-2 font-medium">Error</th>
-                <th className="text-right px-3 py-2 font-medium">Accepted</th>
-                <th className="text-right px-3 py-2 font-medium">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(p => (
-                <IssueRow
-                  key={p.id}
-                  project={p}
-                  busy={resettingIds.has(p.id)}
-                  onReset={handleReset}
-                  selected={selectedIds.has(p.id)}
-                  onToggleSelect={toggleSelect}
-                />
-              ))}
-            </tbody>
-          </table>
+      {/* System Issues section */}
+      <section className="mb-10">
+        <div className="flex items-baseline justify-between mb-3">
+          <h2 className="text-[14px] font-semibold tracking-tight text-ink-1">System issues</h2>
+          <p className="text-[11px] text-ink-3 italic-editorial">
+            Poll failures, accept-persist failures, and broker outages. Auto-resolve when the next run succeeds.
+          </p>
         </div>
-      )}
+        {sysError ? (
+          <ErrorState error={sysErr} onRetry={refetchSystem} />
+        ) : sysLoading ? (
+          <div className="space-y-2">{[1,2].map(i => <Skeleton key={i} className="h-12" />)}</div>
+        ) : systemIssues.length === 0 ? (
+          <EmptyState
+            title="All clear"
+            body="No open system issues — every poll and accept is landing cleanly."
+          />
+        ) : (
+          <div className="bg-surface-1 border border-line-1 rounded-md overflow-hidden">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="bg-surface-2 border-b border-line-1 text-[10px] uppercase tracking-wider text-ink-3">
+                  <th className="px-2 py-2 w-6" />
+                  <th className="text-left px-3 py-2 font-medium w-24">Severity</th>
+                  <th className="text-left px-3 py-2 font-medium">Issue</th>
+                  <th className="text-right px-3 py-2 font-medium">Last seen</th>
+                  <th className="text-right px-3 py-2 font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {systemIssues.map(i => (
+                  <SystemIssueRow
+                    key={i.id}
+                    issue={i}
+                    busy={resolvingIds.has(i.id)}
+                    onResolve={handleResolveIssue}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* Failed BMS Syncs section */}
+      <section>
+        <div className="flex items-baseline justify-between mb-3">
+          <h2 className="text-[14px] font-semibold tracking-tight text-ink-1">Failed BMS syncs</h2>
+          <p className="text-[11px] text-ink-3 italic-editorial">
+            Projects the BMS couldn't pick up. Reset them to <code className="not-italic font-mono">accepted</code> to retry.
+          </p>
+        </div>
+
+        {projects.length > 0 && (
+          <div className="flex items-center gap-3 mb-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-3" />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search project, client, error message"
+                className="w-full h-9 pl-9 pr-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4"
+              />
+            </div>
+            {portals.length > 1 && (
+              <select
+                value={portalFilter}
+                onChange={e => setPortalFilter(e.target.value)}
+                className="h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
+              >
+                <option value="all">All portals</option>
+                {portals.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            )}
+          </div>
+        )}
+
+        <BulkActionBar
+          count={selectedIds.size}
+          busy={bulkBusy}
+          onAccept={handleBulkReset}
+          acceptLabel="Reset selected"
+          canReject={false}
+          onClear={() => setSelectedIds(new Set())}
+        />
+
+        {projError ? (
+          <ErrorState error={projErr} onRetry={refetchProjects} />
+        ) : projLoading ? (
+          <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-14" />)}</div>
+        ) : filteredProjects.length === 0 ? (
+          <EmptyState
+            title={projects.length === 0 ? 'No failed syncs' : 'No matches'}
+            body={projects.length === 0
+              ? "Every project synced cleanly — nothing to recover."
+              : 'Refine your search or clear the filter.'}
+          />
+        ) : (
+          <div className="bg-surface-1 border border-line-1 rounded-md overflow-hidden">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="bg-surface-2 border-b border-line-1 text-[10px] uppercase tracking-wider text-ink-3">
+                  <th className="px-3 py-2 w-8">
+                    <input
+                      type="checkbox"
+                      checked={filteredProjects.length > 0 && selectedIds.size === filteredProjects.length}
+                      ref={el => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredProjects.length; }}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 accent-[var(--accent)] cursor-pointer"
+                      aria-label="Select all"
+                    />
+                  </th>
+                  <th className="px-2 py-2 w-6" />
+                  <th className="text-left px-3 py-2 font-medium">Project</th>
+                  <th className="text-left px-3 py-2 font-medium">Portal</th>
+                  <th className="text-left px-3 py-2 font-medium">Error</th>
+                  <th className="text-right px-3 py-2 font-medium">Accepted</th>
+                  <th className="text-right px-3 py-2 font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredProjects.map(p => (
+                  <IssueRow
+                    key={p.id}
+                    project={p}
+                    busy={resettingIds.has(p.id)}
+                    onReset={handleReset}
+                    selected={selectedIds.has(p.id)}
+                    onToggleSelect={toggleSelect}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

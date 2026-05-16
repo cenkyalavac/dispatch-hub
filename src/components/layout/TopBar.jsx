@@ -19,6 +19,7 @@ import UserMenu from './UserMenu';
 const TABS = [
   { to: '/',          label: 'Overview',   matches: ['/'] },
   { to: '/portals',   label: 'Connectors', matches: ['/portals', '/rules'] },
+  { to: '/issues',    label: 'Issues',     matches: ['/issues'] },
   { to: '/api',       label: 'API',        matches: ['/api'] },
 ];
 
@@ -38,6 +39,18 @@ export default function TopBar() {
     queryFn: () => base44.entities.Portal.list(),
   });
   const activePortals = portals.filter((p) => p.is_active);
+
+  // Open-issue count drives a red dot on the Issues tab. Polls every 60s so
+  // an operator sees new critical issues without manually reloading.
+  const { data: openIssueCount = 0 } = useQuery({
+    queryKey: ['system-issues-open-count'],
+    queryFn: async () => {
+      const all = await base44.entities.SystemIssue.list('-last_seen_at', 200);
+      return all.filter((i) => !i.resolved_at).length;
+    },
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
 
   const isActive = (tab) => {
     if (tab.to === '/') return pathname === '/';
@@ -120,14 +133,23 @@ export default function TopBar() {
           {/* Other primary tabs */}
           {TABS.slice(1).map(t => {
             const active = isActive(t);
+            const showIssueBadge = t.to === '/issues' && openIssueCount > 0;
             return (
               <NavLink
                 key={t.to}
                 to={t.to}
-                className={`relative h-8 px-3 inline-flex items-center text-[13px] font-medium rounded-md transition-colors duration-tab
+                className={`relative h-8 px-3 inline-flex items-center gap-1.5 text-[13px] font-medium rounded-md transition-colors duration-tab
                   ${active ? 'text-ink-1' : 'text-ink-3 hover:text-ink-1 hover:bg-surface-2'}`}
               >
                 {t.label}
+                {showIssueBadge && (
+                  <span
+                    className="inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-danger text-white text-[10px] font-semibold tabular-nums"
+                    title={`${openIssueCount} open issue${openIssueCount === 1 ? '' : 's'}`}
+                  >
+                    {openIssueCount}
+                  </span>
+                )}
                 {active && <span className="absolute -bottom-[13px] left-2 right-2 h-[2px] bg-accent rounded-full" />}
               </NavLink>
             );

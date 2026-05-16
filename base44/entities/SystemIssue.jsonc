@@ -1,0 +1,86 @@
+{
+  "name": "SystemIssue",
+  "type": "object",
+  "description": "Operational failure that needs an operator's attention. Distinct from the Project.failed_to_sync rows (which are 'BMS couldn't pick up'). SystemIssue covers everything upstream of that: poll fetches that failed, accept calls where the upstream succeeded but persistence failed, brokers that went offline, crons that crashed. Deduped by (type, portal, dedup_key) \u2014 repeated occurrences bump occurrence_count + last_seen_at instead of creating a new row. Auto-resolves when the next successful poll closes open poll_failure issues for the same portal.",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "poll_failure",
+        "accept_persist_failure",
+        "broker_offline",
+        "cron_failure",
+        "info"
+      ],
+      "default": "info",
+      "description": "Issue category. poll_failure = upstream fetch failed. accept_persist_failure = upstream Accept succeeded but local AcceptedTask/Project create threw (CRITICAL \u2014 task is accepted upstream but invisible to us). broker_offline = GlobalLink broker heartbeat lapsed. cron_failure = scheduled function threw before completing."
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "warning",
+        "critical"
+      ],
+      "default": "warning",
+      "description": "critical = potential data loss (accept_persist_failure). warning = visibility gap (poll_failure, broker_offline)."
+    },
+    "title": {
+      "type": "string",
+      "description": "Short headline, e.g. 'Symfonie poll failed' or 'Junction accept persisted but Project create threw'."
+    },
+    "description": {
+      "type": "string",
+      "description": "Full error message + any recovery context (upstream task_id, response excerpt)."
+    },
+    "portal": {
+      "type": "string",
+      "description": "Source portal key (symfonie, junction, globallink). Empty for portal-agnostic issues."
+    },
+    "function_name": {
+      "type": "string",
+      "description": "Backend function that emitted the issue (for debugging)."
+    },
+    "external_ref": {
+      "type": "string",
+      "description": "Upstream identifier to aid manual recovery \u2014 Symfonie task_id, Junction offer_id, GlobalLink submission_ticket. Empty when no specific task triggered the issue."
+    },
+    "dedup_key": {
+      "type": "string",
+      "description": "Stable key for dedup. Same (type + portal + dedup_key) within 30 min bumps occurrence_count instead of creating a new row. Typical values: 'poll' (one open issue per portal-poll), `accept:${task_id}` (one per failed accept)."
+    },
+    "occurrence_count": {
+      "type": "integer",
+      "default": 1,
+      "description": "How many times this issue fired before it was resolved."
+    },
+    "first_seen_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_seen_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the issue was closed. Null while open."
+    },
+    "resolved_by": {
+      "type": "string",
+      "description": "'auto' when a subsequent successful run closed it, or the resolver's email when closed manually from the UI."
+    },
+    "resolution_note": {
+      "type": "string"
+    },
+    "emailed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the alert email was sent. Used to avoid re-emailing on every dedup occurrence \u2014 critical issues email only on first creation."
+    }
+  },
+  "required": [
+    "type",
+    "title"
+  ]
+}

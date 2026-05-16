@@ -156,7 +156,27 @@ Deno.serve(async (req) => {
       ...bands,
     };
 
-    const saved = await base44.asServiceRole.entities.AcceptedTask.create(taskRecord);
+    // Persist guard: upstream Symfonie has already accepted the task at this
+    // point. If AcceptedTask.create throws, the task is accepted on Symfonie
+    // but invisible to us — a CRITICAL data-loss scenario. Record a SystemIssue
+    // (which emails admins) and re-raise so the caller sees the 500. The
+    // upstream task_id is in the issue's external_ref for manual recovery.
+    let saved;
+    try {
+      saved = await base44.asServiceRole.entities.AcceptedTask.create(taskRecord);
+    } catch (persistErr) {
+      base44.functions.invoke('recordSystemIssue', {
+        type: 'accept_persist_failure',
+        severity: 'critical',
+        portal: 'symfonie',
+        function_name: 'symfonieAcceptTask',
+        external_ref: String(taskIdNum),
+        dedup_key: `accept:${taskIdNum}`,
+        title: `Symfonie task ${taskIdNum} accepted upstream but persist failed`,
+        description: `Task "${task_name || taskRecord.task_name}" was Accepted on Symfonie successfully, but AcceptedTask.create threw: ${persistErr.message}\n\nThis task is now accepted on the portal but invisible to the Hub. Recover by manually creating an AcceptedTask row with task_id=${taskIdNum}, or by re-running the accept (idempotent on Symfonie side).`,
+      }).catch((e) => console.error('recordSystemIssue failed:', e.message));
+      throw persistErr;
+    }
     console.log(`Task ${taskIdNum} manually accepted by ${user?.email || 'user'}`);
 
     // Sheet write is delegated to sheetsSyncPending (fire-and-forget). It owns
