@@ -2,11 +2,13 @@ import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Mail, Inbox, Settings as SettingsIcon, Send, CheckCheck } from 'lucide-react';
+import { Plus, Pencil, Trash2, Mail, Inbox, Settings as SettingsIcon, Send, CheckCheck, Bell } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
 import NotificationRuleForm from '@/components/notifications/NotificationRuleForm';
+import EventRuleForm from '@/components/notifications/EventRuleForm';
+import EventRuleRow from '@/components/notifications/EventRuleRow';
 import DeliveryRow from '@/components/notifications/DeliveryRow';
 import InboxRow from '@/components/notifications/InboxRow';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,6 +22,10 @@ export default function Notifications() {
 
   const [showForm, setShowForm] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
+  // Separate state for the new NotificationSetting (event rules) tab so the
+  // two forms can't accidentally share an edit target.
+  const [showEventForm, setShowEventForm] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
   const qc = useQueryClient();
 
   const { data: portals = [] } = useQuery({
@@ -38,6 +44,11 @@ export default function Notifications() {
     queryFn: () => base44.entities.NotificationRule.list('priority', 100),
   });
 
+  const { data: eventRules = [], isLoading: eventRulesLoading } = useQuery({
+    queryKey: ['notification-settings'],
+    queryFn: () => base44.entities.NotificationSetting.list('created_date', 100),
+  });
+
   const { data: deliveries = [], isLoading: dLoading } = useQuery({
     queryKey: ['notification-deliveries'],
     queryFn: () => base44.entities.NotificationDelivery.list('-sent_at', 30),
@@ -46,6 +57,7 @@ export default function Notifications() {
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ['notification-rules'] });
+    qc.invalidateQueries({ queryKey: ['notification-settings'] });
     qc.invalidateQueries({ queryKey: ['notification-deliveries'] });
     qc.invalidateQueries({ queryKey: ['user-notifications'] });
     qc.invalidateQueries({ queryKey: ['user-notifications-unread'] });
@@ -57,6 +69,17 @@ export default function Notifications() {
   });
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.NotificationRule.delete(id),
+    onSuccess: () => { toast.success('Rule deleted'); invalidateAll(); },
+  });
+
+  // NotificationSetting (event rules) — toggle/delete mutations. Edit goes
+  // through EventRuleForm's own save mutation so we don't duplicate it here.
+  const settingToggleMutation = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.NotificationSetting.update(id, data),
+    onSuccess: invalidateAll,
+  });
+  const settingDeleteMutation = useMutation({
+    mutationFn: (id) => base44.entities.NotificationSetting.delete(id),
     onSuccess: () => { toast.success('Rule deleted'); invalidateAll(); },
   });
 
@@ -78,6 +101,11 @@ export default function Notifications() {
 
   const handleClose = () => {
     setShowForm(false); setEditingRule(null);
+    invalidateAll();
+  };
+
+  const handleEventClose = () => {
+    setShowEventForm(false); setEditingEvent(null);
     invalidateAll();
   };
 
@@ -124,10 +152,19 @@ export default function Notifications() {
             <Plus className="w-4 h-4" /> New rule
           </button>
         )}
+        {activeTab === 'events' && (
+          <button
+            onClick={() => { setEditingEvent(null); setShowEventForm(true); }}
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-accent text-white text-[13px] font-medium hover:bg-[var(--accent-hover)] transition-colors duration-tab"
+          >
+            <Plus className="w-4 h-4" /> New rule
+          </button>
+        )}
       </header>
 
       <div className="flex items-center gap-1 mb-6 border-b border-line-1 pb-3">
         {tabBtn('inbox', 'Inbox', Inbox, unreadCount)}
+        {tabBtn('events', 'Event rules', Bell)}
         {tabBtn('rules', 'Email rules', SettingsIcon)}
         {tabBtn('deliveries', 'Deliveries', Send)}
       </div>
@@ -233,6 +270,46 @@ export default function Notifications() {
                       </div>
                     </div>
                   </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      )}
+
+      {activeTab === 'events' && (
+        <>
+          {showEventForm && (
+            <div className="mb-6">
+              <EventRuleForm rule={editingEvent} portals={portals} onClose={handleEventClose} />
+            </div>
+          )}
+          <section>
+            <p className="text-[12px] text-ink-3 italic-editorial mb-3">
+              Rules below fire <strong>after</strong> a task is already accepted — e.g. when Symfonie moves a due
+              date. Without any active rule, every change goes to the inbox and all admins get an email
+              (legacy default).
+            </p>
+            {eventRulesLoading ? (
+              <div className="space-y-2">{[1, 2].map((i) => <Skeleton key={i} className="h-16" />)}</div>
+            ) : eventRules.length === 0 ? (
+              <EmptyState
+                title="No event rules yet"
+                body="Create a rule to control who hears about due-date changes — by portal, by recipient, with a minimum-change threshold so small shifts don't spam your inbox."
+                cta={() => <><Plus className="w-4 h-4" /> New rule</>}
+                action={() => { setEditingEvent(null); setShowEventForm(true); }}
+              />
+            ) : (
+              <div className="space-y-2">
+                {eventRules.map((s) => (
+                  <EventRuleRow
+                    key={s.id}
+                    setting={s}
+                    portalLabel={portalLabel}
+                    onToggle={() => settingToggleMutation.mutate({ id: s.id, data: { is_active: !s.is_active } })}
+                    onEdit={() => { setEditingEvent(s); setShowEventForm(true); }}
+                    onDelete={() => { if (confirm(`Delete "${s.name}"?`)) settingDeleteMutation.mutate(s.id); }}
+                  />
                 ))}
               </div>
             )}
