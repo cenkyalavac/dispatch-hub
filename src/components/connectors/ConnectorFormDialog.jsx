@@ -87,13 +87,13 @@ export default function ConnectorFormDialog({ open, onClose, onSave, initial, is
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="Client" helper="Which end-customer this connector belongs to.">
+            <FormField label="Client" required helper="Which end-customer this connector belongs to.">
               <select
                 className={fieldCls}
                 value={form.client_id || ''}
-                onChange={e => update('client_id', e.target.value || null)}
+                onChange={e => update('client_id', e.target.value || '')}
               >
-                <option value="">— Unassigned —</option>
+                <option value="">— Select a client —</option>
                 {clients
                   .filter(c => c.is_active || c.id === form.client_id)
                   .map(c => (
@@ -108,8 +108,8 @@ export default function ConnectorFormDialog({ open, onClose, onSave, initial, is
             </FormField>
           </div>
           {clients.length === 0 && (
-            <p className="text-[11px] text-ink-3 italic-editorial -mt-2">
-              No clients yet — create one on the Clients page first to assign this connector.
+            <p className="text-[11px] text-danger italic-editorial -mt-2">
+              No clients yet — create one on the Clients page first, then return here to assign this connector.
             </p>
           )}
 
@@ -152,7 +152,8 @@ export default function ConnectorFormDialog({ open, onClose, onSave, initial, is
           </button>
           <button
             onClick={() => onSave(form)}
-            disabled={isPending || !form.key || !form.name}
+            disabled={isPending || !form.key || !form.name || !form.client_id}
+            title={!form.client_id ? 'Select a client first' : ''}
             className="h-9 px-4 rounded-md bg-accent text-white text-[13px] font-medium hover:bg-[var(--accent-hover)] transition-colors duration-tab disabled:opacity-40"
           >
             {isPending ? 'Saving…' : 'Save'}

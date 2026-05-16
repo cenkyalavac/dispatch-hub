@@ -6,11 +6,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import ClientForm from '@/components/clients/ClientForm';
 import ClientRow from '@/components/clients/ClientRow';
-import PortalClientMapping from '@/components/clients/PortalClientMapping';
 
-// Clients = the translation agency's own end-customers. Each Portal (connector)
-// is mapped to one Client so accepted tasks can be attributed back. This page
-// manages both: the list of clients and the portal→client mapping.
+// Clients = the translation agency's own end-customers. Portal→Client mapping
+// itself happens on the Connector form (required field there) — this page just
+// owns the master list of clients and surfaces how many connectors each one
+// currently powers.
 export default function Clients() {
   const [editing, setEditing] = useState(null);  // client object or {} for new
 
@@ -65,14 +65,14 @@ export default function Clients() {
 
       {/* Clients list */}
       <section className="mb-8">
-        {loadingClients ? (
+        {loadingClients || loadingPortals ? (
           <div className="space-y-2">
             {[1, 2, 3].map(i => <Skeleton key={i} className="h-14" />)}
           </div>
         ) : clients.length === 0 ? (
           <EmptyState
             title="No clients yet"
-            body="Add your first client to start mapping connectors to the customers they belong to."
+            body="Add your first client, then assign it from the connector form."
             cta={() => (<><Plus className="w-3.5 h-3.5" /> New client</>)}
             action={() => setEditing({})}
           />
@@ -91,11 +91,6 @@ export default function Clients() {
           </div>
         )}
       </section>
-
-      {/* Portal → Client mapping */}
-      {!loadingClients && !loadingPortals && clients.length > 0 && (
-        <PortalClientMapping portals={portals} clients={clients} />
-      )}
     </div>
   );
 }
