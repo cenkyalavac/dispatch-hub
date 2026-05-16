@@ -22,9 +22,9 @@ export default function SystemIssueRow({
   const [open, setOpen] = useState(false);
   const isCritical = issue.severity === 'critical';
   const SeverityIcon = isCritical ? AlertCircle : AlertTriangle;
-  // colspan must match the visible columns in SystemIssuesTable:
-  //   open table  → [select?] + chevron + severity + issue + last_seen + action
-  //   resolved    → chevron + severity + issue + resolved
+  // colSpan must match SystemIssuesTable columns:
+  //   open     → [select?] + chevron + severity + issue + last_seen + action  = 5 (+1 if selectable)
+  //   resolved → chevron + severity + issue + resolved                         = 4
   const colSpan = (resolved ? 4 : 5) + (selectable ? 1 : 0);
 
   return (

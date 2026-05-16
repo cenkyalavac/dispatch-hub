@@ -38,23 +38,27 @@ Deno.serve(async (req) => {
       return Response.json({ ok: true, closed: 1 });
     }
 
-    // Manual bulk close (UI).
+    // Manual bulk close (UI). Parallelised — bulk-resolving 50 issues
+    // sequentially was a multi-second round-trip per call; Promise.all
+    // collapses that to one network burst.
     if (Array.isArray(issue_ids) && issue_ids.length > 0) {
       if (user && user.role !== 'admin') {
         return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
       }
-      let closed = 0;
-      for (const id of issue_ids) {
+      const results = await Promise.all(issue_ids.map(async (id) => {
         const before = await base44.asServiceRole.entities.SystemIssue.get(id).catch(() => null);
-        if (!before || before.resolved_at) continue;
-        await base44.asServiceRole.entities.SystemIssue.update(id, {
+        if (!before || before.resolved_at) return false;
+        const ok = await base44.asServiceRole.entities.SystemIssue.update(id, {
           resolved_at: nowIso,
           resolved_by: resolver,
           resolution_note: note || '',
-        }).catch((e) => console.error('bulk resolve update failed:', e.message));
-        closed++;
-      }
-      return Response.json({ ok: true, closed });
+        }).then(() => true).catch((e) => {
+          console.error('bulk resolve update failed:', e.message);
+          return false;
+        });
+        return ok;
+      }));
+      return Response.json({ ok: true, closed: results.filter(Boolean).length });
     }
 
     // Auto-close by (type, portal). Used by happy-path hooks in poll/cron
@@ -70,13 +74,13 @@ Deno.serve(async (req) => {
       .filter(filterSpec, '-last_seen_at', 100)
       .catch(() => []);
     const toClose = candidates.filter((i) => !i.resolved_at);
-    for (const i of toClose) {
-      await base44.asServiceRole.entities.SystemIssue.update(i.id, {
+    await Promise.all(toClose.map((i) =>
+      base44.asServiceRole.entities.SystemIssue.update(i.id, {
         resolved_at: nowIso,
         resolved_by: resolver,
         resolution_note: note || 'Auto-resolved by subsequent successful run',
-      }).catch((e) => console.error('resolveSystemIssues update failed:', e.message));
-    }
+      }).catch((e) => console.error('resolveSystemIssues update failed:', e.message))
+    ));
 
     return Response.json({ ok: true, closed: toClose.length });
   } catch (error) {

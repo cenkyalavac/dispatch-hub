@@ -41,12 +41,15 @@ export default function TopBar() {
   const activePortals = portals.filter((p) => p.is_active);
 
   // Open-issue count drives a red dot on the Issues tab. Polls every 60s so
-  // an operator sees new critical issues without manually reloading. 1000-row
-  // pull guards against resolved-issue backlog pushing OPEN rows out of view.
+  // an operator sees new critical issues without manually reloading.
+  // Sort is `-last_seen_at` — open issues bump last_seen_at on every new
+  // occurrence, so they cluster at the top. 200 covers a deep backlog with
+  // room to spare while keeping the per-minute network footprint small
+  // (the Issues page itself pulls a wider 1000-row window).
   const { data: openIssueCount = 0 } = useQuery({
     queryKey: ['system-issues-open-count'],
     queryFn: async () => {
-      const all = await base44.entities.SystemIssue.list('-last_seen_at', 1000);
+      const all = await base44.entities.SystemIssue.list('-last_seen_at', 200);
       return all.filter((i) => !i.resolved_at).length;
     },
     refetchInterval: 60_000,
