@@ -260,30 +260,10 @@ Deno.serve(async (req) => {
             summary.errors++;
           }
 
-          // Fire a notification for newly-seen submissions only — GlobalLink
-          // has no auto-accept Rule engine, so every newly available row is a
-          // candidate for human review. Fire-and-forget; failure never blocks
-          // the poll. We key the upstream task_id on submission_ticket+lang
-          // so the same submission for two locales sends two separate emails.
-          if (isNew) {
-            const task_id = `${row.submission_ticket}:${row.target_language}`;
-            base44.asServiceRole.functions.invoke('notifyNewTask', {
-              portal: 'globallink',
-              task_id,
-              task_payload: {
-                task_name: row.submission_name || row.submission_id || row.submission_ticket,
-                project_name: row.project_name || '',
-                client_name: row.client_name || '',
-                source_language: row.source_language || '',
-                target_language: row.target_language || '',
-                word_count: row.word_count || 0,
-                price: 0,
-                due_date: row.deadline_at || row.due_date || null,
-                workflow_name: row.workflow_name || '',
-                submission_ticket: row.submission_ticket,
-              },
-            }).catch((e) => console.error('notifyNewTask failed:', e.message));
-          }
+          // NOTE: per-row notifyNewTask used to fire here. It's now owned by
+          // globallinkProcessSubmissions, which runs the rule engine first and
+          // only notifies when NO rule matches — preventing double-mailing.
+          void isNew;
         }
       }
     }

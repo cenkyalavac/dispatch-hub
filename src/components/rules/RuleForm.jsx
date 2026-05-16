@@ -6,13 +6,26 @@ import { toast } from 'sonner';
 import FormField from '@/components/ui/FormField';
 import ConditionValueInput from '@/components/rules/ConditionValueInput';
 
+// Shared field vocabulary. GlobalLink-specific fields (weighted_wc, lev_*,
+// phase_name, submission_*) coexist here with Symfonie/Junction defaults —
+// matchesRule on each portal ignores fields that don't apply, so a single
+// dropdown is enough for now (vs. building a portal-aware form).
 const FIELDS = [
   { value: 'project_name', label: 'Project name' },
-  { value: 'client_name', label: 'Client name' },
+  { value: 'task_name', label: 'Task name' },
+  { value: 'workflow_name', label: 'Workflow' },
+  { value: 'client_name', label: 'Client / Account' },
   { value: 'source_language', label: 'Source language' },
   { value: 'target_language', label: 'Target language' },
   { value: 'word_count', label: 'Word count' },
   { value: 'price', label: 'Price' },
+  // GlobalLink-specific (also work on AcceptedTask for the other portals)
+  { value: 'weighted_wc', label: 'Weighted WC (WWC)' },
+  { value: 'phase_name', label: 'Phase (GlobalLink)' },
+  { value: 'submission_id', label: 'Submission ID (GlobalLink)' },
+  { value: 'account_id', label: 'Account ID (GlobalLink)' },
+  { value: 'lev_no_match', label: 'No-match words (GlobalLink)' },
+  { value: 'lev_5074', label: '50-74% fuzzy (GlobalLink)' },
 ];
 const TEXT_OPS = [
   { value: 'contains', label: 'contains' },
@@ -27,7 +40,12 @@ const NUM_OPS = [
   { value: 'less_equal', label: '≤' },
   { value: 'equals', label: '=' },
 ];
-const numericFields = ['word_count', 'price', 'quantity'];
+const numericFields = [
+  'word_count', 'price', 'quantity',
+  'weighted_wc',
+  'lev_context', 'lev_rep', 'lev_match100',
+  'lev_9599', 'lev_8594', 'lev_7584', 'lev_5074', 'lev_no_match',
+];
 
 const fieldCls = 'w-full h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4';
 const selectSm = 'h-8 px-2 rounded border border-line-1 bg-surface-1 text-[12px] outline-none';

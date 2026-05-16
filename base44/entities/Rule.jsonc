@@ -44,7 +44,22 @@
               "price",
               "quantity",
               "project_manager_first_name",
-              "project_manager_last_name"
+              "project_manager_last_name",
+              "submission_id",
+              "submission_ticket",
+              "account_id",
+              "phase_name",
+              "weighted_wc",
+              "lev_context",
+              "lev_rep",
+              "lev_match100",
+              "lev_9599",
+              "lev_8594",
+              "lev_7584",
+              "lev_5074",
+              "lev_no_match",
+              "deadline_at",
+              "due_date"
             ],
             "description": "Kontrol edilecek alan"
           },
