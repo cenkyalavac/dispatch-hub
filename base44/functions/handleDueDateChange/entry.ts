@@ -161,9 +161,11 @@ Deno.serve(async (req) => {
           .update(project.id, { due_date: newDue })
           .catch((e) => console.error('Project.update failed:', e.message));
 
-        // 3. Fire BMS webhook. dispatchWebhook is admin-gated internally;
-        //    invoke via the regular functions API (NOT asServiceRole) so the
-        //    automation worker's caller identity passes through.
+        // 3. Fire BMS webhook. Use regular `functions.invoke` — the entity
+        //    automation worker's caller identity passes through, which the
+        //    permissive auth gate in dispatchWebhook accepts (user==null path).
+        //    asServiceRole.functions.invoke is rejected at the platform's
+        //    invoke layer with a blanket 403.
         await base44.functions.invoke('dispatchWebhook', {
           tenant_id: project.tenant_id || 'default',
           event: 'project.updated',
@@ -176,6 +178,12 @@ Deno.serve(async (req) => {
     // 4. Rewrite the Google Sheets row in place. Independent of Project —
     //    the row belongs to the AcceptedTask, so the spreadsheet always needs
     //    the new value even if no Project is linked.
+    //    Use regular `functions.invoke` (not asServiceRole) — the entity
+    //    automation worker passes its own JWT through, which both auth gates
+    //    in sheetsUpdateTaskRow + dispatchWebhook treat as a service caller
+    //    (user==null path). asServiceRole.functions.invoke is rejected at the
+    //    platform's invoke layer with a blanket 403, regardless of the target
+    //    function's auth gate.
     await base44.functions.invoke('sheetsUpdateTaskRow', {
       accepted_task_id: taskId,
     }).catch((e) => console.error('sheetsUpdateTaskRow invoke failed:', e.message));

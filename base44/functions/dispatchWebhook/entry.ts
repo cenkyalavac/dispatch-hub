@@ -20,7 +20,13 @@ Deno.serve(async (req) => {
     // and never directly by app users. Reject unauthenticated/non-admin callers
     // so a leaked URL can't be used to spam downstream BMS webhooks.
     const user = await base44.auth.me().catch(() => null);
-    if (user !== null && user?.role !== 'admin') {
+    // Allow admin users (manual debug) + service callers (handleDueDateChange,
+    // *ProcessTasks, *ApproveOne all invoke via asServiceRole, which surfaces
+    // a synthetic 'service+...' user). Reject only unauthenticated app users.
+    const isService = !user
+      || user.is_service === true
+      || (typeof user.email === 'string' && user.email.startsWith('service+'));
+    if (!isService && user?.role !== 'admin') {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
     const { tenant_id = 'default', event, project_id } = await req.json();

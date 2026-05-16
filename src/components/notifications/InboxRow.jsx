@@ -1,81 +1,78 @@
 import { Link } from 'react-router-dom';
-import { Clock, AlertTriangle, XCircle, Info, UserCircle } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { Clock, AlertTriangle, Info, CheckCircle } from 'lucide-react';
+import moment from 'moment';
 
-// Compact row for one UserNotification. Visually mirrors DeliveryRow so the
-// Inbox and Email-log tabs feel like the same surface. Clicking the row marks
-// it read; if a link_url is present we navigate, otherwise we just dismiss
-// the unread state in place.
-
-const TYPE_ICON = {
+// Single in-app notification row, rendered inside the inbox list. Click
+// anywhere on an unread row to mark it read (and follow link_url if present).
+// Read rows are dimmed but stay clickable.
+//
+// Type/severity → tiny iconography. We intentionally keep the icon palette
+// quiet (line icons, semantic colors only) so the row reads as data, not as
+// a banner.
+const TYPE_ICONS = {
   due_date_changed: Clock,
-  task_canceled: XCircle,
-  task_assignment_changed: UserCircle,
+  task_canceled: AlertTriangle,
+  task_assignment_changed: Info,
   info: Info,
 };
 
-const SEVERITY_STYLES = {
-  info:    { icon: 'text-accent',  dot: 'bg-accent' },
-  warning: { icon: 'text-warning', dot: 'bg-warning' },
-  danger:  { icon: 'text-danger',  dot: 'bg-danger' },
+const SEVERITY_TONE = {
+  danger: 'text-danger',
+  warning: 'text-warning',
+  info: 'text-ink-3',
 };
 
 export default function InboxRow({ n, onMarkRead }) {
-  const Icon = TYPE_ICON[n.type] || (n.severity === 'danger' ? AlertTriangle : Info);
-  const sev = SEVERITY_STYLES[n.severity] || SEVERITY_STYLES.info;
-  const unread = !n.read_at;
+  const Icon = TYPE_ICONS[n.type] || Info;
+  const tone = SEVERITY_TONE[n.severity] || SEVERITY_TONE.info;
+  const isRead = !!n.read_at;
+  const when = n.created_date ? moment(n.created_date).fromNow() : '';
 
-  // Best-effort relative timestamp — server returns ISO strings; if parsing
-  // fails we just hide the suffix rather than crash the row.
-  let when = '';
-  try {
-    when = formatDistanceToNow(new Date(n.created_date), { addSuffix: true });
-  } catch { /* noop */ }
-
+  // Mark-read on click. Wrap in a button only when there's no link, otherwise
+  // use Link (semantic navigation) and fire the read mutation on click.
   const handleClick = () => {
-    if (unread) onMarkRead(n);
+    if (!isRead) onMarkRead(n);
   };
 
-  const Content = (
+  const inner = (
     <div
-      onClick={handleClick}
-      className={`flex items-start gap-3 px-4 py-3 border-b border-line-1 last:border-b-0 cursor-pointer hover-surface transition-colors ${
-        unread ? 'bg-surface-1' : 'bg-surface-2/30'
+      className={`flex items-start gap-3 px-4 py-3 border-b border-line-1 last:border-b-0 hover-surface transition-opacity ${
+        isRead ? 'opacity-60' : ''
       }`}
     >
-      <div className="relative flex-shrink-0 mt-0.5">
-        <Icon className={`w-4 h-4 ${sev.icon}`} />
-        {unread && (
-          <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full ${sev.dot}`} />
-        )}
+      <div className={`mt-0.5 flex-shrink-0 ${tone}`}>
+        <Icon className="w-4 h-4" />
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-[13px] ${unread ? 'font-semibold text-ink-1' : 'font-medium text-ink-2'}`}>
-            {n.title}
-          </span>
+          <span className="text-[13px] font-medium text-ink-1">{n.title}</span>
+          {!isRead && <span className="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />}
           {n.portal && (
-            <span className="text-[10px] font-mono uppercase tracking-wider text-ink-4">
-              {n.portal}
-            </span>
-          )}
-          {n.delta_label && (
-            <span className="text-[11px] text-warning bg-warning-soft px-1.5 py-0.5 rounded">
-              {n.delta_label}
-            </span>
+            <span className="text-[10px] font-mono uppercase tracking-wider text-ink-4">{n.portal}</span>
           )}
         </div>
-        {n.body && (
-          <p className="text-[12px] text-ink-3 mt-0.5 leading-snug">{n.body}</p>
-        )}
+        {n.body && <p className="text-[12px] text-ink-3 mt-0.5 break-words">{n.body}</p>}
       </div>
-      {when && (
-        <span className="text-[11px] text-ink-4 whitespace-nowrap flex-shrink-0 mt-0.5">
-          {when}
-        </span>
-      )}
+      <div className="flex items-center gap-2 text-[11px] text-ink-4 flex-shrink-0 mt-0.5">
+        <span>{when}</span>
+        {isRead && <CheckCircle className="w-3 h-3 text-success" />}
+      </div>
     </div>
   );
 
-  return n.link_url ? <Link to={n.link_url}>{Content}</Link> : Content;
+  // When the notification has a link_url, render as a Link so the row
+  // navigates to the related task/project page. Otherwise render as a
+  // button so it still toggles read state without leaving the page.
+  if (n.link_url) {
+    return (
+      <Link to={n.link_url} onClick={handleClick} className="block">
+        {inner}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" onClick={handleClick} className="block w-full text-left">
+      {inner}
+    </button>
+  );
 }

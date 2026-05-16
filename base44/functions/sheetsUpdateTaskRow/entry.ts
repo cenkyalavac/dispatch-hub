@@ -73,7 +73,14 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
-    if (user !== null && user?.role !== 'admin') {
+    // Allow: admin users (manual), scheduled/service callers (no user
+    // context), and the synthetic 'service+...' surfaced by nested invokes.
+    // handleDueDateChange (entity automation) hits us via the no-user-context
+    // path; that's the most common caller in production.
+    const isService = !user
+      || user.is_service === true
+      || (typeof user.email === 'string' && user.email.startsWith('service+'));
+    if (!isService && user?.role !== 'admin') {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
