@@ -57,6 +57,12 @@ export default function Mappings() {
     toast.success('Mapping deleted');
   };
 
+  const saveMapping = async (m, patch) => {
+    await base44.entities.FieldMapping.update(m.id, patch);
+    qc.invalidateQueries({ queryKey: ['field-mappings'] });
+    toast.success('Mapping updated');
+  };
+
   const input = 'h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4';
 
   return (
@@ -107,7 +113,7 @@ export default function Mappings() {
       ) : (
         <div className="space-y-2">
           {filtered.map(m => (
-            <MappingRow key={m.id} mapping={m} onToggle={toggleMapping} onDelete={deleteMapping} />
+            <MappingRow key={m.id} mapping={m} onToggle={toggleMapping} onDelete={deleteMapping} onSave={saveMapping} />
           ))}
         </div>
       )}
