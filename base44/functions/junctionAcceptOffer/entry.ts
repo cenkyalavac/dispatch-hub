@@ -59,8 +59,17 @@ Deno.serve(async (req) => {
 
     if (!r.ok) {
       const text = await r.text();
+      // Map Junction's status codes to actionable messages. 401 means the JWT
+      // expired (Junction tokens are session-bound, observed multi-day life);
+      // 404 means the offer was claimed by someone else (race-condition on
+      // /v2/offer/available pool) or never existed; 429 surfaces the
+      // 10-req/10-sec cap on the offer-available endpoint family.
+      let hint = '';
+      if (r.status === 401) hint = 'Junction JWT expired or invalid — refresh JUNCTION_JWT.';
+      else if (r.status === 404) hint = 'Offer not found — may have been claimed by another vendor.';
+      else if (r.status === 429) hint = 'Junction rate limit hit — retried 3× and gave up.';
       return Response.json(
-        { success: false, error: `Junction returned HTTP ${r.status}: ${text.slice(0, 200)}` },
+        { success: false, error: `Junction HTTP ${r.status}: ${hint || text.slice(0, 200)}` },
         { status: 502 }
       );
     }
