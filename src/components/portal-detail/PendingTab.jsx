@@ -9,6 +9,7 @@ import { EM, fmtNumber } from '@/lib/format';
 import PendingTaskRow from './PendingTaskRow';
 import SymfonieTaskDetail from '@/components/pending/SymfonieTaskDetail';
 import JunctionTaskDetailPanel from '@/components/pending/JunctionTaskDetailPanel';
+import JunctionOfferTypeSwitch from './JunctionOfferTypeSwitch';
 
 // Snapshot key per portal. Only portals whose fetch function writes a
 // CachedSnapshot row will have a fast-path render — everything else falls
@@ -59,11 +60,11 @@ function GLRow({ task }) {
 // Header is always rendered so Refresh is reachable even while loading —
 // previously the Refresh button only appeared after the first successful fetch,
 // which is exactly the case where users most want to retry.
-function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComponent, onAccept, acceptingId, DetailComponent, snapshotAge }) {
+function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComponent, onAccept, acceptingId, DetailComponent, snapshotAge, headerExtra }) {
   return (
     <section className="bg-surface-1 border border-line-1 rounded-md">
       <header className="flex items-center justify-between px-4 py-2.5 border-b border-line-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[13px] font-semibold text-ink-1">Pending</span>
           {isLoading ? (
             <Skeleton className="h-3 w-6" />
@@ -76,6 +77,8 @@ function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComp
           {snapshotAge && isFetching && (
             <span className="text-[11px] text-ink-4 italic-editorial">· cached {snapshotAge}</span>
           )}
+          {/* Portal-specific header content (e.g. Junction's offer-type switch). */}
+          {headerExtra && <div className="ml-2">{headerExtra}</div>}
         </div>
         <button
           onClick={() => refetch()}
@@ -136,6 +139,10 @@ function GlobalLinkPending({ portal }) {
 function FetchFnPending({ portal }) {
   const qc = useQueryClient();
   const [acceptingId, setAcceptingId] = useState(null);
+  // Junction has three offer surfaces (me/available/rosters). For other portals
+  // this state is set once and ignored — the fetch payload doesn't include it.
+  const isJunction = portal.key === 'junction';
+  const [offerType, setOfferType] = useState('me');
 
   // Snapshot fast-path: when the portal writes a CachedSnapshot row from its
   // fetch function (currently only Symfonie), read it as `placeholderData`
@@ -152,10 +159,27 @@ function FetchFnPending({ portal }) {
     staleTime: Infinity, // snapshot itself is read once per mount
   });
 
-  const { data, isLoading, refetch, isFetching, isError, error } = useQuery({
-    queryKey: ['portal-pending', portal.key],
+  // Junction-only: pull the 3 KPI counts in parallel via $limit=0 so the
+  // segment switch shows "Open 1" etc. without paying for the full payload.
+  // Other portals skip this query entirely.
+  const { data: junctionCounts } = useQuery({
+    queryKey: ['junction-counts'],
     queryFn: async () => {
-      const res = await base44.functions.invoke(portal.fetch_function, {});
+      const res = await base44.functions.invoke('junctionGetCounts', {});
+      return res.data?.counts || {};
+    },
+    enabled: isJunction,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const { data, isLoading, refetch, isFetching, isError, error } = useQuery({
+    // Segment selection is part of the cache key so switching tabs flips
+    // cleanly between the three Junction offer surfaces.
+    queryKey: ['portal-pending', portal.key, isJunction ? offerType : null],
+    queryFn: async () => {
+      const payload = isJunction ? { offer_type: offerType } : {};
+      const res = await base44.functions.invoke(portal.fetch_function, payload);
       if (res.data?.error) throw new Error(res.data.error);
       return res.data;
     },
@@ -239,6 +263,17 @@ function FetchFnPending({ portal }) {
       acceptingId={acceptingId}
       DetailComponent={DETAIL_BY_PORTAL[portal.key]}
       snapshotAge={snapshotAge}
+      headerExtra={isJunction ? (
+        <JunctionOfferTypeSwitch
+          value={offerType}
+          onChange={setOfferType}
+          counts={{
+            me: junctionCounts?.offers_me,
+            available: junctionCounts?.offers_available,
+            rosters: junctionCounts?.offers_rosters,
+          }}
+        />
+      ) : null}
     />
   );
 }
