@@ -173,6 +173,10 @@ Deno.serve(async (req) => {
         ?? offer.weightedWordCount
         ?? (isWordUnit ? offer.unitQuantityTotal : null)
         ?? 0;
+      // Mirror junctionGetOffers' field policy exactly so rules and UI agree.
+      // project_name → real project CODE (PM-facing identifier).
+      // client_name  → program/account LABEL (the human-friendly name rules
+      // typically target). accountName (legal entity) is the last fallback.
       const task = {
         task_id: offerId,
         task_name: td.name || offer.taskLabel || `Offer #${offerId}`,
@@ -184,7 +188,14 @@ Deno.serve(async (req) => {
         // Flat uses `subtotal` for the line total (USD); nested uses `amount`.
         price: offer.amount || td.amount || offer.subtotal || 0,
         due_date: offer.dueDate || td.dueDate || null,
+        // Workflow: explicit field only — taskLabel is task TYPE, not workflow,
+        // so we never alias it here (same policy as junctionGetOffers).
         workflow_name: td.workflow || td.workflowName || '',
+        // Surface Junction-specific extras so rules can target them via
+        // rule_fields (e.g. "service_tag contains Marketing"). These don't
+        // exist on the AcceptedTask schema, so we strip them before insert.
+        service_tag: td.serviceTag || td.service || offer.contentSpecialty || '',
+        task_type: td.taskType || offer.taskLabel || '',
       };
 
       const matched = rules.find(r => matchesRule(task, r));
@@ -213,9 +224,12 @@ Deno.serve(async (req) => {
         }
 
         const acceptedAt = new Date().toISOString();
+        // Strip Junction-only extras (service_tag, task_type) before writing —
+        // they're rule-evaluation inputs, not part of the AcceptedTask schema.
+        const { service_tag, task_type, ...persistedTask } = task;
         const savedTask = await base44.asServiceRole.entities.AcceptedTask.create({
           portal: 'junction',
-          ...task,
+          ...persistedTask,
           accepted_at: acceptedAt,
           matched_rule: matched.name,
           status: matched.action === 'accept' ? 'accepted' : 'rejected',

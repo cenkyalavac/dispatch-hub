@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const {
       task_id, task_name, project_name, client_name, account_name,
-      source_language, target_language, word_count, price, due_date,
+      source_language, target_language, word_count, price, due_date, workflow_name,
       reason_category = 'capacity', reason_explanation = null,
     } = body;
     if (!task_id) return Response.json({ success: false, error: 'task_id is required' }, { status: 400 });
@@ -83,6 +83,7 @@ Deno.serve(async (req) => {
       word_count: word_count || 0,
       price: price || 0,
       due_date: due_date || null,
+      workflow_name: workflow_name || '',
       accepted_at: rejectedAt,
       matched_rule: 'Manual',
       status: 'rejected',

@@ -206,8 +206,11 @@ function FetchFnPending({ portal }) {
   })();
 
   // Shared optimistic-remove helper — every action (accept/reject) drops the
-  // row from the active list and invalidates downstream counters.
+  // row from the active list and invalidates downstream counters. Guards
+  // against null taskId: filtering by `t.id !== null` would otherwise wipe
+  // every row whose id is also null (the whole list).
   const dropRowFromCache = (taskId) => {
+    if (taskId == null) return;
     const listKey = ['portal-pending', portal.key, isJunction ? offerType : null];
     qc.setQueryData(listKey, (old) => {
       if (!old?.tasks) return old;
@@ -236,6 +239,9 @@ function FetchFnPending({ portal }) {
             word_count: task.word_count || 0,
             price: task.price ?? task.price_max_usd ?? 0,
             due_date: task.due_date || null,
+            // Junction-specific extras — Symfonie accept ignores unknown keys,
+            // so it's safe to forward them unconditionally.
+            workflow_name: task.workflow_name || '',
           });
           const payload = res.data || {};
           if (payload.error || payload.success === false) {
@@ -276,6 +282,7 @@ function FetchFnPending({ portal }) {
             word_count: task.word_count || 0,
             price: task.price ?? task.price_max_usd ?? 0,
             due_date: task.due_date || null,
+            workflow_name: task.workflow_name || '',
             reason_category: 'capacity',
           });
           const payload = res.data || {};
