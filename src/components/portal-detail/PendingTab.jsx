@@ -2,14 +2,13 @@ import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Inbox, RefreshCw } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
-import { EM, fmtNumber } from '@/lib/format';
 import PendingTaskRow from './PendingTaskRow';
 import SymfonieTaskDetail from '@/components/pending/SymfonieTaskDetail';
 import JunctionTaskDetailPanel from '@/components/pending/JunctionTaskDetailPanel';
 import JunctionOfferTypeSwitch from './JunctionOfferTypeSwitch';
+import SubmissionTableRow from '@/components/globallink/SubmissionTableRow';
 
 // Snapshot key per portal. Only portals whose fetch function writes a
 // CachedSnapshot row will have a fast-path render — everything else falls
@@ -31,31 +30,9 @@ const DETAIL_BY_PORTAL = {
 //   - Symfonie / Junction: live via the portal's fetch_function, cached 5min
 //     server-side via CachedSnapshot so repeated tab opens are cheap.
 
-// Minimal row for GlobalLink (its data shape is much narrower than the
-// Symfonie/Junction live fetch — single locale, fewer fields).
-function GLRow({ task }) {
-  const name = task.submission_name || task.task_name || EM;
-  const src = task.source_language || EM;
-  const tgt = task.target_language || EM;
-  const wc = task.word_count || 0;
-  const stamp = task.created_date;
-  return (
-    <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-surface-2 transition-colors duration-tab">
-      <div className="min-w-0 flex-1">
-        <p className="text-[12px] font-medium text-ink-1 truncate">{name}</p>
-        <p className="text-[11px] text-ink-3 truncate">
-          <span className="font-mono">{src} → {tgt}</span>
-          {task.project_name && <span> · {task.project_name}</span>}
-          {task.client_name && <span className="text-ink-4"> · {task.client_name}</span>}
-        </p>
-      </div>
-      <span className="text-[11px] text-ink-3 tabular-nums flex-shrink-0">{fmtNumber(wc)} w</span>
-      <span className="text-[11px] text-ink-4 flex-shrink-0 w-24 text-right">
-        {stamp ? formatDistanceToNow(new Date(stamp), { addSuffix: true }) : EM}
-      </span>
-    </div>
-  );
-}
+// GlobalLink rows are richer than Symfonie/Junction — 8 leverage bands + WWC
+// + TR deadline — so they render in a full table via SubmissionTableRow
+// rather than the generic list row used by other portals.
 
 // Header is always rendered so Refresh is reachable even while loading —
 // previously the Refresh button only appeared after the first successful fetch,
@@ -128,13 +105,124 @@ function Body({ items, portal, isLoading, refetch, isFetching, errorMsg, RowComp
 }
 
 function GlobalLinkPending({ portal }) {
+  const qc = useQueryClient();
+  const [busyId, setBusyId] = useState(null);
+  const [busyAction, setBusyAction] = useState(null);
+
   const { data: rows = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['portal-pending', portal.key],
     queryFn: () =>
       base44.entities.GlobalLinkSubmission.filter({ status: 'available' }, '-created_date', 100),
   });
+
+  const dropRow = (id) => {
+    qc.setQueryData(['portal-pending', portal.key], (old = []) => old.filter((r) => r.id !== id));
+    qc.invalidateQueries({ queryKey: ['recent-accepted'] });
+  };
+
+  const onApprove = async (row) => {
+    setBusyId(row.id); setBusyAction('approve');
+    try {
+      const res = await base44.functions.invoke('globallinkApproveOne', {
+        submission_row_id: row.id,
+        submission_ticket: row.submission_ticket,
+      });
+      const data = res.data || {};
+      if (data.success === false || data.error) throw new Error(data.error || 'Claim failed');
+      const langs = (data.claimed_languages || []).join(', ');
+      toast.success(`Claimed ${row.submission_id || row.submission_ticket}${langs ? ` (${langs})` : ''}`);
+      dropRow(row.id);
+    } catch (e) {
+      toast.error(e.message || 'Claim failed');
+    } finally {
+      setBusyId(null); setBusyAction(null);
+    }
+  };
+
+  const onSkip = async (row) => {
+    if (!confirm(`Skip submission ${row.submission_id || row.submission_ticket}? It will be hidden from this list.`)) return;
+    setBusyId(row.id); setBusyAction('skip');
+    try {
+      await base44.entities.GlobalLinkSubmission.update(row.id, {
+        status: 'skipped',
+        claim_error: 'Skipped manually',
+      });
+      toast.success('Skipped');
+      dropRow(row.id);
+    } catch (e) {
+      toast.error(e.message || 'Skip failed');
+    } finally {
+      setBusyId(null); setBusyAction(null);
+    }
+  };
+
   return (
-    <Body items={rows} portal={portal} isLoading={isLoading} refetch={refetch} isFetching={isFetching} RowComponent={GLRow} />
+    <section className="bg-surface-1 border border-line-1 rounded-md">
+      <header className="flex items-center justify-between px-4 py-2.5 border-b border-line-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-semibold text-ink-1">Pending</span>
+          {isLoading ? (
+            <Skeleton className="h-3 w-6" />
+          ) : (
+            <span className="text-[11px] text-ink-3 tabular-nums">{rows.length}</span>
+          )}
+        </div>
+        <button
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="inline-flex items-center gap-1 h-7 px-2 rounded text-[11px] text-ink-3 hover:bg-surface-2 hover:text-ink-1 transition-colors duration-tab disabled:cursor-wait"
+        >
+          <RefreshCw className={`w-3 h-3 ${isFetching ? 'animate-spin' : ''}`} />
+          {isFetching ? 'Refreshing…' : 'Refresh'}
+        </button>
+      </header>
+      {isLoading ? (
+        <div className="p-4 space-y-2">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-7" />)}
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="px-4 py-8 text-center">
+          <Inbox className="w-5 h-5 mx-auto text-ink-4 mb-2" />
+          <p className="text-[12px] text-ink-3 italic-editorial">No available submissions.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead className="bg-surface-2 text-[10px] uppercase tracking-wider text-ink-3">
+              <tr>
+                <th className="px-2 py-2 text-left font-medium">Client</th>
+                <th className="px-2 py-2 text-left font-medium">ID</th>
+                <th className="px-2 py-2 text-left font-medium">Submission</th>
+                <th className="px-2 py-2 text-left font-medium">Target</th>
+                <th className="px-2 py-2 text-right font-medium">Ctx</th>
+                <th className="px-2 py-2 text-right font-medium">100%</th>
+                <th className="px-2 py-2 text-right font-medium">Rep</th>
+                <th className="px-2 py-2 text-right font-medium">95-99</th>
+                <th className="px-2 py-2 text-right font-medium">85-94</th>
+                <th className="px-2 py-2 text-right font-medium">75-84</th>
+                <th className="px-2 py-2 text-right font-medium">50-74</th>
+                <th className="px-2 py-2 text-right font-medium">NoMatch</th>
+                <th className="px-2 py-2 text-right font-medium">Total</th>
+                <th className="px-2 py-2 text-right font-medium">WWC</th>
+                <th className="px-2 py-2 text-left font-medium">Deadline</th>
+                <th className="px-2 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <SubmissionTableRow
+                  key={r.id}
+                  row={r}
+                  onApprove={onApprove}
+                  onSkip={onSkip}
+                  busyAction={busyId === r.id ? busyAction : null}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 
