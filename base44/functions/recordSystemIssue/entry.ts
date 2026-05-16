@@ -2,19 +2,24 @@
 // dedup_key, title, description, severity, function_name, external_ref}.
 //
 // Dedup logic:
-//   - Look up open SystemIssue with same (type, portal, dedup_key).
-//   - If found AND last_seen_at < 30 min ago → bump occurrence_count + last_seen_at.
-//   - Otherwise → create a new row, send alert email if severity='critical'.
+//   - Look up OPEN SystemIssue with same (type, portal, dedup_key).
+//   - If found → bump occurrence_count + last_seen_at, refresh description.
+//     (Window does NOT cap dedup — an open issue stays the SAME issue until
+//     it's resolved. A 4-hour-old open poll_failure should still dedup.)
+//   - Otherwise → create a new row.
+//   - Email throttle: critical issues email only on first creation AND only
+//     once per EMAIL_THROTTLE_MIN window (suppresses re-emails when the same
+//     issue is resolved + reopens quickly).
 //
 // This function is invoked from inside try/catch blocks in poll/accept paths.
 // Its own failure must NEVER throw — caller already has a bigger problem.
-//
-// Email policy: critical only, once per issue (not once per occurrence). Sent
-// to every admin user via Resend.
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const DEDUP_WINDOW_MIN = 30;
+// How recently a critical issue can have been emailed before we suppress a
+// re-email on a NEW issue with the same dedup signature. Prevents alert
+// fatigue when an outage flaps.
+const EMAIL_THROTTLE_MIN = 60;
 
 async function sendCriticalEmail({ base44, issue, baseUrl }) {
   const apiKey = Deno.env.get('RESEND_KEY');
@@ -48,16 +53,28 @@ async function sendCriticalEmail({ base44, issue, baseUrl }) {
     </div>
   `;
 
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from,
-      to: recipients,
-      subject: `[Dispatch Hub] Critical: ${issue.title}`,
-      html,
-    }),
-  }).catch((e) => console.error('recordSystemIssue email failed:', e.message));
+  // Wrap the entire fetch in try/catch — `await fetch().catch()` doesn't
+  // suppress rejection from the awaited promise itself (network errors,
+  // DNS failure, etc.), only chained handlers. We must not let an email
+  // hiccup tear down the issue-recording flow.
+  try {
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from,
+        to: recipients,
+        subject: `[Dispatch Hub] Critical: ${issue.title}`,
+        html,
+      }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      console.error(`recordSystemIssue email HTTP ${resp.status}:`, text.slice(0, 200));
+    }
+  } catch (e) {
+    console.error('recordSystemIssue email failed:', e.message);
+  }
 }
 
 function escapeHtml(s) {
@@ -82,23 +99,36 @@ Deno.serve(async (req) => {
 
     const now = new Date();
     const nowIso = now.toISOString();
-    const windowAgo = new Date(now.getTime() - DEDUP_WINDOW_MIN * 60_000).toISOString();
 
-    // Lookup open issue with same (type, portal, dedup_key).
-    // resolved_at is filtered client-side because filter() doesn't accept "null" reliably.
+    // Lookup latest issue with same (type, portal, dedup_key). resolved_at
+    // is filtered client-side — entity filter() doesn't reliably match null.
+    // Pulling 20 is enough to find the latest open + the latest resolved
+    // (needed for email throttling below).
     const candidates = await base44.asServiceRole.entities.SystemIssue
-      .filter({ type, portal, dedup_key }, '-last_seen_at', 5)
+      .filter({ type, portal, dedup_key }, '-last_seen_at', 20)
       .catch(() => []);
-    const open = candidates.find((c) => !c.resolved_at && c.last_seen_at >= windowAgo);
+    const openIssue = candidates.find((c) => !c.resolved_at);
 
-    if (open) {
-      await base44.asServiceRole.entities.SystemIssue.update(open.id, {
-        occurrence_count: (open.occurrence_count || 1) + 1,
+    if (openIssue) {
+      // Open issue stays the same issue. Bump, refresh description.
+      const nextCount = (openIssue.occurrence_count || 1) + 1;
+      await base44.asServiceRole.entities.SystemIssue.update(openIssue.id, {
+        occurrence_count: nextCount,
         last_seen_at: nowIso,
-        description, // refresh with latest error text
+        description,
+        // Promote warning→critical if a later occurrence is more severe.
+        ...(severity === 'critical' && openIssue.severity !== 'critical' ? { severity: 'critical' } : {}),
       });
-      return Response.json({ ok: true, action: 'bumped', issue_id: open.id, occurrences: (open.occurrence_count || 1) + 1 });
+      return Response.json({ ok: true, action: 'bumped', issue_id: openIssue.id, occurrences: nextCount });
     }
+
+    // No open issue → create new. Check email throttle: if the same
+    // (type, portal, dedup_key) was emailed within EMAIL_THROTTLE_MIN, skip
+    // the email but still record the issue.
+    const throttleCutoffMs = now.getTime() - EMAIL_THROTTLE_MIN * 60_000;
+    const recentlyEmailed = candidates.some(
+      (c) => c.emailed_at && new Date(c.emailed_at).getTime() >= throttleCutoffMs
+    );
 
     const created = await base44.asServiceRole.entities.SystemIssue.create({
       type, severity, title, description, portal,
@@ -108,7 +138,7 @@ Deno.serve(async (req) => {
       last_seen_at: nowIso,
     });
 
-    if (severity === 'critical') {
+    if (severity === 'critical' && !recentlyEmailed) {
       const baseUrl = Deno.env.get('APP_PUBLIC_URL') || '';
       await sendCriticalEmail({
         base44,
@@ -118,7 +148,12 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.SystemIssue.update(created.id, { emailed_at: nowIso }).catch(() => null);
     }
 
-    return Response.json({ ok: true, action: 'created', issue_id: created.id });
+    return Response.json({
+      ok: true,
+      action: 'created',
+      issue_id: created.id,
+      email_throttled: severity === 'critical' && recentlyEmailed,
+    });
   } catch (error) {
     console.error('recordSystemIssue error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });

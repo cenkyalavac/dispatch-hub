@@ -1,11 +1,11 @@
 import { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { RefreshCw, Search, AlertTriangle, AlertCircle } from 'lucide-react';
+import { RefreshCw, Search, AlertTriangle, AlertCircle, History } from 'lucide-react';
 import { toast } from 'sonner';
 
 import IssueRow from '@/components/issues/IssueRow';
-import SystemIssueRow from '@/components/issues/SystemIssueRow';
+import SystemIssuesTable from '@/components/issues/SystemIssuesTable';
 import BulkActionBar from '@/components/pending/BulkActionBar';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
@@ -20,6 +20,10 @@ export default function Issues() {
   const [resolvingIds, setResolvingIds] = useState(new Set());
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  // System issue table — multi-select for bulk resolve.
+  const [selectedIssueIds, setSelectedIssueIds] = useState(new Set());
+  const [bulkResolveBusy, setBulkResolveBusy] = useState(false);
+  const [showResolved, setShowResolved] = useState(false);
 
   // Two independent data sources surfaced side-by-side:
   //   - Project.failed_to_sync  → BMS couldn't pick up an accepted project
@@ -30,13 +34,18 @@ export default function Issues() {
     staleTime: 30_000,
   });
 
+  // Pull a wider window than before. Old 200 limit was capping the OPEN list
+  // when there were many resolved issues in front of it. 1000 covers months
+  // of normal operation; if we ever exceed it the auto-resolve cron should
+  // be drained first anyway.
   const { data: systemIssuesRaw = [], isLoading: sysLoading, isError: sysError, error: sysErr, refetch: refetchSystem, isFetching: sysFetching } = useQuery({
     queryKey: ['system-issues'],
-    queryFn: () => base44.entities.SystemIssue.list('-last_seen_at', 200),
+    queryFn: () => base44.entities.SystemIssue.list('-last_seen_at', 1000),
     staleTime: 30_000,
   });
-  // Filter "open" client-side — the entity API doesn't reliably filter on null.
+  // Filter client-side — the entity API doesn't reliably filter on null.
   const systemIssues = useMemo(() => systemIssuesRaw.filter(i => !i.resolved_at), [systemIssuesRaw]);
+  const resolvedIssues = useMemo(() => systemIssuesRaw.filter(i => i.resolved_at).slice(0, 30), [systemIssuesRaw]);
   const criticalCount = systemIssues.filter(i => i.severity === 'critical').length;
 
   const portals = useMemo(() => [...new Set(projects.map(p => p.portal))], [projects]);
@@ -113,6 +122,7 @@ export default function Issues() {
       if (res.data?.ok) {
         toast.success('Issue resolved');
         qc.invalidateQueries({ queryKey: ['system-issues'] });
+        qc.invalidateQueries({ queryKey: ['system-issues-open-count'] });
       } else {
         toast.error(res.data?.error || 'Resolve failed');
       }
@@ -120,6 +130,36 @@ export default function Issues() {
       toast.error(err.message);
     } finally {
       setResolvingIds(prev => { const s = new Set(prev); s.delete(issue.id); return s; });
+    }
+  };
+
+  const toggleSelectIssue = (issue) => {
+    setSelectedIssueIds(prev => {
+      const next = new Set(prev);
+      if (next.has(issue.id)) next.delete(issue.id); else next.add(issue.id);
+      return next;
+    });
+  };
+  const toggleSelectAllIssues = () => {
+    if (selectedIssueIds.size === systemIssues.length) setSelectedIssueIds(new Set());
+    else setSelectedIssueIds(new Set(systemIssues.map(i => i.id)));
+  };
+  const handleBulkResolveIssues = async () => {
+    if (selectedIssueIds.size === 0) return;
+    setBulkResolveBusy(true);
+    try {
+      const res = await base44.functions.invoke('resolveSystemIssues', {
+        issue_ids: Array.from(selectedIssueIds),
+      });
+      const closed = res.data?.closed ?? 0;
+      toast.success(`Resolved ${closed} issue${closed === 1 ? '' : 's'}`);
+      setSelectedIssueIds(new Set());
+      qc.invalidateQueries({ queryKey: ['system-issues'] });
+      qc.invalidateQueries({ queryKey: ['system-issues-open-count'] });
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBulkResolveBusy(false);
     }
   };
 
@@ -172,12 +212,33 @@ export default function Issues() {
 
       {/* System Issues section */}
       <section className="mb-10">
-        <div className="flex items-baseline justify-between mb-3">
-          <h2 className="text-[14px] font-semibold tracking-tight text-ink-1">System issues</h2>
-          <p className="text-[11px] text-ink-3 italic-editorial">
-            Poll failures, accept-persist failures, and broker outages. Auto-resolve when the next run succeeds.
-          </p>
+        <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <h2 className="text-[14px] font-semibold tracking-tight text-ink-1">System issues</h2>
+            <p className="text-[11px] text-ink-3 italic-editorial mt-0.5">
+              Poll failures, accept-persist failures, and broker outages. Auto-resolve when the next run succeeds.
+            </p>
+          </div>
+          {resolvedIssues.length > 0 && (
+            <button
+              onClick={() => setShowResolved(s => !s)}
+              className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-line-1 bg-surface-1 text-[11px] font-medium text-ink-2 hover:bg-surface-2 transition-colors"
+            >
+              <History className="w-3 h-3" />
+              {showResolved ? 'Hide history' : `Show resolved (${resolvedIssues.length})`}
+            </button>
+          )}
         </div>
+
+        <BulkActionBar
+          count={selectedIssueIds.size}
+          busy={bulkResolveBusy}
+          onAccept={handleBulkResolveIssues}
+          acceptLabel="Resolve selected"
+          canReject={false}
+          onClear={() => setSelectedIssueIds(new Set())}
+        />
+
         {sysError ? (
           <ErrorState error={sysErr} onRetry={refetchSystem} />
         ) : sysLoading ? (
@@ -188,28 +249,21 @@ export default function Issues() {
             body="No open system issues — every poll and accept is landing cleanly."
           />
         ) : (
-          <div className="bg-surface-1 border border-line-1 rounded-md overflow-hidden">
-            <table className="w-full text-[12px]">
-              <thead>
-                <tr className="bg-surface-2 border-b border-line-1 text-[10px] uppercase tracking-wider text-ink-3">
-                  <th className="px-2 py-2 w-6" />
-                  <th className="text-left px-3 py-2 font-medium w-24">Severity</th>
-                  <th className="text-left px-3 py-2 font-medium">Issue</th>
-                  <th className="text-right px-3 py-2 font-medium">Last seen</th>
-                  <th className="text-right px-3 py-2 font-medium">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {systemIssues.map(i => (
-                  <SystemIssueRow
-                    key={i.id}
-                    issue={i}
-                    busy={resolvingIds.has(i.id)}
-                    onResolve={handleResolveIssue}
-                  />
-                ))}
-              </tbody>
-            </table>
+          <SystemIssuesTable
+            issues={systemIssues}
+            selectable
+            selectedIds={selectedIssueIds}
+            onToggleSelect={toggleSelectIssue}
+            onToggleSelectAll={toggleSelectAllIssues}
+            resolvingIds={resolvingIds}
+            onResolve={handleResolveIssue}
+          />
+        )}
+
+        {showResolved && resolvedIssues.length > 0 && (
+          <div className="mt-5">
+            <p className="text-[10px] uppercase tracking-wider text-ink-3 mb-2">Recently resolved</p>
+            <SystemIssuesTable issues={resolvedIssues} resolved />
           </div>
         )}
       </section>

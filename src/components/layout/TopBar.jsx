@@ -41,11 +41,12 @@ export default function TopBar() {
   const activePortals = portals.filter((p) => p.is_active);
 
   // Open-issue count drives a red dot on the Issues tab. Polls every 60s so
-  // an operator sees new critical issues without manually reloading.
+  // an operator sees new critical issues without manually reloading. 1000-row
+  // pull guards against resolved-issue backlog pushing OPEN rows out of view.
   const { data: openIssueCount = 0 } = useQuery({
     queryKey: ['system-issues-open-count'],
     queryFn: async () => {
-      const all = await base44.entities.SystemIssue.list('-last_seen_at', 200);
+      const all = await base44.entities.SystemIssue.list('-last_seen_at', 1000);
       return all.filter((i) => !i.resolved_at).length;
     },
     refetchInterval: 60_000,

@@ -1,10 +1,14 @@
-// Auto-close open SystemIssues of a given (type, portal) when a subsequent run
-// succeeds. Called from inside poll/cron functions on their happy path —
-// e.g. globallinkPoll calls this with {type:'poll_failure', portal:'globallink'}
-// after a successful poll so any open poll-failure auto-resolves.
+// Resolve open SystemIssues.
 //
-// Also exposed as a manual resolve endpoint: pass {issue_id, note} to close
-// a single issue from the UI.
+// Three call shapes:
+//   1. {issue_id, note?}              → close one issue. Admin only.
+//   2. {issue_ids: [...], note?}      → bulk close. Admin only.
+//   3. {type, portal?, note?}         → auto-close all matching open issues.
+//                                       Called by happy-path hooks in poll/cron
+//                                       functions; runs as service (no user).
+//
+// Manual paths (1, 2) require admin auth. Auto-resolve (3) runs unauthenticated
+// because it's called by scheduled crons that have no user context.
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
@@ -12,35 +16,60 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
-    // Soft auth: scheduled cron has no user context; UI manual resolve has admin.
-    if (user !== null && user?.role !== 'admin') {
-      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
-    }
-
     const body = await req.json().catch(() => ({}));
-    const { issue_id, type, portal, note = '' } = body || {};
+    const { issue_id, issue_ids, type, portal, note = '' } = body || {};
+
     const nowIso = new Date().toISOString();
     const resolver = user?.email || 'auto';
 
-    // Single-issue manual close from UI.
+    // Manual single close (UI).
     if (issue_id) {
+      if (user && user.role !== 'admin') {
+        return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+      }
+      const before = await base44.asServiceRole.entities.SystemIssue.get(issue_id).catch(() => null);
+      if (!before) return Response.json({ ok: false, error: 'Issue not found' }, { status: 404 });
+      if (before.resolved_at) return Response.json({ ok: true, closed: 0, already_resolved: true });
       await base44.asServiceRole.entities.SystemIssue.update(issue_id, {
         resolved_at: nowIso,
         resolved_by: resolver,
-        resolution_note: note,
+        resolution_note: note || '',
       });
       return Response.json({ ok: true, closed: 1 });
     }
 
-    // Auto-close all open issues matching (type, portal). Used by happy-path
-    // hooks in poll/cron functions.
-    if (!type) {
-      return Response.json({ error: 'issue_id or type is required' }, { status: 400 });
+    // Manual bulk close (UI).
+    if (Array.isArray(issue_ids) && issue_ids.length > 0) {
+      if (user && user.role !== 'admin') {
+        return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+      }
+      let closed = 0;
+      for (const id of issue_ids) {
+        const before = await base44.asServiceRole.entities.SystemIssue.get(id).catch(() => null);
+        if (!before || before.resolved_at) continue;
+        await base44.asServiceRole.entities.SystemIssue.update(id, {
+          resolved_at: nowIso,
+          resolved_by: resolver,
+          resolution_note: note || '',
+        }).catch((e) => console.error('bulk resolve update failed:', e.message));
+        closed++;
+      }
+      return Response.json({ ok: true, closed });
     }
-    const open = await base44.asServiceRole.entities.SystemIssue
-      .filter({ type, portal: portal || '' }, '-last_seen_at', 50)
+
+    // Auto-close by (type, portal). Used by happy-path hooks in poll/cron
+    // functions — runs unauthenticated because the caller is a scheduled cron.
+    if (!type) {
+      return Response.json({ error: 'issue_id, issue_ids, or type is required' }, { status: 400 });
+    }
+    // Filter explicit: include `portal` only when caller passed it. Calling
+    // `.filter({type, portal: ''}, ...)` would otherwise auto-resolve every
+    // open warning whose portal happens to be empty — across types.
+    const filterSpec = portal ? { type, portal } : { type };
+    const candidates = await base44.asServiceRole.entities.SystemIssue
+      .filter(filterSpec, '-last_seen_at', 100)
       .catch(() => []);
-    const toClose = open.filter((i) => !i.resolved_at);
+    const toClose = candidates.filter((i) => !i.resolved_at);
     for (const i of toClose) {
       await base44.asServiceRole.entities.SystemIssue.update(i.id, {
         resolved_at: nowIso,
