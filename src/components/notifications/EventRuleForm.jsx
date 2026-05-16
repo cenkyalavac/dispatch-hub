@@ -30,6 +30,16 @@ const OPS = [
   { v: 'less_equal', l: '≤' },
 ];
 
+// Minimal RFC-5322ish guard so users can't save "foo" as a recipient. We
+// deliberately don't do full RFC; Resend will reject malformed addresses with
+// a clear error if anything slips through. The literal token "admins" is
+// allowed alongside real addresses (expanded server-side at fire time).
+const isValidRecipient = (s) => {
+  const v = String(s).trim();
+  if (v === 'admins') return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+};
+
 // Empty form shell — used both for "new" and as a reset target after save.
 const blank = {
   name: '',
@@ -71,6 +81,10 @@ export default function EventRuleForm({ rule, portals, onClose }) {
   const addRecipient = () => {
     const v = recipInput.trim();
     if (!v) return;
+    if (!isValidRecipient(v)) {
+      toast.error(`"${v}" is not a valid email (or the "admins" token)`);
+      return;
+    }
     if (form.recipients.includes(v)) return;
     set({ recipients: [...form.recipients, v] });
     setRecipInput('');

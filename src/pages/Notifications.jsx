@@ -10,7 +10,7 @@ import NotificationRuleForm from '@/components/notifications/NotificationRuleFor
 import EventRuleForm from '@/components/notifications/EventRuleForm';
 import EventRuleRow from '@/components/notifications/EventRuleRow';
 import DeliveryRow from '@/components/notifications/DeliveryRow';
-import InboxRow from '@/components/notifications/InboxRow';
+import InboxRow from '@/components/notifications/InboxRow.jsx';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import { EM } from '@/lib/format';
@@ -33,10 +33,13 @@ export default function Notifications() {
     queryFn: () => base44.entities.Portal.list(),
   });
 
+  // Inbox and the top-bar NotificationBell share this query key so a new
+  // notification appearing on the bell instantly updates the inbox tab and
+  // vice-versa (no two separate polls drifting out of sync).
   const { data: inbox = [], isLoading: inboxLoading } = useQuery({
     queryKey: ['user-notifications'],
     queryFn: () => base44.entities.UserNotification.list('-created_date', 100),
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
   });
 
   const { data: rules = [], isLoading: rulesLoading } = useQuery({
@@ -89,11 +92,22 @@ export default function Notifications() {
     qc.invalidateQueries({ queryKey: ['user-notifications-unread'] });
   };
 
+  // Throttle mark-all-read in batches of 8 concurrent updates. The previous
+  // Promise.all over ALL unread rows opened up to 100 simultaneous PATCH
+  // requests against the entity API, which is rude to the backend and on
+  // slow connections caused the toast to fire before half the writes landed.
   const markAllRead = async () => {
     const unread = inbox.filter(n => !n.read_at);
     if (unread.length === 0) return;
     const now = new Date().toISOString();
-    await Promise.all(unread.map(n => base44.entities.UserNotification.update(n.id, { read_at: now })));
+    const BATCH = 8;
+    for (let i = 0; i < unread.length; i += BATCH) {
+      const slice = unread.slice(i, i + BATCH);
+      // eslint-disable-next-line no-await-in-loop
+      await Promise.all(slice.map(n =>
+        base44.entities.UserNotification.update(n.id, { read_at: now }).catch(() => null)
+      ));
+    }
     qc.invalidateQueries({ queryKey: ['user-notifications'] });
     qc.invalidateQueries({ queryKey: ['user-notifications-unread'] });
     toast.success(`Marked ${unread.length} as read`);
@@ -141,7 +155,8 @@ export default function Notifications() {
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight text-ink-1">Notifications</h1>
           <p className="text-[13px] text-ink-3 mt-1 italic-editorial">
-            In-app alerts for due-date changes and other events, plus the email rules that route new tasks to humans.
+            Two kinds of rules: <strong>Change alerts</strong> fire when an already-accepted task changes (e.g.
+            due date moved). <strong>New-task emails</strong> route incoming offers that need a human decision.
           </p>
         </div>
         {activeTab === 'rules' && (
@@ -164,9 +179,9 @@ export default function Notifications() {
 
       <div className="flex items-center gap-1 mb-6 border-b border-line-1 pb-3">
         {tabBtn('inbox', 'Inbox', Inbox, unreadCount)}
-        {tabBtn('events', 'Event rules', Bell)}
-        {tabBtn('rules', 'Email rules', SettingsIcon)}
-        {tabBtn('deliveries', 'Deliveries', Send)}
+        {tabBtn('events', 'Change alerts', Bell)}
+        {tabBtn('rules', 'New-task emails', SettingsIcon)}
+        {tabBtn('deliveries', 'Email log', Send)}
       </div>
 
       {activeTab === 'inbox' && (
