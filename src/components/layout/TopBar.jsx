@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, useLocation, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Command, Hexagon, Settings, Users as UsersIcon, ChevronDown, Building2 } from 'lucide-react';
+import { Command, Hexagon, Settings, ChevronDown } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -143,26 +143,6 @@ export default function TopBar() {
             <span>Search</span>
             <kbd className="ml-2 px-1.5 py-0.5 rounded bg-surface-2 text-[10px] font-mono text-ink-2">⌘K</kbd>
           </button>
-          <NavLink
-            to="/clients"
-            aria-label="Clients"
-            className={({ isActive }) =>
-              `inline-flex items-center justify-center w-8 h-8 rounded-md border border-line-1 transition-colors duration-tab
-               ${isActive ? 'bg-surface-2 text-ink-1' : 'bg-surface-1 text-ink-3 hover:bg-surface-2 hover:text-ink-1'}`
-            }
-          >
-            <Building2 className="w-3.5 h-3.5" />
-          </NavLink>
-          <NavLink
-            to="/users"
-            aria-label="Team"
-            className={({ isActive }) =>
-              `inline-flex items-center justify-center w-8 h-8 rounded-md border border-line-1 transition-colors duration-tab
-               ${isActive ? 'bg-surface-2 text-ink-1' : 'bg-surface-1 text-ink-3 hover:bg-surface-2 hover:text-ink-1'}`
-            }
-          >
-            <UsersIcon className="w-3.5 h-3.5" />
-          </NavLink>
           <NotificationBell />
           <NavLink
             to="/settings"

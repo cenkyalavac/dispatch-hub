@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, ArrowUpDown, Tags, FolderTree, Sheet, KeyRound } from 'lucide-react';
+import { ArrowRight, ArrowUpDown, Tags, Sheet, KeyRound, Building2, Users as UsersIcon } from 'lucide-react';
 import HandoffPathSection from '@/components/settings/HandoffPathSection';
+import SettingsCard from '@/components/settings/SettingsCard';
 
 // Settings is the home for global defaults and data-shaping config.
 // Field Mappings / Friendly Names live here (not under API) because they
@@ -22,6 +23,21 @@ const SHAPING_LINKS = [
   },
 ];
 
+const ORG_LINKS = [
+  {
+    to: '/clients',
+    icon: Building2,
+    title: 'Clients',
+    body: "Your agency's end-customers. Each connector is mapped to a client so accepted tasks carry the right attribution.",
+  },
+  {
+    to: '/users',
+    icon: UsersIcon,
+    title: 'Team',
+    body: 'Invite teammates and manage their roles. Admins can connect portals and manage settings; users can accept and reject tasks.',
+  },
+];
+
 const secretGroups = [
   { title: 'Moravia Symfonie', items: ['SYMFONIE_CLIENT_ID', 'SYMFONIE_CLIENT_SECRET', 'SYMFONIE_TENANT_ID', 'SYMFONIE_SERVICE_ACCOUNT'] },
   { title: 'Welocalize Junction', items: ['JUNCTION_JWT (renews ~30 days)', 'JUNCTION_API_KEY (defensive)'] },
@@ -38,30 +54,19 @@ export default function SettingsPage() {
         </p>
       </header>
 
+      {/* Organization — your clients and your team. */}
+      <section className="mb-8">
+        <h2 className="text-[10px] uppercase tracking-[0.12em] text-ink-3 mb-2.5">Organization</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {ORG_LINKS.map((link) => <SettingsCard key={link.to} {...link} />)}
+        </div>
+      </section>
+
       {/* Data shaping — the two sibling pages live here. */}
       <section className="mb-8">
         <h2 className="text-[10px] uppercase tracking-[0.12em] text-ink-3 mb-2.5">Data shaping</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {SHAPING_LINKS.map(({ to, icon: Icon, title, body }) => (
-            <Link
-              key={to}
-              to={to}
-              className="group bg-surface-1 border border-line-1 rounded-md p-4 hover:bg-surface-2 transition-colors duration-tab"
-            >
-              <div className="flex items-start gap-3">
-                <span className="w-8 h-8 rounded-md bg-accent-soft text-accent-ink flex items-center justify-center shrink-0">
-                  <Icon className="w-4 h-4" />
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[13px] font-semibold text-ink-1">{title}</p>
-                    <ArrowRight className="w-3.5 h-3.5 text-ink-3 group-hover:text-ink-1 group-hover:translate-x-0.5 transition-all duration-tab" />
-                  </div>
-                  <p className="text-[12px] text-ink-3 italic-editorial mt-0.5 leading-relaxed">{body}</p>
-                </div>
-              </div>
-            </Link>
-          ))}
+          {SHAPING_LINKS.map((link) => <SettingsCard key={link.to} {...link} />)}
         </div>
       </section>
 

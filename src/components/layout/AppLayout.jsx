@@ -9,21 +9,29 @@ const SUB_NAVS_API = [
   { to: '/api/docs', label: 'Documentation' },
 ];
 
-// Settings is the home for data-shaping config (mappings, friendly names) and
-// global defaults. Field Mappings / Friendly Names belong here, not under API:
-// they normalize portal data on its way through Dispatch Hub, regardless of
-// whether anyone ever consumes the API.
+// Settings is the home for everything administrative: data-shaping rules,
+// global defaults, team management, and the agency's client roster. None of
+// these belong on the primary nav — they're operator-level config, not
+// day-to-day workflow.
 const SUB_NAVS_SETTINGS = [
   { to: '/settings',       label: 'General', end: true },
   { to: '/mappings',       label: 'Field mappings' },
   { to: '/friendly-names', label: 'Friendly names' },
+  { to: '/clients',        label: 'Clients' },
+  { to: '/users',          label: 'Team' },
 ];
 
 // Pending no longer needs a sub-nav: the TopBar "Pending" menu is a per-portal
 // dropdown and each portal has its own dedicated /pending/:key route.
 function resolveSubNav(pathname) {
   if (pathname.startsWith('/api')) return SUB_NAVS_API;
-  if (pathname.startsWith('/settings') || pathname.startsWith('/mappings') || pathname.startsWith('/friendly-names')) {
+  if (
+    pathname.startsWith('/settings') ||
+    pathname.startsWith('/mappings') ||
+    pathname.startsWith('/friendly-names') ||
+    pathname.startsWith('/clients') ||
+    pathname.startsWith('/users')
+  ) {
     return SUB_NAVS_SETTINGS;
   }
   return [];
