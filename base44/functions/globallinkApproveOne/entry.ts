@@ -324,7 +324,7 @@ Deno.serve(async (req) => {
           accepted_at: acceptedAt,
           origin: { submission_ticket: freshTicket, submission_id: matchRow.submission_id, raw: matchRow.raw || null },
         });
-        base44.asServiceRole.functions.invoke('dispatchWebhook', {
+        base44.functions.invoke('dispatchWebhook', {
           tenant_id: 'default', event: 'project.accepted', project_id: project.id,
         }).catch((e) => console.error('webhook dispatch failed:', e.message));
       } catch (e) {

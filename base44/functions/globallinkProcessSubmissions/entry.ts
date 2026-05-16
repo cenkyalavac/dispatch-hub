@@ -266,8 +266,13 @@ Deno.serve(async (req) => {
 
       if (!matchedRule) {
         // Notify path — fire-and-forget. Mirrors symfonieProcessTasks.
+        // Use regular functions.invoke — asServiceRole.functions.invoke
+        // is rejected by the platform's invoke layer with a 403 before
+        // reaching the target function (verified during handleDueDateChange
+        // debug session). Regular invoke from a scheduled context passes
+        // through and notifyNewTask's auth gate accepts the service caller.
         const task_id = `${sub.submission_ticket}:${sub.target_language}`;
-        base44.asServiceRole.functions.invoke('notifyNewTask', {
+        base44.functions.invoke('notifyNewTask', {
           portal: 'globallink',
           task_id,
           task_payload: {
@@ -397,7 +402,7 @@ Deno.serve(async (req) => {
             accepted_at: acceptedAt,
             origin: { submission_ticket: sub.submission_ticket, submission_id: sub.submission_id, matched_rule: matchedRule.name },
           });
-          base44.asServiceRole.functions.invoke('dispatchWebhook', {
+          base44.functions.invoke('dispatchWebhook', {
             tenant_id: 'default', event: 'project.accepted', project_id: project.id,
           }).catch((e) => console.error('webhook dispatch failed:', e.message));
         } catch (e) {
@@ -419,7 +424,7 @@ Deno.serve(async (req) => {
     // Fire one batch sheet sync if anything was accepted (sheetsSyncPending
     // picks up sheets_synced=false rows). Matches Symfonie/Junction flow.
     if (results.accepted.length > 0) {
-      base44.asServiceRole.functions.invoke('sheetsSyncPending', {})
+      base44.functions.invoke('sheetsSyncPending', {})
         .catch((e) => console.error('sheetsSyncPending trigger failed:', e.message));
     }
 

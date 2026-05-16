@@ -19,9 +19,12 @@ const KNOWN_SECRETS = new Set([
   'SYMFONIE_CLIENT_ID',
   'JUNCTION_JWT',
   'JUNCTION_API_KEY',
-  'GLOBALLINK_JWT',
-  'GLOBALLINK_CONTEXT_USER',
+  // GlobalLink runs through the broker — no direct JWT/CONTEXT_USER required
+  // anymore. Broker holds the live browser session and pushes tokens itself.
+  'BROKER_URL',
+  'BROKER_KEY',
   'GLOBALLINK_BASE_URL',
+  'GLOBALLINK_CONTEXT_USER',
 ]);
 
 // Optional secrets — present in required_secrets for documentation but never block usage.
