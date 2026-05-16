@@ -116,30 +116,43 @@ Deno.serve(async (req) => {
     const details = { accepted: [], rejected: [], skipped: [], errors: [] };
 
     for (const offer of offers) {
-      if (processedIds.has(Number(offer.id))) continue;
+      // /v2/offer/me may return either:
+      //   nested  → { id, taskDetail: { name, project: { name, client: {...} } } }
+      //   flat    → { offerId, taskId, taskLabel, projectName, accountName,
+      //               sourceLocale, targetLocale, dueDate, subtotal, ... }
+      // Verified live 2026-05-16: /available is flat, /me historically nested.
+      // Probe nested first (back-compat), fall back to flat — keeps every
+      // existing junction rule working AND lets the scheduler match flat-shape
+      // offers without per-shape rule edits.
+      const offerId = offer.id ?? offer.offerId ?? null;
+      if (processedIds.has(Number(offerId))) continue;
       const td = offer.taskDetail || offer.task || {};
       const project = td.project || offer.project || {};
       const task = {
-        task_id: offer.id,
-        task_name: td.name || `Offer #${offer.id}`,
-        project_name: project.name || td.projectName || '',
-        client_name: project.client?.name || '',
-        source_language: td.sourceLocale || td.sourceLanguage || '',
-        target_language: td.targetLocale || td.targetLanguage || '',
-        word_count: td.wordCount || 0,
-        price: offer.amount || td.amount || 0,
+        task_id: offerId,
+        task_name: td.name || offer.taskLabel || `Offer #${offerId}`,
+        project_name: project.name || td.projectName || offer.programLabel || offer.projectName || '',
+        client_name: project.client?.name || project.clientName || offer.accountName || offer.companyName || '',
+        source_language: td.sourceLocale || td.sourceLanguage || offer.sourceLocale || '',
+        target_language: td.targetLocale || td.targetLanguage || offer.targetLocale || '',
+        // taskLabel does not have a wordCount equivalent in flat shape — weightedWordCount
+        // is the closest signal; unitQuantityTotal is words for word-priced tasks.
+        word_count: td.wordCount || offer.weightedWordCount || offer.unitQuantityTotal || 0,
+        // Flat uses `subtotal` for the line total (USD); nested uses `amount`.
+        price: offer.amount || td.amount || offer.subtotal || 0,
         due_date: offer.dueDate || td.dueDate || null,
+        workflow_name: td.workflow || td.workflowName || offer.taskLabel || '',
       };
 
       const matched = rules.find(r => matchesRule(task, r));
       if (!matched) {
         summary.skipped++;
-        details.skipped.push({ id: offer.id, name: task.task_name, source_language: task.source_language, target_language: task.target_language, project_name: task.project_name });
+        details.skipped.push({ id: offerId, name: task.task_name, source_language: task.source_language, target_language: task.target_language, project_name: task.project_name });
         // Fire a notification for human review (one-click accept link in email).
         // Fire-and-forget — notification failure never blocks the poll.
         base44.asServiceRole.functions.invoke('notifyNewTask', {
           portal: 'junction',
-          task_id: offer.id,
+          task_id: offerId,
           task_payload: task,
         }).catch((e) => console.error('notifyNewTask failed:', e.message));
         continue;
@@ -147,12 +160,12 @@ Deno.serve(async (req) => {
 
       try {
         const ok = matched.action === 'accept'
-          ? await acceptOffer(apiBase, jwt, apiKey, offer.id)
-          : await rejectOffer(apiBase, jwt, apiKey, offer.id);
+          ? await acceptOffer(apiBase, jwt, apiKey, offerId)
+          : await rejectOffer(apiBase, jwt, apiKey, offerId);
 
         if (!ok) {
           summary.errors++;
-          details.errors.push({ id: offer.id, error: 'API call failed' });
+          details.errors.push({ id: offerId, error: 'API call failed' });
           continue;
         }
 
@@ -174,7 +187,7 @@ Deno.serve(async (req) => {
               tenant_id: 'default',
               accepted_task_id: savedTask.id,
               portal: 'junction',
-              external_id: `junction:${offer.id}`,
+              external_id: `junction:${offerId}`,
               state: 'accepted',
               name: task.task_name,
               client_name: task.client_name || '',
@@ -192,7 +205,7 @@ Deno.serve(async (req) => {
               tenant_id: 'default', event: 'project.accepted', project_id: project.id,
             }).catch((e) => console.error('webhook dispatch failed:', e.message));
           } catch (e) {
-            console.error(`Project create failed for offer ${offer.id}:`, e.message);
+            console.error(`Project create failed for offer ${offerId}:`, e.message);
           }
           summary.accepted++;
           details.accepted.push(task.task_name);
@@ -202,7 +215,7 @@ Deno.serve(async (req) => {
         }
       } catch (err) {
         summary.errors++;
-        details.errors.push({ id: offer.id, error: err.message });
+        details.errors.push({ id: offerId, error: err.message });
       }
     }
 
