@@ -19,7 +19,7 @@ import UserMenu from './UserMenu';
 const TABS = [
   { to: '/',          label: 'Overview',   matches: ['/'] },
   { to: '/portals',   label: 'Connectors', matches: ['/portals', '/rules'] },
-  { to: '/api',       label: 'API',        matches: ['/api', '/mappings', '/friendly-names'] },
+  { to: '/api',       label: 'API',        matches: ['/api'] },
 ];
 
 // Pending lists live inside each connector's own detail page (Pending tab) —
