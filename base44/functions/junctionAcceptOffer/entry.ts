@@ -82,6 +82,61 @@ Deno.serve(async (req) => {
 
     const acceptedAt = new Date().toISOString();
 
+    // Best-effort CAT analysis enrichment via /v1/task/{taskId}?$include=taskDetails.
+    // Junction's accept-bulk response carries the resulting task ID(s); the offer
+    // and task IDs are distinct (offer wraps a task). Fall back gracefully if we
+    // can't resolve the task ID or the detail call fails — CAT data is a nice-to-
+    // have, not a blocker, and the offer is already claimed at this point.
+    const acceptJson = await r.clone().json().catch(() => null);
+    const taskIdFromAccept =
+      acceptJson?.tasks?.[0]?.id ??
+      acceptJson?.data?.[0]?.taskId ??
+      acceptJson?.data?.[0]?.id ??
+      acceptJson?.[0]?.taskId ??
+      acceptJson?.[0]?.id ??
+      null;
+
+    let catFields = {};
+    if (taskIdFromAccept) {
+      try {
+        const detailUrl = `${apiBase}/v1/task/${taskIdFromAccept}?$include=taskDetails`;
+        const dr = await fetch(detailUrl, { headers });
+        if (dr.ok) {
+          const detail = await dr.json();
+          // Junction returns an array of bands. Map name → our portal-neutral
+          // lev_* fields. `mtPostEdit` is folded into lev_no_match — it shares
+          // the same MTPE 0.6 weight, matches Welocalize's per-band pricing
+          // semantics, and we have no dedicated MT column.
+          const bands = Array.isArray(detail?.taskDetails) ? detail.taskDetails
+            : Array.isArray(detail?.data?.taskDetails) ? detail.data.taskDetails
+            : [];
+          const qty = (name) => {
+            const row = bands.find(b => b?.name === name);
+            return Number(row?.unitQuantity) || 0;
+          };
+          catFields = {
+            lev_context:  qty('iceMatches'),
+            lev_rep:      qty('repetitions'),
+            lev_match100: qty('oneHundred'),
+            lev_9599:     qty('ninetyFive'),
+            lev_8594:     qty('eightyFive'),
+            lev_7584:     qty('seventyFive'),
+            lev_no_match: qty('newWords') + qty('mtPostEdit'),
+            // Junction proprietary WWC — read it, don't recompute. The
+            // weightedWordCount lives at the task root, not inside taskDetails.
+            weighted_wc:  Number(detail?.weightedWordCount ?? detail?.data?.weightedWordCount) || 0,
+            parser_type:  'Junction',
+          };
+        } else {
+          console.warn(`Junction task detail HTTP ${dr.status} for task ${taskIdFromAccept} — skipping CAT enrichment.`);
+        }
+      } catch (e) {
+        console.warn(`Junction task detail fetch failed for task ${taskIdFromAccept}:`, e.message);
+      }
+    } else {
+      console.warn('Junction accept-bulk response did not carry a task id — skipping CAT enrichment.');
+    }
+
     // Persist guard: Junction has already accepted the offer at this point.
     // If AcceptedTask.create throws, the offer is claimed on Junction but
     // invisible to us — CRITICAL. SystemIssue emails admins; external_ref
@@ -105,6 +160,7 @@ Deno.serve(async (req) => {
         matched_rule: 'Manual',
         status: 'accepted',
         sheets_synced: false,
+        ...catFields,
       });
     } catch (persistErr) {
       base44.functions.invoke('recordSystemIssue', {
