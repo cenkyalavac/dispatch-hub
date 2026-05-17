@@ -189,27 +189,25 @@ Deno.serve(async (req) => {
     const projects = await base44.asServiceRole.entities.Project.filter(filter, '-accepted_at', limit);
 
     // Hydrate clients + friendly rumuz rows + AcceptedTask CAT data in parallel.
-    // AcceptedTask is fetched in a single batched filter (ids in the page) so
-    // the per-project payload includes the leverage breakdown without an N+1.
-    // Filter API doesn't support $in; we do an unfiltered top-`limit` list
-    // and intersect locally — same cost shape as the projects fetch and
-    // keeps the entity-API contract simple.
+    // AcceptedTask is fetched via parallel .get() per project — bounded by
+    // `limit` (max 500). Previous batched-list-then-intersect approach silently
+    // dropped CAT data when the AcceptedTask page-cap was exceeded; parallel
+    // gets are exact and cost the same on the wire.
     const acceptedTaskIds = projects.map(p => p.accepted_task_id).filter(Boolean);
-    const [allClients, friendlyRows, acceptedTasks] = await Promise.all([
+    const [allClients, friendlyRows, acceptedTaskResults] = await Promise.all([
       projects.some(p => p.client_id)
         ? base44.asServiceRole.entities.Client.list('-created_date', 500)
         : Promise.resolve([]),
       base44.asServiceRole.entities.FriendlyName.list('-created_date', 2000).catch(() => []),
-      acceptedTaskIds.length > 0
-        ? base44.asServiceRole.entities.AcceptedTask.list('-accepted_at', Math.max(limit * 2, 500))
-        : Promise.resolve([]),
+      Promise.all(acceptedTaskIds.map(id =>
+        base44.asServiceRole.entities.AcceptedTask.get(id).catch(() => null)
+      )),
     ]);
     const clientById = new Map();
     allClients.forEach(c => clientById.set(c.id, c));
     const friendlyIndex = buildFriendlyIndex(friendlyRows);
-    const wantedAtIds = new Set(acceptedTaskIds);
     const acceptedTaskById = new Map();
-    acceptedTasks.forEach(at => { if (wantedAtIds.has(at.id)) acceptedTaskById.set(at.id, at); });
+    acceptedTaskResults.forEach((at, i) => { if (at) acceptedTaskById.set(acceptedTaskIds[i], at); });
 
     return Response.json({
       count: projects.length,

@@ -62,55 +62,52 @@ Deno.serve(async (req) => {
       return null;
     };
 
-    // Attachments count (catalog only — full list via apiAttachmentsList).
-    const attCount = await base44.asServiceRole.entities.ProjectAttachment
-      .filter({ tenant_id: auth.key.tenant_id, project_id: project.id })
-      .then(r => r.length)
-      .catch(() => 0);
+    // Hydrate everything we need to enrich the project in parallel —
+    // attachments count, AcceptedTask (for cat_analysis), Client (for
+    // end-customer attribution), and FriendlyName rows (for rumuz overlay).
+    const [attCount, at, clientRow, friendlyRows] = await Promise.all([
+      base44.asServiceRole.entities.ProjectAttachment
+        .filter({ tenant_id: auth.key.tenant_id, project_id: project.id })
+        .then(r => r.length)
+        .catch(() => 0),
+      project.accepted_task_id
+        ? base44.asServiceRole.entities.AcceptedTask.get(project.accepted_task_id).catch(() => null)
+        : Promise.resolve(null),
+      project.client_id
+        ? base44.asServiceRole.entities.Client.get(project.client_id).catch(() => null)
+        : Promise.resolve(null),
+      base44.asServiceRole.entities.FriendlyName.list('-created_date', 2000).catch(() => []),
+    ]);
 
-    // CAT leverage breakdown — pulled from the underlying AcceptedTask. Same
-    // shape as apiProjectsList.cat_analysis so list and detail agree.
+    // CAT leverage breakdown — built from the AcceptedTask row. Same shape as
+    // apiProjectsList.cat_analysis so list and detail agree. null when no CAT
+    // data was captured at accept time (older rows, portals without analysis).
     let catAnalysis = null;
-    if (project.accepted_task_id) {
-      const at = await base44.asServiceRole.entities.AcceptedTask.get(project.accepted_task_id).catch(() => null);
-      if (at) {
-        const bands = {
-          context:  Number(at.lev_context)  || 0,
-          rep:      Number(at.lev_rep)      || 0,
-          match100: Number(at.lev_match100) || 0,
-          fuzzy_95_99: Number(at.lev_9599) || 0,
-          fuzzy_85_94: Number(at.lev_8594) || 0,
-          fuzzy_75_84: Number(at.lev_7584) || 0,
-          fuzzy_50_74: Number(at.lev_5074) || 0,
-          rep_95_99: Number(at.lev_rep_9599) || 0,
-          rep_85_94: Number(at.lev_rep_8594) || 0,
-          rep_75_84: Number(at.lev_rep_7584) || 0,
-          rep_50_74: Number(at.lev_rep_5074) || 0,
-          no_match: Number(at.lev_no_match) || 0,
-        };
-        const weightedWc = Number(at.weighted_wc) || 0;
-        const total = Object.values(bands).reduce((s, v) => s + v, 0);
-        if (total > 0 || weightedWc > 0) {
-          catAnalysis = { weighted_wc: weightedWc, parser_type: at.parser_type || null, bands };
-        }
+    if (at) {
+      const bands = {
+        context:  Number(at.lev_context)  || 0,
+        rep:      Number(at.lev_rep)      || 0,
+        match100: Number(at.lev_match100) || 0,
+        fuzzy_95_99: Number(at.lev_9599) || 0,
+        fuzzy_85_94: Number(at.lev_8594) || 0,
+        fuzzy_75_84: Number(at.lev_7584) || 0,
+        fuzzy_50_74: Number(at.lev_5074) || 0,
+        rep_95_99: Number(at.lev_rep_9599) || 0,
+        rep_85_94: Number(at.lev_rep_8594) || 0,
+        rep_75_84: Number(at.lev_rep_7584) || 0,
+        rep_50_74: Number(at.lev_rep_5074) || 0,
+        no_match: Number(at.lev_no_match) || 0,
+      };
+      const weightedWc = Number(at.weighted_wc) || 0;
+      const total = Object.values(bands).reduce((s, v) => s + v, 0);
+      if (total > 0 || weightedWc > 0) {
+        catAnalysis = { weighted_wc: weightedWc, parser_type: at.parser_type || null, bands };
       }
     }
 
-    // Agency end-customer attribution. Resolved from the Client entity via
-    // the FK set at accept time. null when the originating portal wasn't
-    // mapped to a client yet.
-    let client = null;
-    if (project.client_id) {
-      const c = await base44.asServiceRole.entities.Client.get(project.client_id).catch(() => null);
-      if (c) client = { id: c.id, slug: c.slug, display_name: c.display_name };
-    }
-
-    // Friendly rumuz block — separate from BMS `destination` (which stays
-    // null-on-miss for safety). Friendly passes through to the raw value on
-    // miss, so downstream BMS UIs can always render a human label.
-    const friendlyRows = await base44.asServiceRole.entities.FriendlyName
-      .list('-created_date', 2000)
-      .catch(() => []);
+    const client = clientRow
+      ? { id: clientRow.id, slug: clientRow.slug, display_name: clientRow.display_name }
+      : null;
     const FRIENDLY_TYPE_FIELDS = {
       client:   { nameField: 'client_name',   idField: null },
       account:  { nameField: 'account_name',  idField: null },
