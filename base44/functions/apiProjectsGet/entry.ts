@@ -68,6 +68,34 @@ Deno.serve(async (req) => {
       .then(r => r.length)
       .catch(() => 0);
 
+    // CAT leverage breakdown — pulled from the underlying AcceptedTask. Same
+    // shape as apiProjectsList.cat_analysis so list and detail agree.
+    let catAnalysis = null;
+    if (project.accepted_task_id) {
+      const at = await base44.asServiceRole.entities.AcceptedTask.get(project.accepted_task_id).catch(() => null);
+      if (at) {
+        const bands = {
+          context:  Number(at.lev_context)  || 0,
+          rep:      Number(at.lev_rep)      || 0,
+          match100: Number(at.lev_match100) || 0,
+          fuzzy_95_99: Number(at.lev_9599) || 0,
+          fuzzy_85_94: Number(at.lev_8594) || 0,
+          fuzzy_75_84: Number(at.lev_7584) || 0,
+          fuzzy_50_74: Number(at.lev_5074) || 0,
+          rep_95_99: Number(at.lev_rep_9599) || 0,
+          rep_85_94: Number(at.lev_rep_8594) || 0,
+          rep_75_84: Number(at.lev_rep_7584) || 0,
+          rep_50_74: Number(at.lev_rep_5074) || 0,
+          no_match: Number(at.lev_no_match) || 0,
+        };
+        const weightedWc = Number(at.weighted_wc) || 0;
+        const total = Object.values(bands).reduce((s, v) => s + v, 0);
+        if (total > 0 || weightedWc > 0) {
+          catAnalysis = { weighted_wc: weightedWc, parser_type: at.parser_type || null, bands };
+        }
+      }
+    }
+
     // Agency end-customer attribution. Resolved from the Client entity via
     // the FK set at accept time. null when the originating portal wasn't
     // mapped to a client yet.
@@ -153,6 +181,7 @@ Deno.serve(async (req) => {
         mapping_applied: applied,
         unmapped,
         attachments_count: attCount,
+        cat_analysis: catAnalysis,
       },
     });
   } catch (error) {

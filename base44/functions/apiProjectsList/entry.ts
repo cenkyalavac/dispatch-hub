@@ -66,7 +66,39 @@ function resolveFriendly(index, type, portal, rawName, rawId) {
   return rawName || null;
 }
 
-function serializeProject(p, clientById, friendlyIndex) {
+// Build a single cat_analysis block from an AcceptedTask row. Returns null
+// when we have nothing useful to surface (every band is 0/missing AND there's
+// no weighted_wc) — keeps the API payload clean.
+function buildCatAnalysis(at) {
+  if (!at) return null;
+  const bands = {
+    context:  Number(at.lev_context)  || 0,
+    rep:      Number(at.lev_rep)      || 0,
+    match100: Number(at.lev_match100) || 0,
+    fuzzy_95_99: Number(at.lev_9599) || 0,
+    fuzzy_85_94: Number(at.lev_8594) || 0,
+    fuzzy_75_84: Number(at.lev_7584) || 0,
+    fuzzy_50_74: Number(at.lev_5074) || 0,
+    // GlobalLink-only sub-bands (reps that fall inside a fuzzy band). Symfonie
+    // and Junction don't emit these — surface them when present so the BMS
+    // can do GL-specific weighting without re-pulling the upstream.
+    rep_95_99: Number(at.lev_rep_9599) || 0,
+    rep_85_94: Number(at.lev_rep_8594) || 0,
+    rep_75_84: Number(at.lev_rep_7584) || 0,
+    rep_50_74: Number(at.lev_rep_5074) || 0,
+    no_match: Number(at.lev_no_match) || 0,
+  };
+  const weightedWc = Number(at.weighted_wc) || 0;
+  const bandsTotal = Object.values(bands).reduce((s, v) => s + v, 0);
+  if (bandsTotal === 0 && weightedWc === 0) return null;
+  return {
+    weighted_wc: weightedWc,
+    parser_type: at.parser_type || null,
+    bands,
+  };
+}
+
+function serializeProject(p, clientById, friendlyIndex, acceptedTaskById) {
   const c = p.client_id ? clientById.get(p.client_id) : null;
   // Raw upstream identifiers — Project entity stores client_name/project_name
   // at the top level; account/project IDs and workflow_name live under origin.
@@ -74,6 +106,9 @@ function serializeProject(p, clientById, friendlyIndex) {
   const accountId = p.origin?.account_id != null ? String(p.origin.account_id) : null;
   const projectIdRaw = p.origin?.project_id != null ? String(p.origin.project_id) : null;
   const workflowName = p.origin?.workflow_name || null;
+
+  const at = p.accepted_task_id ? acceptedTaskById.get(p.accepted_task_id) : null;
+  const catAnalysis = buildCatAnalysis(at);
 
   return {
     id: p.id,
@@ -116,6 +151,13 @@ function serializeProject(p, clientById, friendlyIndex) {
       project_id: projectIdRaw,
       workflow_name: workflowName,
     },
+    // CAT leverage breakdown — hydrated from the underlying AcceptedTask.
+    // null when no leverage data was captured at accept time (older rows,
+    // portals without CAT analysis). Bands are portal-neutral; weighted_wc
+    // is the source-of-truth weighted word count (Junction supplies it
+    // precomputed; Symfonie/GlobalLink compute it client-side via the
+    // MTPE-aligned formula in lib/leverage.js).
+    cat_analysis: catAnalysis,
   };
 }
 
@@ -146,22 +188,32 @@ Deno.serve(async (req) => {
     }
     const projects = await base44.asServiceRole.entities.Project.filter(filter, '-accepted_at', limit);
 
-    // Hydrate clients + friendly rumuz rows in parallel — one fetch each,
-    // not one per project. Friendly rows are precompiled into a lookup index
-    // so per-project resolution is O(1).
-    const [allClients, friendlyRows] = await Promise.all([
+    // Hydrate clients + friendly rumuz rows + AcceptedTask CAT data in parallel.
+    // AcceptedTask is fetched in a single batched filter (ids in the page) so
+    // the per-project payload includes the leverage breakdown without an N+1.
+    // Filter API doesn't support $in; we do an unfiltered top-`limit` list
+    // and intersect locally — same cost shape as the projects fetch and
+    // keeps the entity-API contract simple.
+    const acceptedTaskIds = projects.map(p => p.accepted_task_id).filter(Boolean);
+    const [allClients, friendlyRows, acceptedTasks] = await Promise.all([
       projects.some(p => p.client_id)
         ? base44.asServiceRole.entities.Client.list('-created_date', 500)
         : Promise.resolve([]),
       base44.asServiceRole.entities.FriendlyName.list('-created_date', 2000).catch(() => []),
+      acceptedTaskIds.length > 0
+        ? base44.asServiceRole.entities.AcceptedTask.list('-accepted_at', Math.max(limit * 2, 500))
+        : Promise.resolve([]),
     ]);
     const clientById = new Map();
     allClients.forEach(c => clientById.set(c.id, c));
     const friendlyIndex = buildFriendlyIndex(friendlyRows);
+    const wantedAtIds = new Set(acceptedTaskIds);
+    const acceptedTaskById = new Map();
+    acceptedTasks.forEach(at => { if (wantedAtIds.has(at.id)) acceptedTaskById.set(at.id, at); });
 
     return Response.json({
       count: projects.length,
-      projects: projects.map(p => serializeProject(p, clientById, friendlyIndex)),
+      projects: projects.map(p => serializeProject(p, clientById, friendlyIndex, acceptedTaskById)),
     });
   } catch (error) {
     console.error('apiProjectsList error:', error.message);

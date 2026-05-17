@@ -18,6 +18,7 @@ const TOC = [
   { id: 'webhook-security', label: 'Signature verification' },
   { id: 'webhook-retries',  label: 'Retries & failures' },
   { id: 'errors',        label: 'Errors' },
+  { id: 'cat-analysis',  label: 'CAT analysis block' },
   { id: 'spec',          label: 'Machine-readable spec' },
 ];
 
@@ -27,10 +28,12 @@ const ENDPOINTS = [
     scope: 'read:projects',
     title: 'List projects by lifecycle state',
     description:
-      'Pulls projects scoped to your tenant. Default state is "accepted" — i.e. the inbox the BMS still needs to acknowledge.',
+      'Pulls projects scoped to your tenant. Default state is "accepted" — i.e. the inbox the BMS still needs to acknowledge. Optional client_id / client_slug filters scope the result to a single end-customer.',
     body: `{
   "state": "accepted | synchronized | delivered | failed_to_sync",
-  "limit": 100
+  "limit": 100,
+  "client_id": "optional",
+  "client_slug": "optional (e.g. \\"apple-inc\\")"
 }`,
     response: `{
   "count": 12,
@@ -41,10 +44,18 @@ const ENDPOINTS = [
       "state": "accepted",
       "portal": "symfonie",
       "name": "ACME — Press release EN→TR",
+      "client":    { "id": "cli_1", "slug": "apple-inc", "display_name": "Apple" },
+      "friendly":  { "client_name": "Apple", "project_name": "Press May 22" },
+      "raw":       { "account_name": "Apple Inc.", "account_id": "47110", "project_id": "P-2026-117", "workflow_name": "MTPE-light" },
       "source_language": "en-US",
       "target_language": "tr-TR",
       "word_count": 1280,
-      "due_date": "2026-05-22T10:00:00Z"
+      "due_date": "2026-05-22T10:00:00Z",
+      "cat_analysis": {
+        "weighted_wc": 712.4,
+        "parser_type": "MemSource",
+        "bands": { "context": 320, "rep": 12, "match100": 145, "fuzzy_95_99": 38, "fuzzy_85_94": 60, "fuzzy_75_84": 25, "fuzzy_50_74": 18, "no_match": 662 }
+      }
     }
   ]
 }`,
@@ -71,10 +82,15 @@ const ENDPOINTS = [
     "mapping_applied": [
       { "field": "client_name", "from": "Apple Inc.", "to": "APPLE_BMS" }
     ],
-    "attachments_count": 3
+    "attachments_count": 3,
+    "cat_analysis": {
+      "weighted_wc": 712.4,
+      "parser_type": "MemSource",
+      "bands": { "context": 320, "rep": 12, "match100": 145, "fuzzy_95_99": 38, "fuzzy_85_94": 60, "fuzzy_75_84": 25, "fuzzy_50_74": 18, "no_match": 662 }
+    }
   }
 }`,
-    notes: 'destination is null-on-miss (BMS safety). friendly is passthrough — short rumuz when one exists, else raw upstream name.',
+    notes: 'destination is null-on-miss (BMS safety). friendly is passthrough — short rumuz when one exists, else raw upstream name. cat_analysis exposes the leverage breakdown captured at accept time (null when CAT data wasn\'t available).',
   },
   {
     fn: 'apiProjectsAcknowledge',
@@ -305,6 +321,57 @@ function isValid(rawBody, signatureHeader, secret) {
             </p>
             <p className="text-[11.5px] text-ink-3 italic-editorial border-l-2 border-line-2 pl-3">
               Your endpoint should respond as fast as possible (under a few seconds) with any 2xx status. Long-running work belongs behind a queue on your side — the webhook is just a notification.
+            </p>
+          </DocSection>
+
+          {/* ─────────────────────────── CAT ANALYSIS ─────────────────────────── */}
+          <DocSection id="cat-analysis" eyebrow="Reference" title="CAT analysis block">
+            <p>
+              Every project payload (both <code className="font-mono bg-surface-2 px-1 rounded">apiProjectsList</code> and <code className="font-mono bg-surface-2 px-1 rounded">apiProjectsGet</code>) carries a <code className="font-mono bg-surface-2 px-1 rounded">cat_analysis</code> block when CAT leverage was captured at accept time. The shape is portal-neutral — bands have the same meaning whether the underlying source is Symfonie (MemSource), GlobalLink (PD), or Junction.
+            </p>
+            <CodeBlock language="json">{`{
+  "weighted_wc": 712.4,
+  "parser_type": "MemSource",
+  "bands": {
+    "context":     320,
+    "rep":          12,
+    "match100":    145,
+    "fuzzy_95_99":  38,
+    "fuzzy_85_94":  60,
+    "fuzzy_75_84":  25,
+    "fuzzy_50_74":  18,
+    "rep_95_99":     0,
+    "rep_85_94":     0,
+    "rep_75_84":     0,
+    "rep_50_74":     0,
+    "no_match":    662
+  }
+}`}</CodeBlock>
+            <div className="border border-line-1 rounded-md overflow-hidden mt-4">
+              <table className="w-full text-[12.5px]">
+                <thead className="bg-surface-2 text-ink-3">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium">Field</th>
+                    <th className="text-left px-3 py-2 font-medium">Meaning</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line-1">
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">weighted_wc</td><td className="px-3 py-2 text-ink-2">Source-of-truth weighted word count. Junction supplies this precomputed; Symfonie/GlobalLink compute it client-side via the MTPE-aligned formula.</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">parser_type</td><td className="px-3 py-2 text-ink-2">CAT tool that produced the analysis (<code className="font-mono">MemSource</code>, <code className="font-mono">Junction</code>, etc.). May be <code className="font-mono">null</code>.</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">bands.context</td><td className="px-3 py-2 text-ink-2">In-context / context-TM matches.</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">bands.rep</td><td className="px-3 py-2 text-ink-2">Pure cross-segment repetitions.</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">bands.match100</td><td className="px-3 py-2 text-ink-2">100% TM matches.</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">bands.fuzzy_*</td><td className="px-3 py-2 text-ink-2">Pure fuzzy bands (95-99 / 85-94 / 75-84 / 50-74). Repetitions falling inside a fuzzy band live in the corresponding <code className="font-mono">rep_*</code> field, not here.</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">bands.rep_*</td><td className="px-3 py-2 text-ink-2">GlobalLink-only sub-bands. Symfonie/Junction emit <code className="font-mono">0</code>.</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">bands.no_match</td><td className="px-3 py-2 text-ink-2">No-match words. Junction folds <code className="font-mono">mtPostEdit</code> into this bucket (same MTPE 0.6 weight).</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[11.5px] text-ink-3 italic-editorial border-l-2 border-line-2 pl-3 mt-4">
+              <strong className="not-italic text-ink-2">When is <code className="font-mono not-italic">cat_analysis</code> null?</strong> Older projects accepted before CAT capture landed, portals without leverage analysis attached, or rejections. Treat null as "no data" rather than "all zero" — don't divide by it.
+            </p>
+            <p className="text-[11.5px] text-ink-3 italic-editorial border-l-2 border-line-2 pl-3">
+              <strong className="not-italic text-ink-2">Junction quirk:</strong> Junction has no 50-74 band (lowest is 75). It emits a proprietary <code className="font-mono not-italic">weighted_wc</code> precomputed from its internal pricing model — use it as-is rather than re-deriving from bands.
             </p>
           </DocSection>
 

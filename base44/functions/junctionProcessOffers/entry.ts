@@ -50,7 +50,57 @@ async function acceptOffer(apiBase, jwt, apiKey, offerId) {
     headers: authHeaders(jwt, apiKey, true),
     body: JSON.stringify({ ids: [Number(offerId)] }),
   });
-  return r.ok;
+  if (!r.ok) return { ok: false, taskId: null };
+  // Junction's accept-bulk response carries the resulting task id(s). Shape
+  // varies by deploy — probe the known candidates. Used downstream for CAT
+  // enrichment via /v1/task/{id}?$include=taskDetails.
+  const j = await r.clone().json().catch(() => null);
+  const taskId =
+    j?.tasks?.[0]?.id ??
+    j?.data?.[0]?.taskId ??
+    j?.data?.[0]?.id ??
+    j?.[0]?.taskId ??
+    j?.[0]?.id ??
+    null;
+  return { ok: true, taskId };
+}
+
+// Best-effort CAT enrichment for a single accepted task. Returns the
+// portal-neutral lev_* + weighted_wc + parser_type bag, or {} if the
+// detail call can't be made or fails. Never throws — the offer is already
+// claimed at the point this is called.
+async function fetchCatFields(apiBase, jwt, apiKey, taskId) {
+  if (!taskId) return {};
+  try {
+    const detailUrl = `${apiBase}/v1/task/${taskId}?$include=taskDetails`;
+    const dr = await jFetchRetry(detailUrl, { headers: authHeaders(jwt, apiKey) });
+    if (!dr.ok) {
+      console.warn(`Junction task detail HTTP ${dr.status} for task ${taskId} — skipping CAT enrichment.`);
+      return {};
+    }
+    const detail = await dr.json();
+    const bands = Array.isArray(detail?.taskDetails) ? detail.taskDetails
+      : Array.isArray(detail?.data?.taskDetails) ? detail.data.taskDetails
+      : [];
+    const qty = (name) => {
+      const row = bands.find(b => b?.name === name);
+      return Number(row?.unitQuantity) || 0;
+    };
+    return {
+      lev_context:  qty('iceMatches'),
+      lev_rep:      qty('repetitions'),
+      lev_match100: qty('oneHundred'),
+      lev_9599:     qty('ninetyFive'),
+      lev_8594:     qty('eightyFive'),
+      lev_7584:     qty('seventyFive'),
+      lev_no_match: qty('newWords') + qty('mtPostEdit'),
+      weighted_wc:  Number(detail?.weightedWordCount ?? detail?.data?.weightedWordCount) || 0,
+      parser_type:  'Junction',
+    };
+  } catch (e) {
+    console.warn(`Junction task detail fetch failed for task ${taskId}:`, e.message);
+    return {};
+  }
 }
 
 async function rejectOffer(apiBase, jwt, apiKey, offerId, reason = 'capacity') {
@@ -221,15 +271,25 @@ Deno.serve(async (req) => {
       }
 
       try {
-        const ok = matched.action === 'accept'
-          ? await acceptOffer(apiBase, jwt, apiKey, offerId)
-          : await rejectOffer(apiBase, jwt, apiKey, offerId);
+        let acceptResult = { ok: false, taskId: null };
+        if (matched.action === 'accept') {
+          acceptResult = await acceptOffer(apiBase, jwt, apiKey, offerId);
+        } else {
+          acceptResult.ok = await rejectOffer(apiBase, jwt, apiKey, offerId);
+        }
 
-        if (!ok) {
+        if (!acceptResult.ok) {
           summary.errors++;
           details.errors.push({ id: offerId, error: 'API call failed' });
           continue;
         }
+
+        // CAT enrichment only on accept — reject doesn't produce a task.
+        // Sequential per-offer call is fine: jFetchRetry already handles
+        // rate limits, and we're already throttled by the upstream accept.
+        const catFields = matched.action === 'accept'
+          ? await fetchCatFields(apiBase, jwt, apiKey, acceptResult.taskId)
+          : {};
 
         const acceptedAt = new Date().toISOString();
         // Strip Junction-only extras (service_tag, task_type) before writing —
@@ -243,6 +303,7 @@ Deno.serve(async (req) => {
           matched_rule: matched.name,
           status: matched.action === 'accept' ? 'accepted' : 'rejected',
           sheets_synced: false,
+          ...catFields,
         });
 
         // Mirror Symfonie: every rule-accepted task gets a Project record + webhook fire.

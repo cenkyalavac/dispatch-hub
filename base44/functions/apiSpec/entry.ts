@@ -3,7 +3,7 @@
 Deno.serve(async () => {
   const spec = {
     name: 'Dispatch Hub — BMS Integration API',
-    version: '2.0.0-faz2',
+    version: '2.1.0-faz2',
     auth: {
       scheme: 'Apikey',
       header: 'Authorization: Apikey <token>',
@@ -15,16 +15,22 @@ Deno.serve(async () => {
         name: 'List projects',
         function: 'apiProjectsList',
         scope: 'read:projects',
-        body: { state: 'accepted | synchronized | delivered | failed_to_sync', limit: 'number (<=500)' },
-        returns: '{ count, projects: [] }',
+        body: {
+          state: 'accepted | synchronized | delivered | failed_to_sync',
+          limit: 'number (<=500)',
+          client_id: 'string (optional) — filter by Client.id',
+          client_slug: 'string (optional) — filter by Client.slug (e.g. "apple-inc")',
+        },
+        returns: '{ count, projects: [{ ..., client, friendly, raw, cat_analysis }] }',
+        notes: 'Each project carries `friendly` (passthrough rumuz overlay), `raw` (upstream account/project/workflow identifiers), and `cat_analysis` (leverage bands + weighted_wc; null when no CAT data was captured).',
       },
       {
         name: 'Get project',
         function: 'apiProjectsGet',
         scope: 'read:projects',
         body: { id: 'string' },
-        returns: '{ project: { origin, destination, friendly, mapping_applied, attachments_count } }',
-        notes: 'destination is null-on-miss (BMS safety). friendly is passthrough — short rumuz when one exists, else raw upstream name.',
+        returns: '{ project: { origin, destination, friendly, mapping_applied, attachments_count, cat_analysis } }',
+        notes: 'destination is null-on-miss (BMS safety). friendly is passthrough — short rumuz when one exists, else raw upstream name. cat_analysis exposes the same leverage breakdown as apiProjectsList.',
       },
       {
         name: 'Acknowledge project',
@@ -80,9 +86,32 @@ Deno.serve(async () => {
       behaviour: 'passthrough — falls back to raw upstream name if no rumuz matches',
       surfaces: ['UI (pending, dashboard, history)', 'notification emails', 'Google Sheets (friendly_* source fields)', 'BMS API (project.friendly block)'],
     },
+    cat_analysis: {
+      surfaces: ['apiProjectsList.projects[].cat_analysis', 'apiProjectsGet.project.cat_analysis'],
+      shape: {
+        weighted_wc: 'number — source-of-truth weighted word count (Junction precomputed; Symfonie/GlobalLink computed via MTPE-aligned formula)',
+        parser_type: 'string|null — CAT tool that produced the analysis (MemSource, Junction, ...)',
+        bands: {
+          context: 'in-context / context-TM matches',
+          rep: 'pure cross-segment repetitions',
+          match100: '100% matches',
+          fuzzy_95_99: 'pure 95-99% fuzzy (Reps95-99 live in rep_95_99)',
+          fuzzy_85_94: 'pure 85-94% fuzzy',
+          fuzzy_75_84: 'pure 75-84% fuzzy',
+          fuzzy_50_74: 'pure 50-74% fuzzy',
+          rep_95_99: 'GlobalLink-only: repetitions inside the 95-99 fuzzy band',
+          rep_85_94: 'GlobalLink-only',
+          rep_75_84: 'GlobalLink-only',
+          rep_50_74: 'GlobalLink-only',
+          no_match: 'no-match words (Junction folds mtPostEdit into this bucket)',
+        },
+      },
+      notes: 'cat_analysis is null when no CAT data was captured at accept time (older rows or portals without analysis). Junction has no 50-74 band (lowest is 75). GlobalLink emits sub-bands (rep_XX_XX); Symfonie/Junction leave them at 0.',
+    },
     notes: [
       'Faz 2: destination is computed via FieldMapping rules; mapping_applied lists every translation that fired.',
       'Faz 2: ProjectAttachment catalog tracks Dropbox-uploaded handoff files; BMS can list & download via signed URLs (~4h validity).',
+      'Faz 2.1: cat_analysis surfaces the leverage breakdown + weighted_wc on every project payload (list and detail).',
       'Multi-tenant ready: every record is scoped by tenant_id. Default tenant is "default".',
     ],
   };
