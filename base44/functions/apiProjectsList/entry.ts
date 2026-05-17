@@ -27,8 +27,54 @@ async function authenticateKey(base44, token, scopeNeeded) {
   return { key };
 }
 
-function serializeProject(p, clientById) {
+// End-client / account / division attribution lives BELOW the agency `client`
+// (Welocalize/RWS/etc.). The BMS needs the raw upstream identifiers AND the
+// human-friendly rumuz overlay so it can route a single Symfonie portal's
+// traffic to Amazon vs. Adloc downstream without hardcoding string heuristics.
+//
+// friendlyRowsByType is a precomputed index: type → array of {match_by, source_value_lc, display_name, portal}.
+// portal-specific rows ranked above '*' so a Symfonie-scoped rumuz wins over a
+// global one. Same precedence as apiProjectsGet.
+function buildFriendlyIndex(friendlyRows) {
+  const index = { client: [], account: [], project: [], workflow: [] };
+  for (const r of friendlyRows) {
+    if (r.is_active === false) continue;
+    if (!index[r.type]) continue;
+    index[r.type].push({
+      portal: r.portal,
+      match_by: r.match_by || 'name',
+      source_value_lc: String(r.source_value || '').toLowerCase(),
+      display_name: r.display_name,
+    });
+  }
+  // Portal-specific before '*'.
+  for (const t of Object.keys(index)) {
+    index[t].sort((a, b) => (a.portal === '*' ? 1 : 0) - (b.portal === '*' ? 1 : 0));
+  }
+  return index;
+}
+
+function resolveFriendly(index, type, portal, rawName, rawId) {
+  const rows = index[type] || [];
+  const nameLc = rawName ? String(rawName).toLowerCase() : '';
+  const idLc = rawId != null ? String(rawId).toLowerCase() : '';
+  for (const r of rows) {
+    if (r.portal !== portal && r.portal !== '*') continue;
+    if (r.match_by === 'id' && idLc && r.source_value_lc === idLc) return r.display_name;
+    if (r.match_by === 'name' && nameLc && r.source_value_lc === nameLc) return r.display_name;
+  }
+  return rawName || null;
+}
+
+function serializeProject(p, clientById, friendlyIndex) {
   const c = p.client_id ? clientById.get(p.client_id) : null;
+  // Raw upstream identifiers — Project entity stores client_name/project_name
+  // at the top level; account/project IDs and workflow_name live under origin.
+  const accountName = p.origin?.account_name || p.origin?.client_name || p.client_name || null;
+  const accountId = p.origin?.account_id != null ? String(p.origin.account_id) : null;
+  const projectIdRaw = p.origin?.project_id != null ? String(p.origin.project_id) : null;
+  const workflowName = p.origin?.workflow_name || null;
+
   return {
     id: p.id,
     external_id: p.external_id,
@@ -53,6 +99,23 @@ function serializeProject(p, clientById) {
     delivered_at: p.delivered_at,
     sync_error: p.sync_error,
     origin: p.origin,
+    // Friendly rumuz overlay (pass-through to raw value on miss — same
+    // semantics as apiProjectsGet so list and detail agree).
+    friendly: {
+      client_name:   resolveFriendly(friendlyIndex, 'client',   p.portal, p.client_name, null),
+      account_name:  resolveFriendly(friendlyIndex, 'account',  p.portal, accountName,   accountId),
+      project_name:  resolveFriendly(friendlyIndex, 'project',  p.portal, p.project_name, projectIdRaw),
+      workflow_name: resolveFriendly(friendlyIndex, 'workflow', p.portal, workflowName,  null),
+    },
+    // Raw upstream identifiers, surfaced at the top level so the BMS doesn't
+    // have to dig into `origin` (which is portal-specific and unstable). Use
+    // these to drive end-client / account / division routing downstream.
+    raw: {
+      account_name: accountName,
+      account_id: accountId,
+      project_id: projectIdRaw,
+      workflow_name: workflowName,
+    },
   };
 }
 
@@ -83,17 +146,22 @@ Deno.serve(async (req) => {
     }
     const projects = await base44.asServiceRole.entities.Project.filter(filter, '-accepted_at', limit);
 
-    // Hydrate clients in one shot so each row doesn't trigger its own fetch.
-    const clientIds = [...new Set(projects.map(p => p.client_id).filter(Boolean))];
+    // Hydrate clients + friendly rumuz rows in parallel — one fetch each,
+    // not one per project. Friendly rows are precompiled into a lookup index
+    // so per-project resolution is O(1).
+    const [allClients, friendlyRows] = await Promise.all([
+      projects.some(p => p.client_id)
+        ? base44.asServiceRole.entities.Client.list('-created_date', 500)
+        : Promise.resolve([]),
+      base44.asServiceRole.entities.FriendlyName.list('-created_date', 2000).catch(() => []),
+    ]);
     const clientById = new Map();
-    if (clientIds.length > 0) {
-      const clients = await base44.asServiceRole.entities.Client.list('-created_date', 500);
-      clients.forEach(c => clientById.set(c.id, c));
-    }
+    allClients.forEach(c => clientById.set(c.id, c));
+    const friendlyIndex = buildFriendlyIndex(friendlyRows);
 
     return Response.json({
       count: projects.length,
-      projects: projects.map(p => serializeProject(p, clientById)),
+      projects: projects.map(p => serializeProject(p, clientById, friendlyIndex)),
     });
   } catch (error) {
     console.error('apiProjectsList error:', error.message);
