@@ -24,9 +24,10 @@ Deno.serve(async () => {
       version_source_of_truth: 'GET /functions/apiSpec (public, no auth) → .version',
     },
     auth: {
-      scheme: 'Apikey',
-      header: 'Authorization: Apikey <token>',
-      bearer_accepted: true,
+      scheme: 'Bearer',
+      header: 'Authorization: Bearer <token>',
+      notes:
+        'The Base44 function gateway only forwards "Bearer"-scheme Authorization headers — earlier docs mentioned "Apikey" as an alias, but that scheme is rejected at the platform layer before reaching the handler. Use "Bearer" exclusively.',
     },
     states: ['accepted', 'synchronized', 'delivered', 'failed_to_sync'],
     endpoints: [

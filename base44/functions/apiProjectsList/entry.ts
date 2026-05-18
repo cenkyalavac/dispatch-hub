@@ -1,5 +1,8 @@
 // GET-style endpoint for downstream BMS: list projects (filterable by state).
-// Auth: Authorization: Apikey <token>   (also accepts "Bearer <token>")
+// Auth: Authorization: Bearer <token>
+// (The Base44 function gateway only forwards "Bearer"-scheme Authorization
+// headers — "Apikey" is intercepted and rejected at the platform layer
+// before reaching this handler. Stick to Bearer.)
 // Body params:
 //   { state?: "accepted"|"synchronized"|"delivered"|"failed_to_sync", limit?: number (<=500) }
 // Ordered by -accepted_at. For detail incl. mapping & attachments, see apiProjectsGet.
@@ -7,12 +10,12 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 function parseApiKey(req) {
   const h = req.headers.get('authorization') || req.headers.get('Authorization') || '';
-  const m = h.match(/^(?:Apikey|Bearer)\s+(.+)$/i);
+  const m = h.match(/^Bearer\s+(.+)$/i);
   return m ? m[1].trim() : null;
 }
 
 async function authenticateKey(base44, token, scopeNeeded) {
-  if (!token) return { error: 'Missing Authorization header (Apikey <token>)', status: 401 };
+  if (!token) return { error: 'Missing Authorization header (Bearer <token>)', status: 401 };
   const matches = await base44.asServiceRole.entities.ApiKey.filter({ token });
   const key = matches?.[0];
   if (!key) return { error: 'Invalid API key', status: 401 };

@@ -84,7 +84,7 @@ const ENDPOINTS = [
   ]
 }`,
     curl: `curl -X POST \\
-  -H "Authorization: Apikey $DISPATCH_KEY" \\
+  -H "Authorization: Bearer $DISPATCH_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"state":"accepted","limit":50}' \\
   https://<your-app>/functions/apiProjectsList`,
@@ -267,7 +267,7 @@ if (spec.version !== TESTED_VERSION) {
               <li>Create an API key on the <a href="/api" className="text-accent hover:underline">Keys &amp; webhooks</a> page. Default scopes (<code className="font-mono bg-surface-2 px-1 rounded">read:projects</code>, <code className="font-mono bg-surface-2 px-1 rounded">write:projects</code>) cover everything below. Copy the token <em>once</em> — it's never shown again.</li>
               <li>Verify the key works:
                 <CodeBlock>{`curl -X POST \\
-  -H "Authorization: Apikey $DISPATCH_KEY" \\
+  -H "Authorization: Bearer $DISPATCH_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"state":"accepted","limit":1}' \\
   https://<your-app>/functions/apiProjectsList`}</CodeBlock>
@@ -312,13 +312,14 @@ if (spec.version !== TESTED_VERSION) {
           {/* ─────────────────────────── AUTH ─────────────────────────── */}
           <DocSection id="auth" eyebrow="Authentication" title="API keys & headers">
             <p>
-              Every call requires an <code className="font-mono bg-surface-2 px-1 rounded">Authorization</code> header carrying an API key your tenant minted. Two schemes are accepted:
+              Every call requires an <code className="font-mono bg-surface-2 px-1 rounded">Authorization</code> header carrying an API key your tenant minted. The scheme is <strong>Bearer</strong>:
             </p>
-            <CodeBlock>{`Authorization: Apikey <token>
-# or
-Authorization: Bearer <token>`}</CodeBlock>
+            <CodeBlock>{`Authorization: Bearer <token>`}</CodeBlock>
+            <p className="text-[11.5px] text-ink-3 italic-editorial border-l-2 border-line-2 pl-3">
+              <strong className="not-italic text-ink-2">Bearer is the only scheme that works.</strong> The Base44 function gateway sits in front of every endpoint and only forwards <code className="font-mono not-italic">Authorization</code> headers using the <code className="font-mono not-italic">Bearer</code> scheme. Other schemes (<code className="font-mono not-italic">Apikey</code>, <code className="font-mono not-italic">Token</code>, etc.) are rejected at the gateway with a 500 before the handler runs — earlier versions of this page mentioned <code className="font-mono not-italic">Apikey</code> as an alias, that was incorrect.
+            </p>
             <p>
-              The <code className="font-mono bg-surface-2 px-1 rounded">Apikey</code> scheme is preferred and what you'll see in our examples. Revoked keys reject with <code className="font-mono bg-surface-2 px-1 rounded">401 Unauthorized</code>; missing scopes reject with <code className="font-mono bg-surface-2 px-1 rounded">403 Forbidden</code>. Keys are scoped to one tenant — cross-tenant project IDs are 404.
+              Revoked keys reject with <code className="font-mono bg-surface-2 px-1 rounded">401 Unauthorized</code>; missing scopes reject with <code className="font-mono bg-surface-2 px-1 rounded">403 Forbidden</code>. Keys are scoped to one tenant — cross-tenant project IDs are 404.
             </p>
           </DocSection>
 
