@@ -243,6 +243,10 @@ Deno.serve(async (req) => {
     console.log(`globallinkProcessSubmissions: ${submissions.length} available, ${rules.length} active globallink/* rules`);
 
     const families = portal?.allowed_language_families || [];
+    // Client attribution — same propagation Symfonie / Junction do. Every
+    // AcceptedTask + Project gets stamped with the portal's client_id so the
+    // BMS can filter by end-customer downstream.
+    const portalClientId = portal?.client_id || null;
     const results = { accepted: [], rejected: [], notified: [], errors: [] };
 
     // Cache by submission_ticket — same submission for two locales would otherwise
@@ -338,9 +342,11 @@ Deno.serve(async (req) => {
 
       // Claim succeeded — create AcceptedTask + Project, flip submission to claimed.
       const acceptedAt = new Date().toISOString();
+      let acceptedTask;
       try {
-        const acceptedTask = await base44.asServiceRole.entities.AcceptedTask.create({
+        acceptedTask = await base44.asServiceRole.entities.AcceptedTask.create({
           portal: 'globallink',
+          client_id: portalClientId,
           task_id: Number(sub.submission_id) || sub.submission_ticket,
           task_name: sub.submission_name || `Submission ${sub.submission_id || sub.submission_ticket}`,
           project_name: sub.project_name || sub.submission_name || '',
@@ -374,51 +380,69 @@ Deno.serve(async (req) => {
           phase_name:   sub.phase_name   || '',
           workflow_name: sub.workflow_name || '',
         });
-
-        await base44.asServiceRole.entities.GlobalLinkSubmission.update(sub.id, {
-          status: 'claimed',
-          claimed_at: acceptedAt,
-          accepted_task_id: acceptedTask.id,
-          claim_error: null,
-        }).catch((e) => console.error('claim update failed:', e.message));
-
-        // Project + webhook (BMS pipeline parity with Symfonie/Junction).
-        try {
-          const project = await base44.asServiceRole.entities.Project.create({
-            tenant_id: 'default',
-            accepted_task_id: acceptedTask.id,
-            portal: 'globallink',
-            external_id: `globallink:${sub.submission_ticket}:${sub.target_language}`,
-            state: 'accepted',
-            name: sub.submission_name || '',
-            client_name: sub.client_name || '',
-            project_name: sub.submission_name || '',
-            source_language: sub.source_language || '',
-            target_language: sub.target_language,
-            word_count: sub.word_count || 0,
-            price: 0,
-            currency: 'USD',
-            due_date: sub.due_date || null,
-            accepted_at: acceptedAt,
-            origin: { submission_ticket: sub.submission_ticket, submission_id: sub.submission_id, matched_rule: matchedRule.name },
-          });
-          base44.functions.invoke('dispatchWebhook', {
-            tenant_id: 'default', event: 'project.accepted', project_id: project.id,
-          }).catch((e) => console.error('webhook dispatch failed:', e.message));
-        } catch (e) {
-          console.error(`Project create failed for ${sub.submission_id}/${sub.target_language}:`, e.message);
-        }
-
-        results.accepted.push({
-          submission_id: sub.submission_id,
-          target_language: sub.target_language,
-          rule: matchedRule.name,
-          accepted_task_id: acceptedTask.id,
-        });
-      } catch (e) {
-        console.error(`AcceptedTask create failed for ${sub.submission_id}:`, e.message);
-        results.errors.push({ submission_id: sub.submission_id, target_language: sub.target_language, error: e.message });
+      } catch (persistErr) {
+        // Persist guard — submission was successfully CLAIMED on PD at this
+        // point (the 6-step chain returned success), so if AcceptedTask.create
+        // throws, it's claimed upstream but invisible to the Hub. CRITICAL.
+        // Email admins via SystemIssue, dedup'd per (ticket, locale).
+        base44.functions.invoke('recordSystemIssue', {
+          type: 'accept_persist_failure',
+          severity: 'critical',
+          portal: 'globallink',
+          function_name: 'globallinkProcessSubmissions',
+          external_ref: `${sub.submission_ticket}:${sub.target_language}`,
+          dedup_key: `accept:${sub.submission_ticket}:${sub.target_language}`,
+          title: `GlobalLink submission ${sub.submission_id || sub.submission_ticket} claimed but persist failed (${sub.target_language})`,
+          description: `Submission "${sub.submission_name || sub.submission_ticket}" / ${sub.target_language} was claimed on GlobalLink PD via rule "${matchedRule.name}", but AcceptedTask.create threw: ${persistErr.message}\n\nThe submission is claimed on PD but invisible to the Hub. Recover by manually creating an AcceptedTask row with submission_ticket=${sub.submission_ticket}, target_language=${sub.target_language}.`,
+        }).catch((e) => console.error('recordSystemIssue failed:', e.message));
+        console.error(`AcceptedTask create failed for ${sub.submission_id}:`, persistErr.message);
+        results.errors.push({ submission_id: sub.submission_id, target_language: sub.target_language, error: persistErr.message });
+        continue;
       }
+
+      // AcceptedTask persisted — flip submission to claimed (non-fatal on
+      // failure: row is already accepted, we just lose the link).
+      await base44.asServiceRole.entities.GlobalLinkSubmission.update(sub.id, {
+        status: 'claimed',
+        claimed_at: acceptedAt,
+        accepted_task_id: acceptedTask.id,
+        claim_error: null,
+      }).catch((e) => console.error('claim update failed:', e.message));
+
+      // Project + webhook (BMS pipeline parity with Symfonie/Junction).
+      try {
+        const project = await base44.asServiceRole.entities.Project.create({
+          tenant_id: 'default',
+          client_id: portalClientId,
+          accepted_task_id: acceptedTask.id,
+          portal: 'globallink',
+          external_id: `globallink:${sub.submission_ticket}:${sub.target_language}`,
+          state: 'accepted',
+          name: sub.submission_name || '',
+          client_name: sub.client_name || '',
+          project_name: sub.submission_name || '',
+          source_language: sub.source_language || '',
+          target_language: sub.target_language,
+          word_count: sub.word_count || 0,
+          price: 0,
+          currency: 'USD',
+          due_date: sub.due_date || null,
+          accepted_at: acceptedAt,
+          origin: { submission_ticket: sub.submission_ticket, submission_id: sub.submission_id, matched_rule: matchedRule.name },
+        });
+        base44.functions.invoke('dispatchWebhook', {
+          tenant_id: 'default', event: 'project.accepted', project_id: project.id,
+        }).catch((e) => console.error('webhook dispatch failed:', e.message));
+      } catch (e) {
+        console.error(`Project create failed for ${sub.submission_id}/${sub.target_language}:`, e.message);
+      }
+
+      results.accepted.push({
+        submission_id: sub.submission_id,
+        target_language: sub.target_language,
+        rule: matchedRule.name,
+        accepted_task_id: acceptedTask.id,
+      });
     }
 
     // Fire one batch sheet sync if anything was accepted (sheetsSyncPending
@@ -435,6 +459,11 @@ Deno.serve(async (req) => {
     }
 
     console.log(`globallinkProcessSubmissions done: ${results.accepted.length} accepted, ${results.rejected.length} rejected, ${results.notified.length} notified, ${results.errors.length} errors`);
+
+    // Happy-path auto-resolve: any open poll_failure for globallink is stale
+    // now that this run completed. Mirrors Symfonie/Junction.
+    base44.functions.invoke('resolveSystemIssues', { type: 'poll_failure', portal: 'globallink' })
+      .catch((e) => console.error('resolveSystemIssues failed:', e.message));
 
     return Response.json({
       success: true,
