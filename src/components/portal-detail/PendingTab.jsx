@@ -109,10 +109,23 @@ function GlobalLinkPending({ portal }) {
   const [busyId, setBusyId] = useState(null);
   const [busyAction, setBusyAction] = useState(null);
 
+  // GlobalLink stores submissions in a local entity (refreshed by the 5-min
+  // globallinkPoll cron). A plain Refresh on just the entity table would only
+  // surface what the last cron already wrote — meaning newly-posted PD
+  // submissions don't appear until the next cron tick. So we kick `globallinkPoll`
+  // first (fresh PD fetch + DB upsert), then read the entity. Poll failure is
+  // non-fatal: we still render whatever's in the DB so a transient broker hiccup
+  // doesn't leave the user staring at an empty page.
   const { data: rows = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['portal-pending', portal.key],
-    queryFn: () =>
-      base44.entities.GlobalLinkSubmission.filter({ status: 'available' }, '-created_date', 100),
+    queryFn: async () => {
+      try {
+        await base44.functions.invoke('globallinkPoll', {});
+      } catch (e) {
+        console.error('globallinkPoll trigger failed:', e.message);
+      }
+      return base44.entities.GlobalLinkSubmission.filter({ status: 'available' }, '-created_date', 100);
+    },
   });
 
   const dropRow = (id) => {
