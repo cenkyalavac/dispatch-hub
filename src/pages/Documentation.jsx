@@ -608,11 +608,11 @@ function isValid(rawBody, signatureHeader, secret) {
             <CodeBlock language="json">{`{ "error": "human-readable description" }`}</CodeBlock>
             <FieldTable fieldHeader="Status" meaningHeader="Meaning" rows={[
               { field: '400', meaning: 'Required body field missing or malformed.' },
-              { field: '401', meaning: 'No API key, malformed header, or key revoked.' },
-              { field: '403', meaning: 'Key lacks the scope this endpoint requires.' },
+              { field: '401', meaning: <>Missing <code className="font-mono">Authorization</code> header, or token doesn't match any active API key.</> },
+              { field: '403', meaning: 'Key revoked, or scope is missing.' },
               { field: '404', meaning: 'Project / attachment id not found in your tenant.' },
               { field: '409', meaning: 'Illegal state transition (e.g. delivering an unsynchronized project).' },
-              { field: '500', meaning: 'Unexpected server error — safe to retry with exponential backoff.' },
+              { field: '500', meaning: <>Either an unexpected server error (safe to retry with backoff), <strong className="text-ink-1">or</strong> a non-Bearer auth scheme rejected by the platform gateway (<code className="font-mono">"Expected Bearer &lt;token&gt;"</code> — NOT retryable, fix your <code className="font-mono">Authorization</code> header).</> },
             ]} />
           </DocSection>
 
