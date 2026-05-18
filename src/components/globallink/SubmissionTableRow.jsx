@@ -28,10 +28,15 @@ export default function SubmissionTableRow({ row, onApprove, onSkip, busyAction 
     lev.no_match, lev.total, lev.wwc,
   ];
 
+  // Sticky-column trick: hover bg lives on the <tr> for non-sticky cells, but
+  // sticky cells need their OWN opaque background or the scrolling cells will
+  // show through underneath. We mirror the hover via `group-hover` on the row.
   return (
-    <tr className="border-b border-line-1 hover:bg-surface-2/40">
-      <td className="px-2 py-2 text-[12px] text-ink-2 whitespace-nowrap">{row.client_name || '—'}</td>
-      <td className="px-2 py-2 text-[12px] font-mono text-ink-2 whitespace-nowrap">{row.submission_id || row.submission_ticket}</td>
+    <tr className="group border-b border-line-1 hover:bg-surface-2/40">
+      <td className="sticky left-0 z-10 bg-surface-1 group-hover:bg-surface-2/40 px-2 py-2 text-[12px] text-ink-2 whitespace-nowrap border-r border-line-1 transition-colors min-w-[140px] max-w-[140px] truncate" title={row.client_name}>
+        {row.client_name || '—'}
+      </td>
+      <td className="sticky left-[140px] z-10 bg-surface-1 group-hover:bg-surface-2/40 px-2 py-2 text-[12px] font-mono text-ink-2 whitespace-nowrap border-r border-line-1 transition-colors">{row.submission_id || row.submission_ticket}</td>
       <td className="px-2 py-2 text-[12px] text-ink-1 max-w-[280px] truncate" title={row.submission_name}>
         {row.submission_name || '—'}
       </td>

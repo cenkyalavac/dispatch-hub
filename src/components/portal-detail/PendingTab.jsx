@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Inbox, RefreshCw } from 'lucide-react';
+import { Inbox, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import PendingTaskRow from './PendingTaskRow';
@@ -9,6 +9,28 @@ import SymfonieTaskDetail from '@/components/pending/SymfonieTaskDetail';
 import JunctionTaskDetailPanel from '@/components/pending/JunctionTaskDetailPanel';
 import JunctionOfferTypeSwitch from './JunctionOfferTypeSwitch';
 import SubmissionTableRow from '@/components/globallink/SubmissionTableRow';
+import GlobalLinkPendingFilters from '@/components/globallink/GlobalLinkPendingFilters';
+
+// Column metadata for the GlobalLink pending table. `key` matches the row
+// field used for sorting (extractLeverage normalizes these); `numeric` flips
+// the sort comparator. The first two are sticky-pinned in the render.
+const GL_COLUMNS = [
+  { key: 'client_name',      label: 'Client',     align: 'left',  sticky: 'left-0',     width: 'min-w-[140px] max-w-[140px]' },
+  { key: 'submission_id',    label: 'ID',         align: 'left',  sticky: 'left-[140px]', width: 'min-w-[110px]' },
+  { key: 'submission_name',  label: 'Submission', align: 'left' },
+  { key: 'target_language',  label: 'Target',     align: 'left' },
+  { key: 'lev_context',      label: 'Ctx',        align: 'right', numeric: true },
+  { key: 'lev_match100',     label: '100%',       align: 'right', numeric: true },
+  { key: 'lev_rep',          label: 'Rep',        align: 'right', numeric: true },
+  { key: 'lev_9599',         label: '95-99',      align: 'right', numeric: true },
+  { key: 'lev_8594',         label: '85-94',      align: 'right', numeric: true },
+  { key: 'lev_7584',         label: '75-84',      align: 'right', numeric: true },
+  { key: 'lev_5074',         label: '50-74',      align: 'right', numeric: true },
+  { key: 'lev_no_match',     label: 'NoMatch',    align: 'right', numeric: true },
+  { key: 'word_count',       label: 'Total',      align: 'right', numeric: true },
+  { key: 'weighted_wc',      label: 'WWC',        align: 'right', numeric: true },
+  { key: 'deadline_at',      label: 'Deadline',   align: 'left',  isDate: true },
+];
 
 // Snapshot key per portal. Only portals whose fetch function writes a
 // CachedSnapshot row will have a fast-path render — everything else falls
@@ -109,6 +131,24 @@ function GlobalLinkPending({ portal }) {
   const [busyId, setBusyId] = useState(null);
   const [busyAction, setBusyAction] = useState(null);
 
+  // Sort + filter state. Default sort: deadline ascending — most urgent first.
+  const [sortKey, setSortKey] = useState('deadline_at');
+  const [sortDir, setSortDir] = useState('asc');
+  const [clientQuery, setClientQuery] = useState('');
+  const [targetLang, setTargetLang] = useState('all');
+
+  const toggleSort = (key) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      // Numeric/date columns feel right starting descending (biggest/soonest
+      // at the top), text columns feel right starting ascending.
+      const col = GL_COLUMNS.find((c) => c.key === key);
+      setSortDir(col?.numeric ? 'desc' : 'asc');
+    }
+  };
+
   // GlobalLink stores submissions in a local entity (refreshed by the 5-min
   // globallinkPoll cron). A plain Refresh on just the entity table would only
   // surface what the last cron already wrote — meaning newly-posted PD
@@ -169,6 +209,42 @@ function GlobalLinkPending({ portal }) {
     }
   };
 
+  // Unique target-language list for the filter dropdown (sorted, deduped).
+  const targetLangOptions = useMemo(() => {
+    return Array.from(new Set(rows.map((r) => r.target_language).filter(Boolean))).sort();
+  }, [rows]);
+
+  // Apply filters + sort. Filtering is case-insensitive substring on
+  // client_name / submission_id / submission_name; target-lang is exact match.
+  const displayRows = useMemo(() => {
+    const q = clientQuery.trim().toLowerCase();
+    let out = rows;
+    if (q) {
+      out = out.filter((r) => {
+        const hay = `${r.client_name || ''} ${r.submission_id || ''} ${r.submission_ticket || ''} ${r.submission_name || ''}`.toLowerCase();
+        return hay.includes(q);
+      });
+    }
+    if (targetLang !== 'all') {
+      out = out.filter((r) => r.target_language === targetLang);
+    }
+
+    const col = GL_COLUMNS.find((c) => c.key === sortKey);
+    const sign = sortDir === 'asc' ? 1 : -1;
+    const sorted = [...out].sort((a, b) => {
+      const va = a[sortKey];
+      const vb = b[sortKey];
+      if (col?.numeric) return ((Number(va) || 0) - (Number(vb) || 0)) * sign;
+      if (col?.isDate) {
+        const da = va ? new Date(va).getTime() : Infinity; // empty deadlines sink
+        const db = vb ? new Date(vb).getTime() : Infinity;
+        return (da - db) * sign;
+      }
+      return String(va || '').localeCompare(String(vb || '')) * sign;
+    });
+    return sorted;
+  }, [rows, clientQuery, targetLang, sortKey, sortDir]);
+
   return (
     <section className="bg-surface-1 border border-line-1 rounded-md">
       <header className="flex items-center justify-between px-4 py-2.5 border-b border-line-1">
@@ -189,6 +265,19 @@ function GlobalLinkPending({ portal }) {
           {isFetching ? 'Refreshing…' : 'Refresh'}
         </button>
       </header>
+
+      {!isLoading && rows.length > 0 && (
+        <GlobalLinkPendingFilters
+          clientQuery={clientQuery}
+          onClientQueryChange={setClientQuery}
+          targetLang={targetLang}
+          onTargetLangChange={setTargetLang}
+          targetLangOptions={targetLangOptions}
+          resultCount={displayRows.length}
+          totalCount={rows.length}
+        />
+      )}
+
       {isLoading ? (
         <div className="p-4 space-y-2">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-7" />)}
@@ -198,31 +287,44 @@ function GlobalLinkPending({ portal }) {
           <Inbox className="w-5 h-5 mx-auto text-ink-4 mb-2" />
           <p className="text-[12px] text-ink-3 italic-editorial">No available submissions.</p>
         </div>
+      ) : displayRows.length === 0 ? (
+        <div className="px-4 py-8 text-center">
+          <Inbox className="w-5 h-5 mx-auto text-ink-4 mb-2" />
+          <p className="text-[12px] text-ink-3 italic-editorial">No submissions match these filters.</p>
+        </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-[12px]">
+          <table className="w-full text-[12px] border-separate border-spacing-0">
             <thead className="bg-surface-2 text-[10px] uppercase tracking-wider text-ink-3">
               <tr>
-                <th className="px-2 py-2 text-left font-medium">Client</th>
-                <th className="px-2 py-2 text-left font-medium">ID</th>
-                <th className="px-2 py-2 text-left font-medium">Submission</th>
-                <th className="px-2 py-2 text-left font-medium">Target</th>
-                <th className="px-2 py-2 text-right font-medium">Ctx</th>
-                <th className="px-2 py-2 text-right font-medium">100%</th>
-                <th className="px-2 py-2 text-right font-medium">Rep</th>
-                <th className="px-2 py-2 text-right font-medium">95-99</th>
-                <th className="px-2 py-2 text-right font-medium">85-94</th>
-                <th className="px-2 py-2 text-right font-medium">75-84</th>
-                <th className="px-2 py-2 text-right font-medium">50-74</th>
-                <th className="px-2 py-2 text-right font-medium">NoMatch</th>
-                <th className="px-2 py-2 text-right font-medium">Total</th>
-                <th className="px-2 py-2 text-right font-medium">WWC</th>
-                <th className="px-2 py-2 text-left font-medium">Deadline</th>
-                <th className="px-2 py-2"></th>
+                {GL_COLUMNS.map((col) => {
+                  const active = sortKey === col.key;
+                  const Arrow = active ? (sortDir === 'asc' ? ArrowUp : ArrowDown) : null;
+                  const stickyCls = col.sticky
+                    ? `sticky ${col.sticky} z-20 bg-surface-2 border-r border-line-1`
+                    : '';
+                  const alignCls = col.align === 'right' ? 'text-right' : 'text-left';
+                  const widthCls = col.width || '';
+                  return (
+                    <th
+                      key={col.key}
+                      className={`px-2 py-2 font-medium border-b border-line-1 ${alignCls} ${stickyCls} ${widthCls}`}
+                    >
+                      <button
+                        onClick={() => toggleSort(col.key)}
+                        className={`inline-flex items-center gap-1 hover:text-ink-1 transition-colors duration-tab ${col.align === 'right' ? 'flex-row-reverse' : ''} ${active ? 'text-ink-1' : ''}`}
+                      >
+                        {col.label}
+                        {Arrow && <Arrow className="w-3 h-3" />}
+                      </button>
+                    </th>
+                  );
+                })}
+                <th className="px-2 py-2 border-b border-line-1"></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {displayRows.map((r) => (
                 <SubmissionTableRow
                   key={r.id}
                   row={r}
