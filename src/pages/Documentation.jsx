@@ -19,6 +19,8 @@ const TOC = [
   { id: 'webhook-retries',  label: 'Retries & failures' },
   { id: 'errors',        label: 'Errors' },
   { id: 'cat-analysis',  label: 'CAT analysis block' },
+  { id: 'vendor-payment',label: 'Vendor payment block' },
+  { id: 'project-notes', label: 'Project notes' },
   { id: 'spec',          label: 'Machine-readable spec' },
 ];
 
@@ -52,11 +54,22 @@ const ENDPOINTS = [
       "word_count": 1280,
       "due_date": "2026-05-22T10:00:00Z",
       "cat_analysis": {
-        "weighted_wc": 712.4,
+        "weighted_wc": 189.35,
         "parser_type": "MemSource",
         "mt_weight_coefficient": null,
         "bands": { "context": 320, "rep": 12, "match100": 145, "fuzzy_95_99": 38, "fuzzy_85_94": 60, "fuzzy_75_84": 25, "fuzzy_50_74": 18, "mt_post_edit": 0, "no_match": 662 }
-      }
+      },
+      "vendor_payment": {
+        "partner_id": 4421,
+        "partner_code": "MORAVIA",
+        "partner_name": "Moravia IT s.r.o.",
+        "currency": "EUR",
+        "unit_cost": 0.045,
+        "partner_price": 8.52,
+        "usd_unit_cost": 0.049,
+        "usd_price": 9.28
+      },
+      "project_notes": "MT post-edit project; expected quality = human translation. Refer to AWS docs style guide."
     }
   ]
 }`,
@@ -89,10 +102,16 @@ const ENDPOINTS = [
       "parser_type": "Junction",
       "mt_weight_coefficient": 0.70,
       "bands": { "context": 0, "rep": 0, "match100": 0, "fuzzy_95_99": 125, "fuzzy_85_94": 519, "fuzzy_75_84": 216, "fuzzy_50_74": 0, "mt_post_edit": 263, "no_match": 0 }
-    }
+    },
+    "vendor_payment": {
+      "partner_id": 4421, "partner_code": "MORAVIA", "partner_name": "Moravia IT s.r.o.",
+      "currency": "EUR", "unit_cost": 0.045, "partner_price": 8.52,
+      "usd_unit_cost": 0.049, "usd_price": 9.28
+    },
+    "project_notes": "MT post-edit project; expected quality = human translation."
   }
 }`,
-    notes: 'destination is null-on-miss (BMS safety). friendly is passthrough — short rumuz when one exists, else raw upstream name. cat_analysis exposes the leverage breakdown captured at accept time (null when CAT data wasn\'t available).',
+    notes: 'destination is null-on-miss (BMS safety). friendly is passthrough — short rumuz when one exists, else raw upstream name. cat_analysis exposes the leverage breakdown captured at accept time (null when CAT data wasn\'t available). vendor_payment / project_notes mirror the list shape.',
   },
   {
     fn: 'apiProjectsAcknowledge',
@@ -400,6 +419,57 @@ GlobalLink / Symfonie:
             </p>
             <p className="text-[11.5px] text-ink-3 italic-editorial border-l-2 border-line-2 pl-3">
               <strong className="not-italic text-ink-2">MT-PostEdit is its own band.</strong> Previously Junction's <code className="font-mono not-italic">mtPostEdit</code> was folded into <code className="font-mono not-italic">no_match</code>; as of v2.2 it's split out because its WWC weight (0.70) differs from raw new-word weight (1.00). Existing BMS code that summed <code className="font-mono not-italic">no_match</code> for billing should now sum <code className="font-mono not-italic">no_match + mt_post_edit</code> if it wants the old behaviour — or migrate to using <code className="font-mono not-italic">weighted_wc</code> directly.
+            </p>
+            <p className="text-[11.5px] text-ink-3 italic-editorial border-l-2 border-line-2 pl-3">
+              <strong className="not-italic text-ink-2">Symfonie WWC source-of-truth changed in v2.3.</strong> Previously <code className="font-mono not-italic">weighted_wc</code> was always our generic 0.2/0.35/0.45/0.6 formula. As of v2.3 it's Symfonie's native <code className="font-mono not-italic">CalculatedQuantity</code> — the value computed by Symfonie from the <em>customer's</em> actual per-band weight grid (Amazon, Adloc, Apple all carry different grids). The generic formula remains only as a fallback when Symfonie didn't emit a calculated value (rare). <strong className="not-italic text-ink-2">BMS billing should use <code className="font-mono not-italic">weighted_wc</code> directly</strong> rather than re-deriving from bands — the derivation diverges from Symfonie's real pricing.
+            </p>
+          </DocSection>
+
+          {/* ─────────────────────────── VENDOR PAYMENT ─────────────────────────── */}
+          <DocSection id="vendor-payment" eyebrow="Reference" title="Vendor payment block">
+            <p>
+              The <code className="font-mono bg-surface-2 px-1 rounded">vendor_payment</code> block on every project payload describes <strong>what the originating portal owes us</strong>. We are the vendor — <code className="font-mono bg-surface-2 px-1 rounded">partner_name</code> identifies the entity paying us (Moravia, Welocalize, TransPerfect, ...). Use this to drive invoicing and vendor-currency reconciliation downstream.
+            </p>
+            <CodeBlock language="json">{`{
+  "partner_id": 4421,
+  "partner_code": "MORAVIA",
+  "partner_name": "Moravia IT s.r.o.",
+  "currency": "EUR",
+  "unit_cost": 0.045,
+  "partner_price": 8.52,
+  "usd_unit_cost": 0.049,
+  "usd_price": 9.28
+}`}</CodeBlock>
+            <div className="border border-line-1 rounded-md overflow-hidden mt-4">
+              <table className="w-full text-[12.5px]">
+                <thead className="bg-surface-2 text-ink-3">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium">Field</th>
+                    <th className="text-left px-3 py-2 font-medium">Meaning</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line-1">
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">partner_id</td><td className="px-3 py-2 text-ink-2">Portal-internal numeric ID for the paying partner. <code className="font-mono">null</code> when the portal didn't supply one.</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">partner_code</td><td className="px-3 py-2 text-ink-2">Short partner code (often empty for direct relationships).</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">partner_name</td><td className="px-3 py-2 text-ink-2">Display name of the paying entity.</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">currency</td><td className="px-3 py-2 text-ink-2">Vendor's settlement currency (ISO code, e.g. <code className="font-mono">EUR</code>, <code className="font-mono">USD</code>).</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">unit_cost / partner_price</td><td className="px-3 py-2 text-ink-2">Per-word rate and total <em>in <code className="font-mono">currency</code></em>.</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">usd_unit_cost / usd_price</td><td className="px-3 py-2 text-ink-2">Same fields converted to USD. Use <code className="font-mono">usd_price</code> for cross-portal comparison and USD-invoicing flows.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[11.5px] text-ink-3 italic-editorial border-l-2 border-line-2 pl-3 mt-4">
+              <strong className="not-italic text-ink-2">When is <code className="font-mono not-italic">vendor_payment</code> null?</strong> When the upstream portal didn't attach a PurchaseOrder at accept time. Symfonie populates this on most accepted tasks. GlobalLink and Junction don't surface a vendor-payment block today — those rows stay <code className="font-mono not-italic">null</code>.
+            </p>
+          </DocSection>
+
+          {/* ─────────────────────────── PROJECT NOTES ─────────────────────────── */}
+          <DocSection id="project-notes" eyebrow="Reference" title="Project notes">
+            <p>
+              The <code className="font-mono bg-surface-2 px-1 rounded">project_notes</code> field on every project payload carries free-text instructions / special handling guidance attached at the <strong>project level</strong> by the originating portal. This is BMS-facing — Dispatch reads it to brief PMs.
+            </p>
+            <p className="text-[11.5px] text-ink-3 italic-editorial border-l-2 border-line-2 pl-3">
+              Symfonie source: <code className="font-mono not-italic">Project.Notes</code> (project-level, not task-level — distinct from any task-level instructions). Empty string when the portal didn't attach one. GlobalLink and Junction aren't wired for this field yet — those rows always carry an empty string.
             </p>
           </DocSection>
 

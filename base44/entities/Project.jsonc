@@ -85,6 +85,15 @@
       "type": "string",
       "description": "Last sync error message, when state is failed_to_sync."
     },
+    "vendor_payment": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Vendor-side financial breakdown surfaced from the originating AcceptedTask. Symfonie source: PurchaseOrder.Prices (we are the vendor \u2014 this is what Moravia/Welocalize owes us). Shape: { partner_id, partner_code, partner_name, currency, unit_cost, partner_price, usd_unit_cost, usd_price }. Null when the portal didn't supply a PO at accept time."
+    },
+    "project_notes": {
+      "type": "string",
+      "description": "Free-text project-level instructions / special handling notes from the originating portal. Symfonie source: Project.Notes. BMS-facing field \u2014 Dispatch reads it to brief PMs."
+    },
     "origin": {
       "type": "object",
       "additionalProperties": true,

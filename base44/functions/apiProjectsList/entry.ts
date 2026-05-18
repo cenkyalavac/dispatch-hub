@@ -162,9 +162,16 @@ function serializeProject(p, clientById, friendlyIndex, acceptedTaskById) {
     // null when no leverage data was captured at accept time (older rows,
     // portals without CAT analysis). Bands are portal-neutral; weighted_wc
     // is the source-of-truth weighted word count (Junction supplies it
-    // precomputed; Symfonie/GlobalLink compute it client-side via the
-    // MTPE-aligned formula in lib/leverage.js).
+    // precomputed; Symfonie reads it from CalculatedQuantity — the
+    // customer's actual per-band grid; GlobalLink computes it client-side).
     cat_analysis: catAnalysis,
+    // Vendor-side financial breakdown. Symfonie source: PurchaseOrder.Prices
+    // (we are the vendor — partner_name is the entity paying us, usd_price
+    // is what we'll invoice). Null when the upstream didn't attach a PO.
+    vendor_payment: p.vendor_payment || null,
+    // Free-text project brief from the originating portal. Symfonie source:
+    // Project.Notes. Empty string when not provided.
+    project_notes: p.project_notes || '',
   };
 }
 

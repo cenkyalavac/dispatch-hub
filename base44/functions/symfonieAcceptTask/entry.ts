@@ -110,22 +110,63 @@ Deno.serve(async (req) => {
       try { pm = await getJson(`${BASE_URL}/Users(${projectInfo.ProjectManagerId})?$select=Id,FirstName,LastName`); } catch (e) { console.error('PM fetch failed:', e.message); }
     }
 
-    // Leverage bands — delegate to the shared helper.
+    // Leverage bands + native WWC + fallback formula. The helper resolves
+    // symfonie_calculated_qty alongside bands; we only fall back to the
+    // generic 0.2/0.35/0.45/0.6 formula when Symfonie didn't emit one.
+    const computeWeightedWcFallback = (b) =>
+      (Number(b.lev_9599) || 0) * 0.2 +
+      (Number(b.lev_8594) || 0) * 0.35 +
+      (Number(b.lev_7584) || 0) * 0.45 +
+      ((Number(b.lev_5074) || 0) + (Number(b.lev_no_match) || 0)) * 0.6;
+
     let bands = {};
     try {
       const aRes = await base44.asServiceRole.functions.invoke('symfonieGetTaskAnalysis', { task_id: taskIdNum });
       const a = aRes?.data;
       if (a && a.analysis_found) {
+        const wwc = (typeof a.symfonie_calculated_qty === 'number' && a.symfonie_calculated_qty > 0)
+          ? a.symfonie_calculated_qty
+          : computeWeightedWcFallback(a);
         bands = {
           lev_context: a.lev_context, lev_rep: a.lev_rep, lev_match100: a.lev_match100,
           lev_9599: a.lev_9599, lev_8594: a.lev_8594, lev_7584: a.lev_7584,
           lev_5074: a.lev_5074, lev_no_match: a.lev_no_match,
           parser_type: a.parser_type || '',
+          weighted_wc: wwc,
+          symfonie_calculated_qty: a.symfonie_calculated_qty || null,
         };
       }
     } catch (e) {
       console.error('WordCountAnalyses fetch failed:', e.message);
     }
+
+    // Vendor financial breakdown (PurchaseOrder.Prices) — fetched inline for
+    // manual accepts. Non-fatal: null when no PO is attached yet.
+    async function fetchVendorPayment() {
+      try {
+        const r = await fetch(`${BASE_URL}/Tasks(${taskIdNum})?$expand=PurchaseOrders($expand=Prices)`, {
+          headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+        });
+        if (!r.ok) return null;
+        const body = await r.json().catch(() => null);
+        const pos = body?.PurchaseOrders || [];
+        if (pos.length === 0) return null;
+        const po = pos.sort((a, b) => (b.Id || 0) - (a.Id || 0))[0];
+        const price = po?.Prices?.[0];
+        if (!price) return null;
+        return {
+          partner_id: price.PartnerId ?? po.PartnerId ?? null,
+          partner_code: price.PartnerCode || po.PartnerCode || '',
+          partner_name: price.PartnerName || po.PartnerName || '',
+          currency: price.PartnerCurrency || '',
+          unit_cost: Number(price.UnitCost) || 0,
+          partner_price: Number(price.PartnerPrice) || 0,
+          usd_unit_cost: Number(price.UsdUnitCost) || 0,
+          usd_price: Number(price.UsdPrice) || 0,
+        };
+      } catch { return null; }
+    }
+    const vendorPayment = await fetchVendorPayment();
 
     // Save to AcceptedTask
     const taskRecord = {
@@ -153,6 +194,10 @@ Deno.serve(async (req) => {
       job_id: jobIdNum,
       job_identifier: jobInfo?.Identifier || '',
       project_id: projectIdNum,
+      // BMS-facing financial + brief — Project.Notes comes from the project
+      // enrichment lookup; vendor_payment from PurchaseOrder.Prices above.
+      vendor_payment: vendorPayment || null,
+      project_notes: projectInfo?.Notes || '',
       ...bands,
     };
 
@@ -205,6 +250,10 @@ Deno.serve(async (req) => {
         currency: 'USD',
         due_date: due_date || null,
         accepted_at: taskRecord.accepted_at,
+        // Surface vendor breakdown + project notes at Project level so BMS
+        // API can read them without joining back to AcceptedTask.
+        vendor_payment: vendorPayment || null,
+        project_notes: projectInfo?.Notes || '',
         origin: body,
       });
       base44.functions.invoke('dispatchWebhook', {

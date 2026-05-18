@@ -176,9 +176,14 @@ Deno.serve(async (req) => {
     const projectIds = [...new Set(rawTasks.map(t => t.Project?.Id).filter(Boolean))];
     const jobIds = [...new Set(rawTasks.map(t => t.JobId).filter(Boolean))];
 
-    const projectById = new Map(); // Project.Id → { Customer.Name, Code, ProjectManagerId }
+    const projectById = new Map(); // Project.Id → { Customer.Name, Code, ProjectManagerId, Notes }
     const jobById = new Map();     // Job.Id → { Identifier, ExternalId }
     const userById = new Map();    // User.Id → { FirstName, LastName }
+    // Vendor financial breakdown — we are the vendor, Symfonie attaches a
+    // PurchaseOrder to most accepted tasks with Partner* + UsdUnitCost +
+    // UsdPrice. Resolved lazily per accepted task below ($expand=Prices on
+    // the PO) — pre-batching all POs upfront would fetch ones we never use
+    // (rejects, no-rule-match skips).
 
     async function batchFetch(collection, ids, selectFields) {
       if (ids.length === 0) return [];
@@ -273,14 +278,48 @@ Deno.serve(async (req) => {
       }
     }
 
-    // MTPE-aligned weighted WC. Symfonie has no Reps* bands (pure-fuzzy only),
-    // so the formula collapses to: 95-99*0.2 + 85-94*0.35 + 75-84*0.45 + (50-74 + no-match)*0.6.
-    // Context / Rep / 100% carry zero weight.
-    const computeWeightedWc = (b) =>
+    // MTPE-aligned weighted WC, fallback formula. Used ONLY when Symfonie
+    // didn't emit a native CalculatedQuantity (older parsers, manual tasks).
+    // Source-of-truth is symfonie_calculated_qty when present — it reflects
+    // the customer's actual per-band grid (Amazon vs. Adloc vs. Apple all
+    // differ); our generic formula is a best-effort approximation.
+    const computeWeightedWcFallback = (b) =>
       (Number(b.lev_9599) || 0) * 0.2 +
       (Number(b.lev_8594) || 0) * 0.35 +
       (Number(b.lev_7584) || 0) * 0.45 +
       ((Number(b.lev_5074) || 0) + (Number(b.lev_no_match) || 0)) * 0.6;
+
+    // Fetch the vendor financial breakdown for a single accepted task.
+    // Symfonie wire shape: /Tasks({id})?$expand=PurchaseOrders($expand=Prices)
+    // We take the most-recent PO and its first Price row. PartnerCurrency
+    // identifies vendor's settlement currency; UsdPrice is the dollar amount
+    // we'll actually invoice. Returns null on any failure — non-fatal.
+    async function fetchVendorPayment(taskId) {
+      try {
+        const url = `${BASE_URL}/Tasks(${taskId})?$expand=PurchaseOrders($expand=Prices)`;
+        const r = await fetch(url, { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' } });
+        if (!r.ok) return null;
+        const body = await r.json().catch(() => null);
+        const pos = body?.PurchaseOrders || [];
+        if (pos.length === 0) return null;
+        // Most-recent PO wins (by Id desc — Symfonie IDs are auto-increment).
+        const po = pos.sort((a, b) => (b.Id || 0) - (a.Id || 0))[0];
+        const price = po?.Prices?.[0];
+        if (!price) return null;
+        return {
+          partner_id: price.PartnerId ?? po.PartnerId ?? null,
+          partner_code: price.PartnerCode || po.PartnerCode || '',
+          partner_name: price.PartnerName || po.PartnerName || '',
+          currency: price.PartnerCurrency || '',
+          unit_cost: Number(price.UnitCost) || 0,
+          partner_price: Number(price.PartnerPrice) || 0,
+          usd_unit_cost: Number(price.UsdUnitCost) || 0,
+          usd_price: Number(price.UsdPrice) || 0,
+        };
+      } catch {
+        return null;
+      }
+    }
 
     for (const raw of rawTasks) {
       const taskId = Number(raw.Id);
@@ -357,12 +396,18 @@ Deno.serve(async (req) => {
         const notifyPayload = { ...task };
         const a = bandsByTaskId[taskId];
         if (a) {
+          // Source-of-truth WWC: Symfonie's CalculatedQuantity (customer's
+          // real grid) when present, else our generic fallback formula.
+          const wwc = (typeof a.symfonie_calculated_qty === 'number' && a.symfonie_calculated_qty > 0)
+            ? a.symfonie_calculated_qty
+            : computeWeightedWcFallback(a);
           Object.assign(notifyPayload, {
             lev_context: a.lev_context, lev_rep: a.lev_rep, lev_match100: a.lev_match100,
             lev_9599: a.lev_9599, lev_8594: a.lev_8594, lev_7584: a.lev_7584,
             lev_5074: a.lev_5074, lev_no_match: a.lev_no_match,
             parser_type: a.parser_type || '',
-            weighted_wc: computeWeightedWc(a),
+            weighted_wc: wwc,
+            symfonie_calculated_qty: a.symfonie_calculated_qty || null,
           });
         }
 
@@ -399,14 +444,30 @@ Deno.serve(async (req) => {
         // Resolved in a single batched invoke above — see `bandsByTaskId`.
         const a = bandsByTaskId[taskId];
         if (a) {
+          // Source-of-truth WWC: Symfonie's CalculatedQuantity (customer's
+          // real grid) when present, else our generic fallback formula.
+          const wwc = (typeof a.symfonie_calculated_qty === 'number' && a.symfonie_calculated_qty > 0)
+            ? a.symfonie_calculated_qty
+            : computeWeightedWcFallback(a);
           Object.assign(task, {
             lev_context: a.lev_context, lev_rep: a.lev_rep, lev_match100: a.lev_match100,
             lev_9599: a.lev_9599, lev_8594: a.lev_8594, lev_7584: a.lev_7584,
             lev_5074: a.lev_5074, lev_no_match: a.lev_no_match,
             parser_type: a.parser_type || '',
-            weighted_wc: computeWeightedWc(a),
+            weighted_wc: wwc,
+            symfonie_calculated_qty: a.symfonie_calculated_qty || null,
           });
         }
+
+        // Vendor financial breakdown (Symfonie PurchaseOrder.Prices). Only
+        // fetched for tasks we're actually accepting — pre-batching POs for
+        // every Order-state task would be ~95% wasted calls.
+        const vendorPayment = await fetchVendorPayment(taskId);
+        if (vendorPayment) task.vendor_payment = vendorPayment;
+
+        // Project Notes — BMS-facing brief from Project.Notes. projectInfo
+        // was resolved up-front in the enrichment batch; just read the field.
+        if (projectInfo?.Notes) task.project_notes = projectInfo.Notes;
 
         const saved = await base44.asServiceRole.entities.AcceptedTask.create(task);
 
@@ -431,6 +492,10 @@ Deno.serve(async (req) => {
             currency: 'USD',
             due_date: task.due_date || null,
             accepted_at: task.accepted_at,
+            // BMS-facing financial + brief fields — surface at the Project
+            // level so apiProjectsList/Get carry them without per-row joins.
+            vendor_payment: task.vendor_payment || null,
+            project_notes: task.project_notes || '',
             origin: task,
           });
           base44.functions.invoke('dispatchWebhook', {

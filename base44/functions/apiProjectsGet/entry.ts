@@ -191,6 +191,12 @@ Deno.serve(async (req) => {
         unmapped,
         attachments_count: attCount,
         cat_analysis: catAnalysis,
+        // Vendor financial breakdown (PurchaseOrder.Prices — what the
+        // portal owes us as the vendor). Null when no PO is attached.
+        vendor_payment: project.vendor_payment || null,
+        // Project-level free-text brief from the upstream portal. Symfonie
+        // source: Project.Notes. Empty string when not provided.
+        project_notes: project.project_notes || '',
       },
     });
   } catch (error) {

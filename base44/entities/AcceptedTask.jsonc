@@ -77,7 +77,20 @@
     },
     "weighted_wc": {
       "type": "number",
-      "description": "MTPE-aligned WWC. Junction: upstream-provided (validated formula: 100%*0.10 + 95-99*0.30 + 85-94*0.40 + 75-84*0.50 + mtPostEdit*0.70 + newWords*1.00). GlobalLink: client-side ((95-99 + Reps95-99)*0.2 + (85-94 + Reps85-94)*0.35 + (75-84 + Reps75-84)*0.45 + (50-74 + Reps50-74 + noMatch)*0.6). Symfonie: same as GlobalLink (no Reps bands; collapses to (95-99)*0.2 + (85-94)*0.35 + (75-84)*0.45 + (50-74 + noMatch)*0.6)."
+      "description": "MTPE-aligned WWC, source-of-truth for billing. Junction: upstream-provided (validated formula). Symfonie: native CalculatedQuantity from the customer's per-band weight grid (PriceWordCounts \u00d7 Weight) \u2014 captured into symfonie_calculated_qty and copied here. Falls back to our generic ((95-99)*0.2 + (85-94)*0.35 + (75-84)*0.45 + (50-74 + noMatch)*0.6) only when Symfonie didn't emit a calculated value. GlobalLink: client-side ((95-99 + Reps95-99)*0.2 + ... )."
+    },
+    "symfonie_calculated_qty": {
+      "type": "number",
+      "description": "Symfonie-native weighted word count (CalculatedQuantity). Computed by Symfonie from the customer's actual per-band PriceWordCount \u00d7 Weight grid \u2014 therefore reflects the real per-customer pricing (Amazon vs. Adloc vs. Apple all carry different grids). Captured for audit/parity even when weighted_wc is sourced elsewhere. 0/null when Symfonie didn't emit one (older parsers, manual tasks)."
+    },
+    "vendor_payment": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Vendor-side financial breakdown from Symfonie PurchaseOrder.Prices \u2014 i.e. the actual amount Moravia/Welocalize owes us (we are the vendor). Distinct from `price` which is the task-level MaxUsd. Shape: { partner_id, partner_code, partner_name, currency, unit_cost, partner_price, usd_unit_cost, usd_price }. Null when no PurchaseOrder is attached (rare \u2014 most accepted tasks have a PO at accept time)."
+    },
+    "project_notes": {
+      "type": "string",
+      "description": "Symfonie Project.Notes \u2014 free-text instructions / special handling notes attached at the Project level (not the Task level). Surfaces to BMS via API so Dispatch can show PMs the project-wide brief. Empty when Symfonie didn't attach notes."
     },
     "lev_context": {
       "type": "number",

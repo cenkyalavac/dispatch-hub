@@ -94,20 +94,36 @@ function emptyBands() {
 function mapAnalysisToBands(analysis) {
   const bands = emptyBands();
   if (!analysis || !Array.isArray(analysis.WordCounts)) {
-    return { bands, parser_type: '', analysis_word_count: 0 };
+    return { bands, parser_type: '', analysis_word_count: 0, unknown_bands: [] };
   }
   const parser = analysis.Parser || 'default';
   const map = BAND_MAP_BY_PARSER[parser] || BAND_MAP_BY_PARSER.default;
 
   let totalFromAnalysis = 0;
+  // Diagnostic — band labels Symfonie/Memsource emits but our mapper hasn't seen.
+  // AI suggested 101% / Perfect Match bands exist; our 50 production analyses
+  // only carried the 8 known names. Logging unknown bands lets us spot new
+  // ones (101%, Perfect Match, TER score variants, ...) without speculation.
+  // Total/Segments/Characters rows are normal metadata, not "bands" — filter
+  // them out so the warning channel only flags actual leverage labels.
+  const META_LABELS = new Set(['Total (Words)', 'Total', 'Characters', 'Segments', 'Total (Characters)', 'Total (Segments)']);
+  const unknownBands = [];
   for (const w of analysis.WordCounts) {
     const key = map[w.Name];
-    if (key) bands[key] = Number(w.Value) || 0;
+    if (key) {
+      bands[key] = Number(w.Value) || 0;
+    } else if (!META_LABELS.has(w.Name)) {
+      // Unknown leverage band — log so we can extend BAND_MAP_BY_PARSER if it persists.
+      unknownBands.push({ name: w.Name, value: Number(w.Value) || 0 });
+    }
     if (w.Name === 'Total (Words)' || w.Name === 'Total') {
       totalFromAnalysis = Number(w.Value) || 0;
     }
   }
-  return { bands, parser_type: parser, analysis_word_count: totalFromAnalysis };
+  if (unknownBands.length > 0) {
+    console.warn(`[symfonieGetTaskAnalysis] Unknown bands for parser=${parser} (analysis ${analysis.Id}):`, unknownBands);
+  }
+  return { bands, parser_type: parser, analysis_word_count: totalFromAnalysis, unknown_bands: unknownBands };
 }
 
 async function fetchAnalysisForTask(taskId, token) {
@@ -118,6 +134,40 @@ async function fetchAnalysisForTask(taskId, token) {
   if (!r.ok) return null;
   const body = await r.json().catch(() => ({ value: [] }));
   return body.value?.[0] || null;
+}
+
+// Symfonie's native weighted word count for a task. Two known surfaces (we try
+// both because the OData V5 spec is inconsistent and AI tooling has been
+// guessing):
+//   1. /Tasks({id})/Price → { CalculatedQuantity, ... }
+//   2. /Tasks({id})?$expand=Price → same field, nested
+// Returns null on any failure or missing value — caller treats null as "no
+// native WWC available, fall back to client-side formula".
+async function fetchCalculatedQuantity(taskId, token) {
+  // Attempt 1: navigation property /Price
+  try {
+    const url1 = `${BASE_URL}/Tasks(${taskId})/Price`;
+    const r1 = await fetch(url1, { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' } });
+    if (r1.ok) {
+      const b1 = await r1.json().catch(() => null);
+      if (b1 && typeof b1.CalculatedQuantity === 'number') {
+        return b1.CalculatedQuantity;
+      }
+    }
+  } catch { /* fall through to attempt 2 */ }
+
+  // Attempt 2: $expand=Price on the task
+  try {
+    const url2 = `${BASE_URL}/Tasks(${taskId})?$expand=Price`;
+    const r2 = await fetch(url2, { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' } });
+    if (r2.ok) {
+      const b2 = await r2.json().catch(() => null);
+      const cq = b2?.Price?.CalculatedQuantity;
+      if (typeof cq === 'number') return cq;
+    }
+  } catch { /* swallow */ }
+
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -148,9 +198,18 @@ Deno.serve(async (req) => {
     // Run sequentially with tiny gap to be polite to the API — analyses are
     // small payloads but Symfonie throttles aggressive parallel hits.
     for (const id of ids) {
-      const a = await fetchAnalysisForTask(id, token);
+      // Fetch the analysis (band breakdown) and the native WWC in parallel —
+      // they hit different endpoints so there's no API throttling penalty.
+      const [a, calculatedQty] = await Promise.all([
+        fetchAnalysisForTask(id, token),
+        fetchCalculatedQuantity(id, token).catch(() => null),
+      ]);
       if (!a) {
-        results[id] = { ...emptyBands(), parser_type: '', analysis_word_count: 0, analysis_found: false };
+        results[id] = {
+          ...emptyBands(),
+          parser_type: '', analysis_word_count: 0, analysis_found: false,
+          symfonie_calculated_qty: calculatedQty,
+        };
         continue;
       }
       const mapped = mapAnalysisToBands(a);
@@ -159,6 +218,11 @@ Deno.serve(async (req) => {
         parser_type: mapped.parser_type,
         analysis_word_count: mapped.analysis_word_count,
         analysis_found: true,
+        // Symfonie-native weighted WC (customer's actual per-band grid).
+        // null when /Price endpoint didn't return one — caller falls back to
+        // our client-side formula.
+        symfonie_calculated_qty: calculatedQty,
+        unknown_bands: mapped.unknown_bands,
       };
       await new Promise((r) => setTimeout(r, 80));
     }
