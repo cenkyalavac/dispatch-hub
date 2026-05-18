@@ -91,14 +91,18 @@ function esc(s) {
 // in that band" because that's how the WWC formula treats them and that's
 // the number recipients actually need to price the job.
 const LEVERAGE_BANDS = [
-  { key: 'lev_context',  label: 'Context',     repKey: null },
-  { key: 'lev_rep',      label: 'Repetitions', repKey: null },
-  { key: 'lev_match100', label: '100%',        repKey: null },
-  { key: 'lev_9599',     label: '95–99%',      repKey: 'lev_rep_9599' },
-  { key: 'lev_8594',     label: '85–94%',      repKey: 'lev_rep_8594' },
-  { key: 'lev_7584',     label: '75–84%',      repKey: 'lev_rep_7584' },
-  { key: 'lev_5074',     label: '50–74%',      repKey: 'lev_rep_5074' },
-  { key: 'lev_no_match', label: 'No match',    repKey: null },
+  { key: 'lev_context',      label: 'Context',     repKey: null },
+  { key: 'lev_rep',          label: 'Repetitions', repKey: null },
+  { key: 'lev_match100',     label: '100%',        repKey: null },
+  { key: 'lev_9599',         label: '95–99%',      repKey: 'lev_rep_9599' },
+  { key: 'lev_8594',         label: '85–94%',      repKey: 'lev_rep_8594' },
+  { key: 'lev_7584',         label: '75–84%',      repKey: 'lev_rep_7584' },
+  { key: 'lev_5074',         label: '50–74%',      repKey: 'lev_rep_5074' },
+  // MT-PostEdit band — Junction-specific today. Other portals leave it 0;
+  // buildLeverageGrid omits the entire section when every band is 0, so this
+  // doesn't add an empty cell to Symfonie/GlobalLink notification mails.
+  { key: 'lev_mt_post_edit', label: 'MT-PE',       repKey: null },
+  { key: 'lev_no_match',     label: 'No match',    repKey: null },
 ];
 
 // Returns the leverage-grid HTML when the task carries ANY non-zero leverage
@@ -124,8 +128,11 @@ function buildLeverageGrid(task) {
       </div>
     </td>`;
   };
-  const row1 = values.slice(0, 4).map(cell).join('');
-  const row2 = values.slice(4, 8).map(cell).join('');
+  // 9 bands now (MT-PE was added). Split 5+4 so MT-PE sits next to the fuzzy
+  // bands on row 1 — keeps the visual grouping "TM matches | MT/new words".
+  const half = Math.ceil(values.length / 2);
+  const row1 = values.slice(0, half).map(cell).join('');
+  const row2 = values.slice(half).map(cell).join('');
 
   const wwc = Number(task.weighted_wc) || 0;
   const wwcLine = wwc > 0

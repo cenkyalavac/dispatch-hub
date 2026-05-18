@@ -87,13 +87,21 @@ async function fetchCatFields(apiBase, jwt, apiKey, taskId) {
       return Number(row?.unitQuantity) || 0;
     };
     return {
-      lev_context:  qty('iceMatches'),
-      lev_rep:      qty('repetitions'),
-      lev_match100: qty('oneHundred'),
-      lev_9599:     qty('ninetyFive'),
-      lev_8594:     qty('eightyFive'),
-      lev_7584:     qty('seventyFive'),
-      lev_no_match: qty('newWords') + qty('mtPostEdit'),
+      lev_context:      qty('iceMatches'),
+      lev_rep:          qty('repetitions'),
+      lev_match100:     qty('oneHundred'),
+      lev_9599:         qty('ninetyFive'),
+      lev_8594:         qty('eightyFive'),
+      lev_7584:         qty('seventyFive'),
+      // mtPostEdit gets its OWN field — different WWC weight than newWords
+      // (0.70 vs 1.00) per Welocalize TikTok regression. Folding them was
+      // arithmetically wrong for the upstream weighted_wc validation.
+      lev_mt_post_edit: qty('mtPostEdit'),
+      lev_no_match:     qty('newWords'),
+      // Junction TikTok-program default. Per-account override path is open
+      // via this field; programs other than TikTok may need a different
+      // coefficient (industry range 0.4-0.6; Welocalize is unusually high).
+      mt_weight_coefficient: 0.70,
       weighted_wc:  Number(detail?.weightedWordCount ?? detail?.data?.weightedWordCount) || 0,
       parser_type:  'Junction',
     };

@@ -91,6 +91,7 @@ Deno.serve(async () => {
       shape: {
         weighted_wc: 'number — source-of-truth weighted word count (Junction precomputed; Symfonie/GlobalLink computed via MTPE-aligned formula)',
         parser_type: 'string|null — CAT tool that produced the analysis (MemSource, Junction, ...)',
+        mt_weight_coefficient: 'number|null — WWC multiplier for mt_post_edit band (0.0-1.0). Junction TikTok program default = 0.70 (regression-validated, 5 tasks, 0% fit error). null for tasks without an MTPE band (Symfonie/GlobalLink today). Per-account override path is open via AcceptedTask.mt_weight_coefficient.',
         bands: {
           context: 'in-context / context-TM matches',
           rep: 'pure cross-segment repetitions',
@@ -98,20 +99,22 @@ Deno.serve(async () => {
           fuzzy_95_99: 'pure 95-99% fuzzy (Reps95-99 live in rep_95_99)',
           fuzzy_85_94: 'pure 85-94% fuzzy',
           fuzzy_75_84: 'pure 75-84% fuzzy',
-          fuzzy_50_74: 'pure 50-74% fuzzy',
+          fuzzy_50_74: 'pure 50-74% fuzzy (Junction has no band below 75)',
           rep_95_99: 'GlobalLink-only: repetitions inside the 95-99 fuzzy band',
           rep_85_94: 'GlobalLink-only',
           rep_75_84: 'GlobalLink-only',
           rep_50_74: 'GlobalLink-only',
-          no_match: 'no-match words (Junction folds mtPostEdit into this bucket)',
+          mt_post_edit: 'Junction-only today: machine-translation post-edit words. WWC contribution = words * mt_weight_coefficient. GlobalLink PD does not emit this band; Symfonie does not produce MTPE analyses.',
+          no_match: 'no-match (new) words. Junction surfaces this as PURE newWords — mtPostEdit is split into its own band above.',
         },
       },
-      notes: 'cat_analysis is null when no CAT data was captured at accept time (older rows or portals without analysis). Junction has no 50-74 band (lowest is 75). GlobalLink emits sub-bands (rep_XX_XX); Symfonie/Junction leave them at 0.',
+      notes: 'cat_analysis is null when no CAT data was captured at accept time (older rows or portals without analysis). Junction has no 50-74 band (lowest is 75). GlobalLink emits sub-bands (rep_XX_XX); Symfonie/Junction leave them at 0. Junction TikTok program regression confirms WWC = 100%*0.10 + 95-99*0.30 + 85-94*0.40 + 75-84*0.50 + mt_post_edit*0.70 + no_match*1.00 (ICE/Rep zero-weighted).',
     },
     notes: [
       'Faz 2: destination is computed via FieldMapping rules; mapping_applied lists every translation that fired.',
       'Faz 2: ProjectAttachment catalog tracks Dropbox-uploaded handoff files; BMS can list & download via signed URLs (~4h validity).',
       'Faz 2.1: cat_analysis surfaces the leverage breakdown + weighted_wc on every project payload (list and detail).',
+      'Faz 2.2: Junction MTPE — tasks may carry mt_post_edit (machine-translation post-edit words). WWC formula includes this band with a portal-specific weight (Junction default = 0.70). Other portals (GlobalLink, Symfonie) typically have mt_post_edit = 0.',
       'Multi-tenant ready: every record is scoped by tenant_id. Default tenant is "default".',
     ],
   };

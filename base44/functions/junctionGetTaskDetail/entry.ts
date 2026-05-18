@@ -98,6 +98,39 @@ Deno.serve(async (req) => {
     const notesArr = Array.isArray(t?.notes) ? t.notes : [];
     const assetsArr = Array.isArray(t?.assets) ? t.assets : [];
 
+    // Leverage block — Junction emits per-band quantities in taskDetails[].
+    // mtPostEdit is broken out as its own first-class band (NOT folded into
+    // newWords) so the UI's "MT" column shows the real upstream value. The
+    // 50-74 band and Reps-in-fuzzy sub-bands don't exist on Junction; those
+    // keys stay 0 in the response.
+    const bands = Array.isArray(t?.taskDetails) ? t.taskDetails : [];
+    const qty = (name) => {
+      const row = bands.find((b) => b?.name === name);
+      return Number(row?.unitQuantity) || 0;
+    };
+    const leverageBands = {
+      context:      qty('iceMatches'),
+      rep:          qty('repetitions'),
+      match100:     qty('oneHundred'),
+      fuzzy_95_99:  qty('ninetyFive'),
+      fuzzy_85_94:  qty('eightyFive'),
+      fuzzy_75_84:  qty('seventyFive'),
+      mt_post_edit: qty('mtPostEdit'),
+      no_match:     qty('newWords'),
+    };
+    const bandsTotal = Object.values(leverageBands).reduce((s, v) => s + v, 0);
+    const weightedWc = Number(t?.weightedWordCount) || 0;
+    const leverage = (bandsTotal > 0 || weightedWc > 0)
+      ? {
+          bands: leverageBands,
+          weighted_wc: weightedWc,
+          // Junction TikTok program regression-validated MTPE weight (5 tasks,
+          // 0% fit error). Surfaced here so the UI can label the MT column
+          // honestly; account-level overrides plug in here later.
+          mt_weight_coefficient: 0.70,
+        }
+      : null;
+
     return Response.json({
       success: true,
       task_id: taskId,
@@ -106,6 +139,7 @@ Deno.serve(async (req) => {
       assigned_user: t?.assignedUser?.name || t?.assignedUser?.email || '',
       notes: notesArr.filter((n) => !n?.deletedAt).map(normNote),
       assets: assetsArr.filter((a) => !a?.deletedAt).map(normAsset),
+      leverage,
     });
   } catch (error) {
     return Response.json({ success: false, error: error.message }, { status: 500 });

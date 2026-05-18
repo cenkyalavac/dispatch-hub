@@ -7,12 +7,24 @@
 // weight Reps differently from pure fuzzy. This file is now consistent with
 // both — Rep bands stay separate, and computeWwc matches the pipeline formula.
 //
-// WWC formula (MTPE-aligned — Reps share the same weight as their fuzzy band):
-//   (95-99 + Reps95-99) * 0.2
-// + (85-94 + Reps85-94) * 0.35
-// + (75-84 + Reps75-84) * 0.45
-// + (50-74 + Reps50-74 + NoMatch) * 0.6
-// Context / pure-rep / 100% bands carry zero weight (free under MTPE).
+// WWC formulas by portal:
+//   GlobalLink (default): (95-99 + Reps95-99) * 0.2
+//                       + (85-94 + Reps85-94) * 0.35
+//                       + (75-84 + Reps75-84) * 0.45
+//                       + (50-74 + Reps50-74 + NoMatch) * 0.6
+//                         (Context / pure-rep / 100% bands carry zero weight)
+//
+//   Junction: 100% * 0.10
+//           + 95-99 * 0.30
+//           + 85-94 * 0.40
+//           + 75-84 * 0.50
+//           + MT-PostEdit * (mt_weight_coefficient ?? 0.70)
+//           + NoMatch * 1.00
+//           (Regression-validated against Welocalize TikTok program — 5 tasks,
+//            0% fit error. Junction has no 50-74 band, no Reps sub-bands.)
+//
+// Junction tasks ship with upstream weighted_wc already populated — the
+// portal-aware computeWwc below is mainly a sanity check / fallback path.
 
 const num = (v) => Number(v) || 0;
 
@@ -41,6 +53,9 @@ export function normalizeLeverage(cumulativeTmStatistics) {
     f9599: 0, f8594: 0, f7584: 0, f5074: 0,
     rep_9599: 0, rep_8594: 0, rep_7584: 0, rep_5074: 0,
     no_match: 0,
+    // MT band — never populated from GlobalLink PD (the parser is per-portal,
+    // not per-task), but kept here so the shape is portal-uniform.
+    mt_post_edit: 0,
   };
   if (!Array.isArray(cumulativeTmStatistics)) return out;
   for (const b of cumulativeTmStatistics) {
@@ -50,14 +65,45 @@ export function normalizeLeverage(cumulativeTmStatistics) {
   return out;
 }
 
-// Compute WWC from the normalized bands. Matches functions/globallinkPoll.
-export function computeWwc(lev) {
+// Portal-default MTPE coefficients. Junction is regression-validated against
+// the TikTok Language Management Center program; other portals don't emit an
+// MTPE band today so the coefficient is irrelevant (multiplied by 0).
+// Per-account overrides come through the `mtWeight` argument when known.
+const PORTAL_MT_WEIGHT = {
+  junction: 0.70,
+  globallink: 0,
+  symfonie: 0,
+};
+
+// Compute WWC. Defaults to the GlobalLink / Symfonie formula when no portal
+// hint is supplied (preserves existing call-sites that didn't know about
+// portals). Pass `portal: 'junction'` to apply the Welocalize formula. Pass
+// `mtWeight` to override the program default (e.g. for a customer-specific
+// rate negotiated outside TikTok's defaults).
+export function computeWwc(lev, { portal, mtWeight } = {}) {
   if (!lev) return 0;
+
+  if (portal === 'junction') {
+    const w = mtWeight != null ? Number(mtWeight) : PORTAL_MT_WEIGHT.junction;
+    return Math.round(
+        num(lev.match100)     * 0.10
+      + num(lev.f9599)        * 0.30
+      + num(lev.f8594)        * 0.40
+      + num(lev.f7584)        * 0.50
+      + num(lev.mt_post_edit) * w
+      + num(lev.no_match)     * 1.00
+    );
+  }
+
+  // GlobalLink (default) — MTPE-aligned bands with Reps sharing the same
+  // weight as their parent fuzzy band. MT-PostEdit folded into no_match-
+  // equivalent weight (0.6) when present, which matches GlobalLink's
+  // implicit treatment of MTPE words as "raw to be re-written".
   return Math.round(
       (num(lev.f9599) + num(lev.rep_9599)) * 0.2
     + (num(lev.f8594) + num(lev.rep_8594)) * 0.35
     + (num(lev.f7584) + num(lev.rep_7584)) * 0.45
-    + (num(lev.f5074) + num(lev.rep_5074) + num(lev.no_match)) * 0.6
+    + (num(lev.f5074) + num(lev.rep_5074) + num(lev.no_match) + num(lev.mt_post_edit)) * 0.6
   );
 }
 
@@ -76,6 +122,8 @@ export function extractLeverage(row) {
     f7584: num(row.lev_7584) + num(row.lev_rep_7584),
     f5074: num(row.lev_5074) + num(row.lev_rep_5074),
     no_match: num(row.lev_no_match),
+    // Surfaced for cross-portal parity. GlobalLink rows leave this at 0.
+    mt_post_edit: num(row.lev_mt_post_edit),
     total: num(row.word_count),
     wwc: num(row.weighted_wc),
   };

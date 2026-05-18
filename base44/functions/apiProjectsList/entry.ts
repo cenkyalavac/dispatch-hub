@@ -86,6 +86,10 @@ function buildCatAnalysis(at) {
     rep_85_94: Number(at.lev_rep_8594) || 0,
     rep_75_84: Number(at.lev_rep_7584) || 0,
     rep_50_74: Number(at.lev_rep_5074) || 0,
+    // Junction-specific today: machine-translation post-edit words. Carries
+    // its own WWC weight (mt_weight_coefficient) so downstream pricing can
+    // bill MT separately from raw new words.
+    mt_post_edit: Number(at.lev_mt_post_edit) || 0,
     no_match: Number(at.lev_no_match) || 0,
   };
   const weightedWc = Number(at.weighted_wc) || 0;
@@ -94,6 +98,9 @@ function buildCatAnalysis(at) {
   return {
     weighted_wc: weightedWc,
     parser_type: at.parser_type || null,
+    // null when no MTPE band was captured (Symfonie/GlobalLink today). Junction
+    // tasks carry the program-default 0.70 unless overridden per account.
+    mt_weight_coefficient: at.mt_weight_coefficient != null ? Number(at.mt_weight_coefficient) : null,
     bands,
   };
 }

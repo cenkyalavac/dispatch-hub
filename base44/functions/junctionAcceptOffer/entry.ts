@@ -104,9 +104,12 @@ Deno.serve(async (req) => {
         if (dr.ok) {
           const detail = await dr.json();
           // Junction returns an array of bands. Map name → our portal-neutral
-          // lev_* fields. `mtPostEdit` is folded into lev_no_match — it shares
-          // the same MTPE 0.6 weight, matches Welocalize's per-band pricing
-          // semantics, and we have no dedicated MT column.
+          // lev_* fields. `mtPostEdit` now lives in its OWN field
+          // (lev_mt_post_edit) — previously folded into lev_no_match but the
+          // WWC formula treats it separately (weight 0.70 vs newWords 1.00),
+          // so collapsing them was incorrect for downstream pricing.
+          // Junction has NO 50-74 band and NO Reps-in-fuzzy sub-bands — those
+          // lev_* fields stay 0 for Junction rows by design.
           const bands = Array.isArray(detail?.taskDetails) ? detail.taskDetails
             : Array.isArray(detail?.data?.taskDetails) ? detail.data.taskDetails
             : [];
@@ -115,13 +118,18 @@ Deno.serve(async (req) => {
             return Number(row?.unitQuantity) || 0;
           };
           catFields = {
-            lev_context:  qty('iceMatches'),
-            lev_rep:      qty('repetitions'),
-            lev_match100: qty('oneHundred'),
-            lev_9599:     qty('ninetyFive'),
-            lev_8594:     qty('eightyFive'),
-            lev_7584:     qty('seventyFive'),
-            lev_no_match: qty('newWords') + qty('mtPostEdit'),
+            lev_context:      qty('iceMatches'),
+            lev_rep:          qty('repetitions'),
+            lev_match100:     qty('oneHundred'),
+            lev_9599:         qty('ninetyFive'),
+            lev_8594:         qty('eightyFive'),
+            lev_7584:         qty('seventyFive'),
+            lev_mt_post_edit: qty('mtPostEdit'),
+            lev_no_match:     qty('newWords'),
+            // Junction TikTok program: regression-validated MTPE weight = 0.70
+            // (5 tasks, 0.0% fit error). Per-account override path is open via
+            // this field; for now every Junction task gets the program default.
+            mt_weight_coefficient: 0.70,
             // Junction proprietary WWC — read it, don't recompute. The
             // weightedWordCount lives at the task root, not inside taskDetails.
             weighted_wc:  Number(detail?.weightedWordCount ?? detail?.data?.weightedWordCount) || 0,

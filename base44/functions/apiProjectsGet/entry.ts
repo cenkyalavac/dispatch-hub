@@ -96,12 +96,24 @@ Deno.serve(async (req) => {
         rep_85_94: Number(at.lev_rep_8594) || 0,
         rep_75_84: Number(at.lev_rep_7584) || 0,
         rep_50_74: Number(at.lev_rep_5074) || 0,
+        // First-class MT-PostEdit band — Junction-specific today (mtPostEdit
+        // from taskDetails). GlobalLink/Symfonie leave it at 0. Weighted via
+        // mt_weight_coefficient below; we expose both so the BMS can price
+        // MT separately from new words.
+        mt_post_edit: Number(at.lev_mt_post_edit) || 0,
         no_match: Number(at.lev_no_match) || 0,
       };
       const weightedWc = Number(at.weighted_wc) || 0;
       const total = Object.values(bands).reduce((s, v) => s + v, 0);
       if (total > 0 || weightedWc > 0) {
-        catAnalysis = { weighted_wc: weightedWc, parser_type: at.parser_type || null, bands };
+        catAnalysis = {
+          weighted_wc: weightedWc,
+          parser_type: at.parser_type || null,
+          // Per-task MTPE coefficient (Junction TikTok default = 0.70).
+          // null when the task has no MTPE band (Symfonie/GlobalLink today).
+          mt_weight_coefficient: at.mt_weight_coefficient != null ? Number(at.mt_weight_coefficient) : null,
+          bands,
+        };
       }
     }
 

@@ -4,6 +4,7 @@ import { Download, FileText, Megaphone, User } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
+import JunctionLeveragePanel from './JunctionLeveragePanel';
 
 // Junction task detail panel — notes + assets pulled lazily on first render.
 // Cached by react-query so re-opening the same task is instant. Asset download
@@ -119,6 +120,8 @@ export default function JunctionTaskDetail({ taskId }) {
           </span>
         )}
       </div>
+
+      {data?.leverage && <JunctionLeveragePanel leverage={data.leverage} />}
 
       <div>
         <p className="text-[10px] uppercase tracking-wider text-ink-3 mb-1.5">

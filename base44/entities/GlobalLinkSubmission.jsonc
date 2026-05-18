@@ -89,6 +89,10 @@
       "type": "number",
       "description": "No-match word count."
     },
+    "lev_mt_post_edit": {
+      "type": "number",
+      "description": "Machine Translation Post-Edit word count. PD doesn't emit this band today \u2014 stays 0/null for GlobalLink rows. Field present for cross-portal schema parity with AcceptedTask."
+    },
     "due_date": {
       "type": "string",
       "format": "date-time"
