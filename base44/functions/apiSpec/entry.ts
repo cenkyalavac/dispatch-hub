@@ -3,7 +3,7 @@
 Deno.serve(async () => {
   const spec = {
     name: 'Dispatch Hub — BMS Integration API',
-    version: '2.1.0-faz2',
+    version: '2.2.0-mtpe',
     auth: {
       scheme: 'Apikey',
       header: 'Authorization: Apikey <token>',

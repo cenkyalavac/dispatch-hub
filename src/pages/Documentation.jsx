@@ -54,7 +54,8 @@ const ENDPOINTS = [
       "cat_analysis": {
         "weighted_wc": 712.4,
         "parser_type": "MemSource",
-        "bands": { "context": 320, "rep": 12, "match100": 145, "fuzzy_95_99": 38, "fuzzy_85_94": 60, "fuzzy_75_84": 25, "fuzzy_50_74": 18, "no_match": 662 }
+        "mt_weight_coefficient": null,
+        "bands": { "context": 320, "rep": 12, "match100": 145, "fuzzy_95_99": 38, "fuzzy_85_94": 60, "fuzzy_75_84": 25, "fuzzy_50_74": 18, "mt_post_edit": 0, "no_match": 662 }
       }
     }
   ]
@@ -84,9 +85,10 @@ const ENDPOINTS = [
     ],
     "attachments_count": 3,
     "cat_analysis": {
-      "weighted_wc": 712.4,
-      "parser_type": "MemSource",
-      "bands": { "context": 320, "rep": 12, "match100": 145, "fuzzy_95_99": 38, "fuzzy_85_94": 60, "fuzzy_75_84": 25, "fuzzy_50_74": 18, "no_match": 662 }
+      "weighted_wc": 537.2,
+      "parser_type": "Junction",
+      "mt_weight_coefficient": 0.70,
+      "bands": { "context": 0, "rep": 0, "match100": 0, "fuzzy_95_99": 125, "fuzzy_85_94": 519, "fuzzy_75_84": 216, "fuzzy_50_74": 0, "mt_post_edit": 263, "no_match": 0 }
     }
   }
 }`,
@@ -155,7 +157,7 @@ const ENDPOINTS = [
     title: 'Machine-readable API spec (no auth)',
     description:
       'Discovery endpoint — returns the same shape this page documents, in JSON. Useful for BMS-side schema generation.',
-    response: `{ "name": "Dispatch Hub — BMS Integration API", "version": "2.0.0-faz2", "...": "..." }`,
+    response: `{ "name": "Dispatch Hub — BMS Integration API", "version": "2.2.0-mtpe", "...": "..." }`,
   },
 ];
 
@@ -330,21 +332,23 @@ function isValid(rawBody, signatureHeader, secret) {
               Every project payload (both <code className="font-mono bg-surface-2 px-1 rounded">apiProjectsList</code> and <code className="font-mono bg-surface-2 px-1 rounded">apiProjectsGet</code>) carries a <code className="font-mono bg-surface-2 px-1 rounded">cat_analysis</code> block when CAT leverage was captured at accept time. The shape is portal-neutral — bands have the same meaning whether the underlying source is Symfonie (MemSource), GlobalLink (PD), or Junction.
             </p>
             <CodeBlock language="json">{`{
-  "weighted_wc": 712.4,
-  "parser_type": "MemSource",
+  "weighted_wc": 537.2,
+  "parser_type": "Junction",
+  "mt_weight_coefficient": 0.70,
   "bands": {
-    "context":     320,
-    "rep":          12,
-    "match100":    145,
-    "fuzzy_95_99":  38,
-    "fuzzy_85_94":  60,
-    "fuzzy_75_84":  25,
-    "fuzzy_50_74":  18,
+    "context":       0,
+    "rep":           0,
+    "match100":      0,
+    "fuzzy_95_99": 125,
+    "fuzzy_85_94": 519,
+    "fuzzy_75_84": 216,
+    "fuzzy_50_74":   0,
     "rep_95_99":     0,
     "rep_85_94":     0,
     "rep_75_84":     0,
     "rep_50_74":     0,
-    "no_match":    662
+    "mt_post_edit":263,
+    "no_match":      0
   }
 }`}</CodeBlock>
             <div className="border border-line-1 rounded-md overflow-hidden mt-4">
@@ -358,20 +362,44 @@ function isValid(rawBody, signatureHeader, secret) {
                 <tbody className="divide-y divide-line-1">
                   <tr><td className="px-3 py-2 font-mono text-ink-1">weighted_wc</td><td className="px-3 py-2 text-ink-2">Source-of-truth weighted word count. Junction supplies this precomputed; Symfonie/GlobalLink compute it client-side via the MTPE-aligned formula.</td></tr>
                   <tr><td className="px-3 py-2 font-mono text-ink-1">parser_type</td><td className="px-3 py-2 text-ink-2">CAT tool that produced the analysis (<code className="font-mono">MemSource</code>, <code className="font-mono">Junction</code>, etc.). May be <code className="font-mono">null</code>.</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">mt_weight_coefficient</td><td className="px-3 py-2 text-ink-2">WWC weight applied to the <code className="font-mono">mt_post_edit</code> band (0.0–1.0). Junction TikTok-program default = <code className="font-mono">0.70</code> (regression-validated). <code className="font-mono">null</code> for tasks without an MTPE band (Symfonie/GlobalLink today).</td></tr>
                   <tr><td className="px-3 py-2 font-mono text-ink-1">bands.context</td><td className="px-3 py-2 text-ink-2">In-context / context-TM matches.</td></tr>
                   <tr><td className="px-3 py-2 font-mono text-ink-1">bands.rep</td><td className="px-3 py-2 text-ink-2">Pure cross-segment repetitions.</td></tr>
                   <tr><td className="px-3 py-2 font-mono text-ink-1">bands.match100</td><td className="px-3 py-2 text-ink-2">100% TM matches.</td></tr>
-                  <tr><td className="px-3 py-2 font-mono text-ink-1">bands.fuzzy_*</td><td className="px-3 py-2 text-ink-2">Pure fuzzy bands (95-99 / 85-94 / 75-84 / 50-74). Repetitions falling inside a fuzzy band live in the corresponding <code className="font-mono">rep_*</code> field, not here.</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">bands.fuzzy_*</td><td className="px-3 py-2 text-ink-2">Pure fuzzy bands (95-99 / 85-94 / 75-84 / 50-74). Repetitions falling inside a fuzzy band live in the corresponding <code className="font-mono">rep_*</code> field, not here. Junction has no 50-74 band (lowest is 75).</td></tr>
                   <tr><td className="px-3 py-2 font-mono text-ink-1">bands.rep_*</td><td className="px-3 py-2 text-ink-2">GlobalLink-only sub-bands. Symfonie/Junction emit <code className="font-mono">0</code>.</td></tr>
-                  <tr><td className="px-3 py-2 font-mono text-ink-1">bands.no_match</td><td className="px-3 py-2 text-ink-2">No-match words. Junction folds <code className="font-mono">mtPostEdit</code> into this bucket (same MTPE 0.6 weight).</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">bands.mt_post_edit</td><td className="px-3 py-2 text-ink-2"><strong className="text-ink-1">Junction-only today.</strong> Machine-translation post-edit words. WWC contribution = <code className="font-mono">words × mt_weight_coefficient</code>. GlobalLink PD doesn't emit this band; Symfonie doesn't produce MTPE analyses — both leave it at <code className="font-mono">0</code>.</td></tr>
+                  <tr><td className="px-3 py-2 font-mono text-ink-1">bands.no_match</td><td className="px-3 py-2 text-ink-2">No-match (new) words. Junction surfaces this as <em>pure</em> <code className="font-mono">newWords</code> — <code className="font-mono">mtPostEdit</code> is split into its own band above (different WWC weight).</td></tr>
                 </tbody>
               </table>
             </div>
+
+            <h3 className="text-[13px] font-semibold text-ink-1 mt-6 mb-2">Weighted word-count formulas</h3>
+            <p>
+              <code className="font-mono bg-surface-2 px-1 rounded">weighted_wc</code> is always the source of truth — don't re-derive it from bands unless you need to audit. The formulas below explain how it's produced, and clarify the per-portal differences a BMS needs to know about.
+            </p>
+            <p className="font-mono text-[11.5px] text-ink-2 bg-surface-2 p-3 rounded border border-line-1 whitespace-pre-wrap">
+{`Junction:
+  weighted_wc = match100      × 0.10
+              + fuzzy_95_99   × 0.30
+              + fuzzy_85_94   × 0.40
+              + fuzzy_75_84   × 0.50
+              + mt_post_edit  × mt_weight_coefficient   ← per-task (default 0.70)
+              + no_match      × 1.00
+  (context, rep are zero-weighted; no 50-74 band.)
+
+GlobalLink / Symfonie:
+  weighted_wc = (fuzzy_95_99 + rep_95_99) × 0.20
+              + (fuzzy_85_94 + rep_85_94) × 0.35
+              + (fuzzy_75_84 + rep_75_84) × 0.45
+              + (fuzzy_50_74 + rep_50_74 + no_match) × 0.60
+  (context, rep, match100 are zero-weighted; Symfonie's rep_* sub-bands are always 0.)`}
+            </p>
             <p className="text-[11.5px] text-ink-3 italic-editorial border-l-2 border-line-2 pl-3 mt-4">
               <strong className="not-italic text-ink-2">When is <code className="font-mono not-italic">cat_analysis</code> null?</strong> Older projects accepted before CAT capture landed, portals without leverage analysis attached, or rejections. Treat null as "no data" rather than "all zero" — don't divide by it.
             </p>
             <p className="text-[11.5px] text-ink-3 italic-editorial border-l-2 border-line-2 pl-3">
-              <strong className="not-italic text-ink-2">Junction quirk:</strong> Junction has no 50-74 band (lowest is 75). It emits a proprietary <code className="font-mono not-italic">weighted_wc</code> precomputed from its internal pricing model — use it as-is rather than re-deriving from bands.
+              <strong className="not-italic text-ink-2">MT-PostEdit is its own band.</strong> Previously Junction's <code className="font-mono not-italic">mtPostEdit</code> was folded into <code className="font-mono not-italic">no_match</code>; as of v2.2 it's split out because its WWC weight (0.70) differs from raw new-word weight (1.00). Existing BMS code that summed <code className="font-mono not-italic">no_match</code> for billing should now sum <code className="font-mono not-italic">no_match + mt_post_edit</code> if it wants the old behaviour — or migrate to using <code className="font-mono not-italic">weighted_wc</code> directly.
             </p>
           </DocSection>
 
