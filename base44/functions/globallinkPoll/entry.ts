@@ -283,11 +283,24 @@ Deno.serve(async (req) => {
 
     // Reconcile: retire rows that used to be available but aren't in this poll.
     // We only touch status='available' — claimed/skipped/error rows stay as-is.
+    //
+    // GRACE PERIOD (10 min): PD's AVAILABLE pool is volatile — a submission
+    // can briefly disappear from one poll and reappear on the next (paging
+    // boundary, transient PD load, dynamic re-ordering). Previously we
+    // retired on the FIRST miss, which broke the email one-click Accept flow:
+    // a notification mailed at T+0 could find its underlying row marked
+    // "skipped" by T+5min, so the recipient's click hit a 410 Gone.
+    // 10 minutes covers a single missed 5-min poll cycle and gives the
+    // recipient a realistic window to act on the email.
     const retiredAt = new Date().toISOString();
+    const retireCutoff = Date.now() - 10 * 60 * 1000;
     for (const r of existing) {
       if (r.status !== 'available') continue;
       const key = `${r.submission_ticket}::${r.target_language || ''}`;
       if (seenKeys.has(key)) continue;
+      // Created in the last 10 minutes? Skip — give the recipient time.
+      const createdMs = r.created_date ? new Date(r.created_date).getTime() : 0;
+      if (createdMs && createdMs > retireCutoff) continue;
       try {
         await base44.asServiceRole.entities.GlobalLinkSubmission.update(r.id, {
           status: 'skipped',
