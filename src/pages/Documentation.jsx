@@ -14,6 +14,7 @@ import { RECIPES } from '@/lib/docs/recipes';
 // call, what the payload means, and what's portal-specific.
 const TOC = [
   { id: 'overview',         label: 'Overview' },
+  { id: 'contract-policy',  label: 'Contract & versioning' },
   { id: 'quickstart',       label: 'Quickstart' },
   { id: 'lifecycle',        label: 'Project lifecycle' },
   { id: 'portal-matrix',    label: 'Portal capabilities' },
@@ -221,6 +222,41 @@ export default function Documentation() {
             </p>
             <p className="text-[11.5px] text-ink-3 italic-editorial border-l-2 border-line-2 pl-3">
               <strong className="not-italic text-ink-2">Schema versioning.</strong> The current schema is <code className="font-mono not-italic">v2.3.0-vendor</code> (see <code className="font-mono not-italic">apiSpec.version</code>). Additive changes (new fields, new optional body params, new webhook events) ship without notice. Breaking changes get a new major version and a migration window — hit <code className="font-mono not-italic">apiSpec</code> from CI to detect them.
+            </p>
+          </DocSection>
+
+          {/* ─────────────────────────── CONTRACT POLICY ─────────────────────────── */}
+          <DocSection id="contract-policy" eyebrow="Stability promise" title="Contract & versioning policy">
+            <p>
+              The API surface documented on this page is the <strong>contract</strong>. Your adapter can pin to it and trust it.
+            </p>
+            <FieldTable rows={[
+              { field: 'Current version',     meaning: <>The live shape is <code className="font-mono">v2.3.0-vendor</code>. Tier: <strong className="text-ink-1">stable</strong>.</> },
+              { field: 'Additive changes',    meaning: <>New optional fields, new webhook events, new optional body params ship under the same major version <strong className="text-ink-1">without notice</strong>. Your adapter MUST ignore unknown fields, never error on them.</> },
+              { field: 'Breaking changes',    meaning: <>Renames, removals, retypes, or restructures bump the major version (<code className="font-mono">v2.x → v3.x</code>). We commit to a <strong className="text-ink-1">minimum 30-day parallel window</strong> where <code className="font-mono">v2</code> endpoints remain live, and to publishing a <code className="font-mono">v2→v3</code> migration diff before cutover.</> },
+              { field: 'Source of truth',     meaning: <><code className="font-mono">GET /functions/apiSpec</code> (public, no auth) → <code className="font-mono">.version</code>. Poll this on adapter boot for the version guard.</> },
+            ]} />
+
+            <h3 className="text-[13px] font-semibold text-ink-1 mt-6 mb-2">Recommended version guard</h3>
+            <p>Pin to <code className="font-mono bg-surface-2 px-1 rounded">major === 2</code>. Warn (don't reject) when minor/patch drift; reject and alert ops when the major changes — refuse to parse rather than mis-parse silently.</p>
+            <CodeBlock language="javascript">{`// On adapter boot
+const spec = await fetch('https://<hub>/functions/apiSpec').then(r => r.json());
+const [major, minor] = spec.version.split('.').map(Number);
+const PINNED_MAJOR = 2;
+const TESTED_VERSION = '2.3.0-vendor';
+
+if (major !== PINNED_MAJOR) {
+  alertOps('Hub major version changed — refusing to parse', { spec_version: spec.version });
+  process.exit(1);
+}
+if (spec.version !== TESTED_VERSION) {
+  log.warn('Hub minor/patch drift — parsing with caution', {
+    tested: TESTED_VERSION, live: spec.version,
+  });
+}`}</CodeBlock>
+
+            <p className="text-[11.5px] text-ink-3 italic-editorial border-l-2 border-line-2 pl-3">
+              The <code className="font-mono not-italic">apiSpec</code> response includes a <code className="font-mono not-italic">policy.guard_recommendation</code> block carrying the same rule machine-readably — your adapter can read those values directly instead of hardcoding them.
             </p>
           </DocSection>
 

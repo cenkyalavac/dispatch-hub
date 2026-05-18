@@ -4,6 +4,25 @@ Deno.serve(async () => {
   const spec = {
     name: 'Dispatch Hub — BMS Integration API',
     version: '2.3.0-vendor',
+    // Contract stability policy — Dispatch's adapter is pinned to v2.x and
+    // uses these fields to decide whether to parse safely or alert ops.
+    // Read on adapter boot; treat as the canonical guard input.
+    stability: 'stable',
+    supported_majors: [2],
+    policy: {
+      additive_changes:
+        'New optional fields, new webhook events, and new optional body params ship under the same major version without notice. Adapters MUST ignore unknown fields rather than error on them.',
+      breaking_changes:
+        'Renames, removals, retypes, or restructures bump the major version (v2.x → v3.x). We commit to a minimum 30-day parallel window where v2 endpoints remain live, and to publishing a v2→v3 migration diff before cutover.',
+      guard_recommendation: {
+        accept_major: 2,
+        warn_on_minor_or_patch_drift: true,
+        reject_major_above: 2,
+        notes:
+          'Pin your adapter to major === 2. Warn (don\'t reject) when minor/patch drift from your tested version, log the diff, keep parsing. Reject and alert ops when major !== 2 — refuse to parse rather than mis-parse silently.',
+      },
+      version_source_of_truth: 'GET /functions/apiSpec (public, no auth) → .version',
+    },
     auth: {
       scheme: 'Apikey',
       header: 'Authorization: Apikey <token>',
