@@ -319,7 +319,7 @@ if (spec.version !== TESTED_VERSION) {
               <strong className="not-italic text-ink-2">Bearer is the only scheme that works.</strong> The Base44 function gateway sits in front of every endpoint and only forwards <code className="font-mono not-italic">Authorization</code> headers using the <code className="font-mono not-italic">Bearer</code> scheme. Other schemes (<code className="font-mono not-italic">Apikey</code>, <code className="font-mono not-italic">Token</code>, etc.) are rejected at the gateway with a 500 before the handler runs — earlier versions of this page mentioned <code className="font-mono not-italic">Apikey</code> as an alias, that was incorrect.
             </p>
             <p>
-              Revoked keys reject with <code className="font-mono bg-surface-2 px-1 rounded">401 Unauthorized</code>; missing scopes reject with <code className="font-mono bg-surface-2 px-1 rounded">403 Forbidden</code>. Keys are scoped to one tenant — cross-tenant project IDs are 404.
+              Missing or unknown tokens reject with <code className="font-mono bg-surface-2 px-1 rounded">401 Unauthorized</code>; revoked keys and missing scopes reject with <code className="font-mono bg-surface-2 px-1 rounded">403 Forbidden</code>. Keys are scoped to one tenant — cross-tenant project IDs are 404.
             </p>
           </DocSection>
 
