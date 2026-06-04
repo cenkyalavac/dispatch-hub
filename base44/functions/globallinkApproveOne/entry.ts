@@ -259,6 +259,21 @@ Deno.serve(async (req) => {
         (r) => (r.target_language || '').toLowerCase() === claimedLocale.toLowerCase()
       ) || row;
 
+      // Idempotency guard: same (submission_ticket, target_language) already
+      // claimed — reuse the existing AcceptedTask. Happens when the UI's
+      // Approve button is double-clicked or when a previous run failed
+      // mid-Project-create and was retried. GlobalLink's claim chain on
+      // re-run returns 4xx for "already claimed", which we treat as success
+      // upstream — we just must not insert a duplicate row downstream.
+      const existingAcceptedRows = await base44.asServiceRole.entities.AcceptedTask
+        .filter({
+          portal: 'globallink',
+          submission_ticket: row.submission_ticket,
+          target_language: claimedLocale,
+        }, '-created_date', 1)
+        .catch(() => []);
+      const liveExistingAccepted = existingAcceptedRows.find((t) => t.status !== 'error') || null;
+
       // Copy GlobalLink-specific fields (12-band leverage, WWC, phase, workflow,
       // deadline, submission identity) onto the AcceptedTask so the Sheets sync
       // — which reads exclusively from AcceptedTask — can write them out as
@@ -271,6 +286,10 @@ Deno.serve(async (req) => {
       // calling UI sees the error; external_ref carries submission_ticket
       // plus the locale so an operator can manually reconcile per language.
       let acceptedTask;
+      if (liveExistingAccepted) {
+        console.log(`AcceptedTask for ${row.submission_ticket}/${claimedLocale} already exists (id=${liveExistingAccepted.id}) — skipping duplicate create.`);
+        acceptedTask = liveExistingAccepted;
+      } else {
       try {
       acceptedTask = await base44.asServiceRole.entities.AcceptedTask.create({
         portal: 'globallink',
@@ -322,6 +341,7 @@ Deno.serve(async (req) => {
         }).catch((e) => console.error('recordSystemIssue failed:', e.message));
         throw persistErr;
       }
+      }
 
       await base44.asServiceRole.entities.GlobalLinkSubmission.update(matchRow.id, {
         status: 'claimed',
@@ -330,6 +350,15 @@ Deno.serve(async (req) => {
         claim_error: null,
       }).catch((e) => console.error('row claim update failed:', e.message));
 
+      // Idempotency: skip Project create + webhook when one exists for this
+      // (ticket, locale). external_id encodes both so the filter is unique.
+      const externalId = `globallink:${row.submission_ticket}:${claimedLocale}`;
+      const existingProject = await base44.asServiceRole.entities.Project
+        .filter({ external_id: externalId }, '-created_date', 1)
+        .catch(() => []);
+      if (existingProject.length > 0) {
+        console.log(`Project ${externalId} already exists (id=${existingProject[0].id}) — skipping duplicate create + webhook.`);
+      } else {
       try {
         const project = await base44.asServiceRole.entities.Project.create({
           tenant_id: 'default',
@@ -355,6 +384,7 @@ Deno.serve(async (req) => {
         }).catch((e) => console.error('webhook dispatch failed:', e.message));
       } catch (e) {
         console.error(`Project create failed for ${claimedLocale}:`, e.message);
+      }
       }
 
       created.push({ accepted_task_id: acceptedTask.id, target_language: claimedLocale });

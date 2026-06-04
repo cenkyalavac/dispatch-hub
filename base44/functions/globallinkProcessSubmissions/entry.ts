@@ -341,8 +341,26 @@ Deno.serve(async (req) => {
       }
 
       // Claim succeeded — create AcceptedTask + Project, flip submission to claimed.
+      // Idempotency: skip AcceptedTask create when a row for this
+      // (submission_ticket, target_language) already exists. Happens when an
+      // overlapping cron run beat us, or when a manual approve was racing the
+      // scheduled poll. submission_ticket + target_language uniquely identifies
+      // a GlobalLink work unit.
       const acceptedAt = new Date().toISOString();
+      const existingAcceptedRows = await base44.asServiceRole.entities.AcceptedTask
+        .filter({
+          portal: 'globallink',
+          submission_ticket: sub.submission_ticket,
+          target_language: sub.target_language,
+        }, '-created_date', 1)
+        .catch(() => []);
+      const liveExistingAccepted = existingAcceptedRows.find((t) => t.status !== 'error') || null;
+
       let acceptedTask;
+      if (liveExistingAccepted) {
+        console.log(`AcceptedTask for ${sub.submission_ticket}/${sub.target_language} already exists (id=${liveExistingAccepted.id}) — skipping duplicate create.`);
+        acceptedTask = liveExistingAccepted;
+      } else {
       try {
         acceptedTask = await base44.asServiceRole.entities.AcceptedTask.create({
           portal: 'globallink',
@@ -399,6 +417,7 @@ Deno.serve(async (req) => {
         results.errors.push({ submission_id: sub.submission_id, target_language: sub.target_language, error: persistErr.message });
         continue;
       }
+      }
 
       // AcceptedTask persisted — flip submission to claimed (non-fatal on
       // failure: row is already accepted, we just lose the link).
@@ -410,6 +429,15 @@ Deno.serve(async (req) => {
       }).catch((e) => console.error('claim update failed:', e.message));
 
       // Project + webhook (BMS pipeline parity with Symfonie/Junction).
+      // Idempotency: skip Project create + webhook when one exists for this
+      // (ticket, locale) — external_id encodes both.
+      const externalId = `globallink:${sub.submission_ticket}:${sub.target_language}`;
+      const existingProject = await base44.asServiceRole.entities.Project
+        .filter({ external_id: externalId }, '-created_date', 1)
+        .catch(() => []);
+      if (existingProject.length > 0) {
+        console.log(`Project ${externalId} already exists (id=${existingProject[0].id}) — skipping duplicate create + webhook.`);
+      } else {
       try {
         const project = await base44.asServiceRole.entities.Project.create({
           tenant_id: 'default',
@@ -435,6 +463,7 @@ Deno.serve(async (req) => {
         }).catch((e) => console.error('webhook dispatch failed:', e.message));
       } catch (e) {
         console.error(`Project create failed for ${sub.submission_id}/${sub.target_language}:`, e.message);
+      }
       }
 
       results.accepted.push({
