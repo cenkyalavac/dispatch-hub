@@ -121,7 +121,15 @@ Deno.serve(async (req) => {
 
     let bands = {};
     try {
-      const aRes = await base44.asServiceRole.functions.invoke('symfonieGetTaskAnalysis', { task_id: taskIdNum });
+      // Use regular functions.invoke — asServiceRole.functions.invoke is
+      // rejected by the platform's invoke layer with a blanket 403 before
+      // reaching the target function. Regular invoke threads through the
+      // calling user's context (admin UI = admin user; token flow = null
+      // user); both pass symfonieGetTaskAnalysis's permissive auth gate
+      // (admin OR service caller). Previously this silently failed inside
+      // the try/catch and CAT bands were always 0/empty for manual accepts —
+      // BMS therefore received cat_analysis=null. See diff 2026-06-04.
+      const aRes = await base44.functions.invoke('symfonieGetTaskAnalysis', { task_id: taskIdNum });
       const a = aRes?.data;
       if (a && a.analysis_found) {
         const wwc = (typeof a.symfonie_calculated_qty === 'number' && a.symfonie_calculated_qty > 0)
@@ -240,15 +248,25 @@ Deno.serve(async (req) => {
         portal: 'symfonie',
         external_id: `symfonie:${taskIdNum}`,
         state: 'accepted',
-        name: task_name || '',
-        client_name: account_name || '',
-        project_name: project_name || '',
-        source_language: source_language || '',
-        target_language: target_language || '',
-        word_count: word_count || 0,
-        price: price || 0,
+        // Pull from taskRecord, NOT the raw request body. taskRecord was
+        // already enriched with Symfonie API fallbacks above
+        // (`task_name || symfonieTask?.Name`, customer name from /Projects,
+        // due_date from /Tasks, etc.). Reading the body directly was fine
+        // for direct UI accepts (the frontend sends complete payloads), but
+        // acceptViaToken's task_payload snapshot can be sparse — when a
+        // notification email was sent before all fields were captured —
+        // and that pushed empty strings into Project / BMS. Now both
+        // surfaces (AcceptedTask and Project) read from the same enriched
+        // record, so they always agree.
+        name: taskRecord.task_name,
+        client_name: taskRecord.client_name,
+        project_name: taskRecord.project_name,
+        source_language: taskRecord.source_language,
+        target_language: taskRecord.target_language,
+        word_count: taskRecord.word_count,
+        price: taskRecord.price,
         currency: 'USD',
-        due_date: due_date || null,
+        due_date: taskRecord.due_date,
         accepted_at: taskRecord.accepted_at,
         // Surface vendor breakdown + project notes at Project level so BMS
         // API can read them without joining back to AcceptedTask.
