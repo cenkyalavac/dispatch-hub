@@ -469,7 +469,30 @@ Deno.serve(async (req) => {
         // was resolved up-front in the enrichment batch; just read the field.
         if (projectInfo?.Notes) task.project_notes = projectInfo.Notes;
 
-        const saved = await base44.asServiceRole.entities.AcceptedTask.create(task);
+        // Persist guard: Symfonie has already accepted the task at this point.
+        // If AcceptedTask.create throws, the task is accepted upstream but
+        // invisible to us — CRITICAL data-loss scenario. Record a SystemIssue
+        // (emails admins, external_ref carries task_id for manual recovery)
+        // and CONTINUE — do NOT throw, otherwise the remaining tasks in this
+        // run are blocked. Mirror of symfonieAcceptTask's guard, but here
+        // we tolerate the failure to keep the cron processing the batch.
+        let saved;
+        try {
+          saved = await base44.asServiceRole.entities.AcceptedTask.create(task);
+        } catch (persistErr) {
+          base44.functions.invoke('recordSystemIssue', {
+            type: 'accept_persist_failure',
+            severity: 'critical',
+            portal: 'symfonie',
+            function_name: 'symfonieProcessTasks',
+            external_ref: String(taskId),
+            dedup_key: `accept:${taskId}`,
+            title: `Symfonie task ${taskId} accepted but persist failed`,
+            description: `Task "${raw.Name || ''}" was accepted on Symfonie successfully (rule "${matchedRule.name}"), but AcceptedTask.create threw: ${persistErr.message}\n\nThis task is now accepted upstream but invisible to the Hub. Recover by manually creating an AcceptedTask row with task_id=${taskId}, portal=symfonie.`,
+          }).catch((e) => console.error('recordSystemIssue failed:', e.message));
+          results.errors.push({ id: taskId, name: raw.Name, rule: matchedRule.name, error: `persist failed: ${persistErr.message}` });
+          continue;
+        }
 
         // Faz 1/2 BMS pipeline: every accepted task MUST get a Project record + webhook fire,
         // otherwise downstream BMS never sees rule-accepted tasks (only manual ones).
@@ -505,19 +528,22 @@ Deno.serve(async (req) => {
           console.error(`Project create failed for task ${taskId}:`, e.message);
         }
 
-        // Handoff: Dropbox'a indir + ProjectAttachment katalogu (basarisiz olsa bile accept bozulmasin)
-        try {
-          await base44.functions.invoke('symfonieDownloadAttachments', {
-            task_id: taskId,
-            task_name: raw.Name || '',
-            project_name: task.project_name || '',
-            account_name: task.client_name || 'Symfonie',
-            project_id: project?.id || null,
-            job_id: raw.JobId || null,
-          });
-        } catch (e) {
-          console.error(`Handoff failed for task ${taskId}:`, e.message);
-        }
+        // Handoff: Dropbox'a indir + ProjectAttachment katalogu.
+        // FIRE-AND-FORGET — don't await. Each handoff is 5-10s of Dropbox I/O
+        // (download from Symfonie + upload to Dropbox + ProjectAttachment
+        // rows). Awaiting these sequentially turns a 200-task run into a
+        // 25-minute run that overlaps the next cron tick. The Accept itself
+        // is already done upstream, AcceptedTask + Project + webhook are all
+        // persisted — the handoff doesn't need to block. Failures are logged
+        // inside symfonieDownloadAttachments and surfaced via SystemIssue.
+        base44.functions.invoke('symfonieDownloadAttachments', {
+          task_id: taskId,
+          task_name: raw.Name || '',
+          project_name: task.project_name || '',
+          account_name: task.client_name || 'Symfonie',
+          project_id: project?.id || null,
+          job_id: raw.JobId || null,
+        }).catch((e) => console.error(`Handoff failed for task ${taskId}:`, e.message));
 
         results.accepted.push({ id: taskId, name: raw.Name, rule: matchedRule.name });
 
@@ -527,14 +553,33 @@ Deno.serve(async (req) => {
         const cmdResult = await executeTaskCommand(taskId, 'Reject', token);
         if (!cmdResult.ok) {
           task.status = 'error';
-          await base44.asServiceRole.entities.AcceptedTask.create(task);
+          // Persist guard: log row best-effort; never let a DB failure abort the run.
+          await base44.asServiceRole.entities.AcceptedTask.create(task)
+            .catch((e) => console.error(`Reject-error log persist failed for task ${taskId}:`, e.message));
           results.errors.push({ id: taskId, name: raw.Name, rule: matchedRule.name, error: cmdResult.error });
           console.error(`Task ${taskId} Reject failed:`, cmdResult.error);
           continue;
         }
 
         console.log(`Task ${taskId} "${raw.Name}" rejected via rule "${matchedRule.name}"`);
-        await base44.asServiceRole.entities.AcceptedTask.create(task);
+        // Persist guard: Symfonie already rejected the task. If create throws,
+        // we lose the audit log but the upstream state is correct — record a
+        // SystemIssue and keep the run moving instead of aborting.
+        try {
+          await base44.asServiceRole.entities.AcceptedTask.create(task);
+        } catch (persistErr) {
+          base44.functions.invoke('recordSystemIssue', {
+            type: 'accept_persist_failure',
+            severity: 'warning',
+            portal: 'symfonie',
+            function_name: 'symfonieProcessTasks',
+            external_ref: String(taskId),
+            dedup_key: `reject:${taskId}`,
+            title: `Symfonie task ${taskId} rejected but log persist failed`,
+            description: `Task "${raw.Name}" was rejected on Symfonie via rule "${matchedRule.name}", but the local log row create threw: ${persistErr.message}\n\nUpstream state is correct; only the audit row is missing.`,
+          }).catch((e) => console.error('recordSystemIssue failed:', e.message));
+          console.error(`Task ${taskId} reject-log persist failed (continuing run):`, persistErr.message);
+        }
         results.rejected.push({ id: taskId, name: raw.Name, rule: matchedRule.name });
       }
     }
