@@ -154,6 +154,29 @@ Deno.serve(async (req) => {
     };
   }
 
+  // Consume the token BEFORE calling the portal accept function. Reason:
+  // email pre-fetch / double-click / two-tab scenarios can fire two requests
+  // ~200ms apart. With the old order (accept first, consume later), both
+  // requests would pass the consumed_at check, both would call the upstream
+  // portal, and the second would get a spurious "already accepted" 4xx from
+  // Symfonie/Junction. Consuming first means the second request lands on the
+  // delivery.consumed_at check above and shows "Already accepted" without
+  // touching the portal. The Adim 1 idempotency guards on AcceptedTask +
+  // Project provide a second layer of defense for the tiny remaining race
+  // window (~50ms) where two requests pass this point simultaneously.
+  //
+  // outcome stays 'sent' until accept returns — we set it below based on
+  // the actual result. If accept throws we DO NOT roll back the token: a
+  // second click would just hit the same error, and we don't want to expose
+  // the token to retry races.
+  const consumedAt = new Date().toISOString();
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '';
+  await base44.asServiceRole.entities.NotificationDelivery.update(delivery.id, {
+    accept_token: null,
+    consumed_at: consumedAt,
+    consumed_by_ip: ip,
+  }).catch(() => {});
+
   let acceptOk = false, acceptErr = null;
   try {
     // Use regular functions.invoke — asServiceRole.functions.invoke is
@@ -168,13 +191,9 @@ Deno.serve(async (req) => {
     acceptErr = e.message || String(e);
   }
 
-  // Mark the row consumed regardless of outcome — the token must not be
-  // re-usable. Clear the token so the lookup above stops finding it.
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '';
+  // Persist the accept outcome. Token already cleared above — this update
+  // only sets outcome + error.
   await base44.asServiceRole.entities.NotificationDelivery.update(delivery.id, {
-    accept_token: null,
-    consumed_at: new Date().toISOString(),
-    consumed_by_ip: ip,
     outcome: acceptOk ? 'accepted' : 'accept_failed',
     error: acceptOk ? null : acceptErr,
   }).catch(() => {});
