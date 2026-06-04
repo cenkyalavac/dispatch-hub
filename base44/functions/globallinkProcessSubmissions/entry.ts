@@ -223,6 +223,43 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, skipped: true, reason: 'Portal disabled', summary: { accepted: 0, rejected: 0, notified: 0, errors: 0 } });
     }
 
+    // Concurrency lease — stop two scheduler ticks running this function in
+    // parallel. GlobalLink runs the longest (claim chain × N submissions over
+    // the broker proxy), so TTL = 12 min. Stale leases auto-expire.
+    const LEASE_KEY = 'globallink_process_lease';
+    const LEASE_TTL_MS = 12 * 60 * 1000;
+    const leaseToken = crypto.randomUUID();
+    const nowMs = Date.now();
+    const existingLeaseRows = await base44.asServiceRole.entities.AppSetting
+      .filter({ key: LEASE_KEY })
+      .catch(() => []);
+    const existingLease = existingLeaseRows[0] || null;
+    if (existingLease?.value) {
+      try {
+        const parsed = JSON.parse(existingLease.value);
+        if (parsed?.expires_at && parsed.expires_at > nowMs) {
+          console.log(`globallinkProcessSubmissions skipped: concurrent run holds lease until ${new Date(parsed.expires_at).toISOString()}`);
+          return Response.json({ success: true, skipped: true, reason: 'Concurrent run in progress', summary: { accepted: 0, rejected: 0, notified: 0, errors: 0 } });
+        }
+      } catch { /* malformed lease — treat as stale */ }
+    }
+    const leaseValue = JSON.stringify({ token: leaseToken, expires_at: nowMs + LEASE_TTL_MS });
+    if (existingLease) {
+      await base44.asServiceRole.entities.AppSetting.update(existingLease.id, { value: leaseValue })
+        .catch((e) => console.error('lease update failed (continuing):', e.message));
+    } else {
+      await base44.asServiceRole.entities.AppSetting.create({ key: LEASE_KEY, value: leaseValue, description: 'Concurrency lease for globallinkProcessSubmissions. Auto-managed.' })
+        .catch((e) => console.error('lease create failed (continuing):', e.message));
+    }
+
+    const releaseLease = async () => {
+      const rows = await base44.asServiceRole.entities.AppSetting.filter({ key: LEASE_KEY }).catch(() => []);
+      if (rows[0]) {
+        await base44.asServiceRole.entities.AppSetting.update(rows[0].id, { value: '' })
+          .catch((e) => console.error('lease release failed (will expire naturally):', e.message));
+      }
+    };
+
     const brokerUrl = (Deno.env.get('BROKER_URL') || '').replace(/\/$/, '');
     const brokerKey = Deno.env.get('BROKER_KEY');
     if (!brokerUrl || !brokerKey) {
@@ -494,6 +531,8 @@ Deno.serve(async (req) => {
     base44.functions.invoke('resolveSystemIssues', { type: 'poll_failure', portal: 'globallink' })
       .catch((e) => console.error('resolveSystemIssues failed:', e.message));
 
+    await releaseLease();
+
     return Response.json({
       success: true,
       summary: {
@@ -507,6 +546,13 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('globallinkProcessSubmissions error:', error.message);
+    // Best-effort lease release on error — stale lease will expire naturally
+    // after LEASE_TTL_MS regardless.
+    try {
+      const b2 = createClientFromRequest(req);
+      const rows = await b2.asServiceRole.entities.AppSetting.filter({ key: 'globallink_process_lease' });
+      if (rows[0]) await b2.asServiceRole.entities.AppSetting.update(rows[0].id, { value: '' });
+    } catch { /* lease expires on TTL */ }
     return Response.json({ success: false, error: error.message }, { status: 500 });
   }
 });

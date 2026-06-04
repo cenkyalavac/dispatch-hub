@@ -147,6 +147,45 @@ Deno.serve(async (req) => {
       console.log('junctionProcessOffers skipped: portal is_active=false');
       return Response.json({ success: true, skipped: true, reason: 'Portal disabled', summary: { accepted: 0, rejected: 0, skipped: 0, errors: 0 } });
     }
+
+    // Concurrency lease — stop two scheduler ticks running this function in
+    // parallel. Stale leases (expires_at < now) are treated as released so a
+    // crashed run never blocks the next tick. TTL = 10 min, comfortably above
+    // typical Junction run times (3 surfaces × N offers).
+    const LEASE_KEY = 'junction_process_lease';
+    const LEASE_TTL_MS = 10 * 60 * 1000;
+    const leaseToken = crypto.randomUUID();
+    const nowMs = Date.now();
+    const existingLeaseRows = await base44.asServiceRole.entities.AppSetting
+      .filter({ key: LEASE_KEY })
+      .catch(() => []);
+    const existingLease = existingLeaseRows[0] || null;
+    if (existingLease?.value) {
+      try {
+        const parsed = JSON.parse(existingLease.value);
+        if (parsed?.expires_at && parsed.expires_at > nowMs) {
+          console.log(`junctionProcessOffers skipped: concurrent run holds lease until ${new Date(parsed.expires_at).toISOString()}`);
+          return Response.json({ success: true, skipped: true, reason: 'Concurrent run in progress', summary: { accepted: 0, rejected: 0, skipped: 0, errors: 0 } });
+        }
+      } catch { /* malformed lease — treat as stale */ }
+    }
+    const leaseValue = JSON.stringify({ token: leaseToken, expires_at: nowMs + LEASE_TTL_MS });
+    if (existingLease) {
+      await base44.asServiceRole.entities.AppSetting.update(existingLease.id, { value: leaseValue })
+        .catch((e) => console.error('lease update failed (continuing):', e.message));
+    } else {
+      await base44.asServiceRole.entities.AppSetting.create({ key: LEASE_KEY, value: leaseValue, description: 'Concurrency lease for junctionProcessOffers. Auto-managed.' })
+        .catch((e) => console.error('lease create failed (continuing):', e.message));
+    }
+
+    const releaseLease = async () => {
+      const rows = await base44.asServiceRole.entities.AppSetting.filter({ key: LEASE_KEY }).catch(() => []);
+      if (rows[0]) {
+        await base44.asServiceRole.entities.AppSetting.update(rows[0].id, { value: '' })
+          .catch((e) => console.error('lease release failed (will expire naturally):', e.message));
+      }
+    };
+
     // Client attribution: tag every AcceptedTask + Project with this portal's
     // Client.id so the BMS can filter projects by end-customer.
     const portalClientId = junctionPortal?.client_id || null;
@@ -373,6 +412,8 @@ Deno.serve(async (req) => {
     base44.functions.invoke('resolveSystemIssues', { type: 'poll_failure', portal: 'junction' })
       .catch((e) => console.error('resolveSystemIssues failed:', e.message));
 
+    await releaseLease();
+
     return Response.json({
       success: true,
       summary,
@@ -381,6 +422,13 @@ Deno.serve(async (req) => {
       ...(fetchErrors.length > 0 ? { partial_fetch_errors: fetchErrors } : {}),
     });
   } catch (error) {
+    // Best-effort lease release on error — stale lease will expire naturally
+    // after LEASE_TTL_MS regardless.
+    try {
+      const b2 = createClientFromRequest(req);
+      const rows = await b2.asServiceRole.entities.AppSetting.filter({ key: 'junction_process_lease' });
+      if (rows[0]) await b2.asServiceRole.entities.AppSetting.update(rows[0].id, { value: '' });
+    } catch { /* lease expires on TTL */ }
     try {
       const b = createClientFromRequest(req);
       b.functions.invoke('recordSystemIssue', {
