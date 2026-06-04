@@ -220,6 +220,9 @@ Deno.serve(async (req) => {
       return Array.isArray(data) ? data : (data?.data || []);
     }));
     if (fetchErrors.length === OFFER_PATHS.length) {
+      // Release lease before early-return — otherwise a Junction outage
+      // would block every subsequent tick for LEASE_TTL_MS.
+      await releaseLease();
       return Response.json(
         { success: false, error: `All Junction offer endpoints failed: ${fetchErrors.join(' | ')}` },
         { status: 502 }
@@ -394,13 +397,16 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Best-effort last_sync_at update — wrap so a transient DB hiccup
+    // doesn't bypass the lease release at end-of-run. Mirrors Symfonie /
+    // GlobalLink's non-fatal Portal.update pattern.
     await base44.asServiceRole.entities.Portal.filter({ key: 'junction' }).then(async (rows) => {
       if (rows[0]) {
         await base44.asServiceRole.entities.Portal.update(rows[0].id, {
           last_sync_at: new Date().toISOString(),
-        });
+        }).catch((e) => console.error('Portal last_sync_at update failed:', e.message));
       }
-    });
+    }).catch((e) => console.error('Portal lookup failed:', e.message));
 
     // Batch sheet sync — single source of truth for column mapping + routing.
     if (summary.accepted > 0) {

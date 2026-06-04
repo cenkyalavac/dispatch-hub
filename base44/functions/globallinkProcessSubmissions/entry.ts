@@ -263,6 +263,9 @@ Deno.serve(async (req) => {
     const brokerUrl = (Deno.env.get('BROKER_URL') || '').replace(/\/$/, '');
     const brokerKey = Deno.env.get('BROKER_KEY');
     if (!brokerUrl || !brokerKey) {
+      // Release lease before early-return — otherwise a misconfiguration
+      // would lock out every subsequent tick for LEASE_TTL_MS.
+      await releaseLease();
       return Response.json({ success: false, error: 'BROKER_URL or BROKER_KEY secret missing' }, { status: 503 });
     }
 
@@ -271,6 +274,9 @@ Deno.serve(async (req) => {
       { status: 'available' }, '-created_date', 200
     );
     if (submissions.length === 0) {
+      // Release lease before early-return — common case (no work to do) must
+      // not block the next tick for 12 minutes.
+      await releaseLease();
       return Response.json({ success: true, summary: { accepted: 0, rejected: 0, notified: 0, errors: 0 }, total: 0 });
     }
 
