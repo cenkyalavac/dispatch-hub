@@ -499,7 +499,20 @@ Deno.serve(async (req) => {
           currency: 'USD',
           due_date: sub.due_date || null,
           accepted_at: acceptedAt,
-          origin: { submission_ticket: sub.submission_ticket, submission_id: sub.submission_id, matched_rule: matchedRule.name },
+          origin: {
+            submission_ticket: sub.submission_ticket,
+            submission_id: sub.submission_id,
+            matched_rule: matchedRule.name,
+            // Surface end-customer + workflow identifiers so the BMS API
+            // (apiProjectsList / apiProjectsGet) can populate `raw.account_id`
+            // / `raw.workflow_name` and resolve FriendlyName rumuz overlays
+            // for GlobalLink rows. account_id is the PD paClientTicket;
+            // workflow_name is the phase/template label. Previously both were
+            // captured on GlobalLinkSubmission but dropped here, so BMS clients
+            // received null for every GlobalLink-originated project.
+            account_id: sub.account_id || null,
+            workflow_name: sub.workflow_name || '',
+          },
         });
         base44.functions.invoke('dispatchWebhook', {
           tenant_id: 'default', event: 'project.accepted', project_id: project.id,

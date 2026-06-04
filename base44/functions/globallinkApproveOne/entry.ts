@@ -377,7 +377,18 @@ Deno.serve(async (req) => {
           currency: 'USD',
           due_date: matchRow.due_date || null,
           accepted_at: acceptedAt,
-          origin: { submission_ticket: freshTicket, submission_id: matchRow.submission_id, raw: matchRow.raw || null },
+          origin: {
+            submission_ticket: freshTicket,
+            submission_id: matchRow.submission_id,
+            raw: matchRow.raw || null,
+            // Surface end-customer + workflow identifiers so the BMS API
+            // (apiProjectsList / apiProjectsGet) can populate `raw.account_id`
+            // / `raw.workflow_name` and resolve FriendlyName rumuz overlays.
+            // Mirrors the same fix in globallinkProcessSubmissions — both
+            // GlobalLink accept paths now write a consistent origin shape.
+            account_id: matchRow.account_id || null,
+            workflow_name: matchRow.workflow_name || '',
+          },
         });
         base44.functions.invoke('dispatchWebhook', {
           tenant_id: 'default', event: 'project.accepted', project_id: project.id,
