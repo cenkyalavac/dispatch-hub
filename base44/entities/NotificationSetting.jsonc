@@ -1,0 +1,112 @@
+{
+  "name": "NotificationSetting",
+  "type": "object",
+  "description": "Configurable rule for in-app + email notifications fired AFTER a task is already accepted (due date moved, task canceled, etc.). Distinct from NotificationRule, which decides who to email for INCOMING unmatched tasks. Each rule matches by trigger event + AND-combined conditions on the AcceptedTask; matching rules contribute their recipients and channels (de-duplicated across rules).",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human label shown in the UI."
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "trigger": {
+      "type": "string",
+      "enum": [
+        "due_date_changed"
+      ],
+      "default": "due_date_changed",
+      "description": "Which event this rule listens for. Only due_date_changed is implemented today; the enum exists so future triggers (task_canceled, etc.) can be added without a schema migration."
+    },
+    "portal": {
+      "type": "string",
+      "default": "*",
+      "description": "Source portal key (symfonie, junction, globallink). Use '*' to match any portal."
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "in_app",
+          "email"
+        ]
+      },
+      "default": [
+        "in_app",
+        "email"
+      ],
+      "description": "Delivery channels. in_app writes a UserNotification row (bell + inbox). email sends via Resend to all `recipients`."
+    },
+    "recipients": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Email addresses to notify when channels includes 'email'. Special tokens: 'admins' expands to every User with role='admin' at fire time."
+    },
+    "min_delta_minutes": {
+      "type": "integer",
+      "default": 0,
+      "description": "Minimum absolute change in minutes required to fire (e.g. 360 = ignore shifts under 6 hours). 0 = fire on any change."
+    },
+    "only_earlier": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, only fire when the new due date is EARLIER than the old one (i.e. tightened deadline). Used to mute the noisier 'pushed later' notifications."
+    },
+    "conditions": {
+      "type": "array",
+      "description": "AND-combined conditions evaluated against the AcceptedTask. Empty array = always matches (subject to portal + min_delta + only_earlier gates).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "project_name",
+              "task_name",
+              "workflow_name",
+              "source_language",
+              "target_language",
+              "client_name",
+              "word_count",
+              "price",
+              "matched_rule"
+            ]
+          },
+          "operator": {
+            "type": "string",
+            "enum": [
+              "contains",
+              "not_contains",
+              "equals",
+              "starts_with",
+              "greater_than",
+              "less_than",
+              "greater_equal",
+              "less_equal"
+            ]
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "email_subject_template": {
+      "type": "string",
+      "description": "Optional override for the email subject. Tokens: {task_name} {portal} {project_name} {client_name} {delta} {direction}. Defaults to a standard subject when empty."
+    },
+    "email_body_note": {
+      "type": "string",
+      "description": "Optional extra paragraph rendered above the date table in the email (plain text, no HTML). Useful for runbook hints like 'Reply-all to coordinate'."
+    }
+  },
+  "required": [
+    "name",
+    "trigger"
+  ]
+}

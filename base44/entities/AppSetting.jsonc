@@ -1,0 +1,21 @@
+{
+  "name": "AppSetting",
+  "type": "object",
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "Setting anahtar\u0131 (unique). \u00d6rn: dropbox_base_path"
+    },
+    "value": {
+      "type": "string",
+      "description": "Setting de\u011feri"
+    },
+    "description": {
+      "type": "string",
+      "description": "\u0130nsan taraf\u0131ndan okunabilir a\u00e7\u0131klama"
+    }
+  },
+  "required": [
+    "key"
+  ]
+}

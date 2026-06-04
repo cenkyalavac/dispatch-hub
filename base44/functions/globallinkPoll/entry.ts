@@ -330,15 +330,33 @@ Deno.serve(async (req) => {
     // issue so an operator notices broker/PD/cron failures before they cost
     // us submissions. Auto-resolves on the next successful run.
     try {
+      // Broker-side Chromium crash detection. The broker's /proxy/pd surfaces
+      // Playwright errors verbatim — when the headless tab OOMs or the
+      // renderer process dies, the error string carries one of these
+      // signatures. Treat those as critical (page-level alarm + email to
+      // admins) rather than the generic "poll failed" warning, since they
+      // mean GlobalLink is going to stay dark until someone restarts the
+      // broker container. Separate dedup_key so the critical issue doesn't
+      // collide with the routine poll_failure row.
+      const msg = String(error.message || '');
+      const isBrokerCrash =
+        /target\s*crashed/i.test(msg) ||
+        /page\.evaluate.*crashed/i.test(msg) ||
+        /renderer.*crashed/i.test(msg) ||
+        /browser.*disconnected/i.test(msg);
       const b = createClientFromRequest(req);
       b.functions.invoke('recordSystemIssue', {
         type: 'poll_failure',
-        severity: 'warning',
+        severity: isBrokerCrash ? 'critical' : 'warning',
         portal: 'globallink',
         function_name: 'globallinkPoll',
-        dedup_key: 'poll',
-        title: 'GlobalLink poll failed',
-        description: error.message,
+        dedup_key: isBrokerCrash ? 'broker_crash' : 'poll',
+        title: isBrokerCrash
+          ? 'GlobalLink broker crashed (Chromium OOM / renderer dead)'
+          : 'GlobalLink poll failed',
+        description: isBrokerCrash
+          ? `Broker's headless browser is down — every PD call will fail until the Railway broker container is restarted. Raw error:\n\n${msg}`
+          : msg,
       }).catch((e) => console.error('recordSystemIssue failed:', e.message));
     } catch { /* never let issue recording mask the original error */ }
     return Response.json({ success: false, error: error.message }, { status: 500 });
