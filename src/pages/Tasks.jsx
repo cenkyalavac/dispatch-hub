@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, XCircle, Download } from 'lucide-react';
+import { CheckCircle2, XCircle, Download, ChevronDown, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 
 import { Skeleton } from '@/components/ui/skeleton';
@@ -10,6 +10,12 @@ import ErrorState from '@/components/ui/ErrorState';
 import ListToolbar, { ToolbarSelect } from '@/components/ui/ListToolbar';
 import { EM, fmtNumber } from '@/lib/format';
 import { downloadCsv } from '@/lib/csv';
+
+// Page size for the Load More pagination. Each click loads this many more
+// rows. The search / status / client filters are client-side, so they only
+// apply to rows we've already loaded — a heads-up about that lives in the
+// "Load more" button copy.
+const PAGE_SIZE = 500;
 
 const ACTIVITY_HEADERS = ['Status','Task','Project','Portal','Client','Source','Target','Words','Price','Due','Rule','Accepted','Sheets Synced'];
 const activityRow = (t) => [
@@ -33,6 +39,12 @@ export default function Tasks() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [portalFilter, setPortalFilter] = useState('all');
   const [clientFilter, setClientFilter] = useState('all');
+  // Server-side pagination limit. Grows by PAGE_SIZE on "Load more".
+  const [limit, setLimit] = useState(PAGE_SIZE);
+
+  // Portal filter changes the underlying dataset — reset to the first page so
+  // we don't keep an inflated limit pointing at a much smaller result set.
+  useEffect(() => { setLimit(PAGE_SIZE); }, [portalFilter]);
 
   const { data: portals = [] } = useQuery({
     queryKey: ['portals'],
@@ -44,13 +56,22 @@ export default function Tasks() {
     queryFn: () => base44.entities.Client.filter({ is_active: true }, 'display_name', 200),
   });
 
-  const { data: tasks = [], isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['accepted-tasks-all', portalFilter],
+  const { data: tasks = [], isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ['accepted-tasks-all', portalFilter, limit],
     queryFn: () =>
       portalFilter === 'all'
-        ? base44.entities.AcceptedTask.list('-accepted_at', 500)
-        : base44.entities.AcceptedTask.filter({ portal: portalFilter }, '-accepted_at', 500),
+        ? base44.entities.AcceptedTask.list('-accepted_at', limit)
+        : base44.entities.AcceptedTask.filter({ portal: portalFilter }, '-accepted_at', limit),
+    // React Query v5 — keep the previous page visible while the next page is
+    // loading, instead of flashing back to the skeleton. Makes "Load more"
+    // feel instant: existing rows stay put, new ones append at the bottom.
+    placeholderData: (prev) => prev,
   });
+
+  // When the API returns exactly `limit` rows we have to assume there might
+  // be more on the server — there's no total count. When it returns fewer,
+  // we've definitely reached the end.
+  const hasMore = tasks.length === limit;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -188,6 +209,33 @@ export default function Tasks() {
               </tbody>
             </table>
           </div>
+          {/* Load-more affordance. Only shown when we've fetched a full page —
+              if the API returned fewer rows than the limit we know we have
+              everything and there's nothing to load. */}
+          {hasMore && (
+            <div className="flex items-center justify-center gap-2 px-4 py-3 border-t border-line-1 bg-surface-2">
+              <button
+                onClick={() => setLimit(l => l + PAGE_SIZE)}
+                disabled={isFetching}
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-line-1 bg-surface-1 text-[12px] font-medium text-ink-2 hover:bg-surface-2 transition-colors duration-tab disabled:opacity-40"
+              >
+                {isFetching
+                  ? <RefreshCw className="w-3 h-3 animate-spin" />
+                  : <ChevronDown className="w-3 h-3" />}
+                {isFetching ? 'Loading' : `Load ${fmtNumber(PAGE_SIZE)} more`}
+              </button>
+              <span className="text-[11px] text-ink-3 italic-editorial">
+                Showing {fmtNumber(tasks.length)} — older records aren't loaded yet.
+              </span>
+            </div>
+          )}
+          {/* End-of-list marker — only worth showing once at least one page
+              has been loaded, otherwise small datasets get a noisy footer. */}
+          {!hasMore && tasks.length >= PAGE_SIZE && (
+            <div className="px-4 py-2.5 border-t border-line-1 bg-surface-2 text-center text-[11px] text-ink-3 italic-editorial">
+              All {fmtNumber(tasks.length)} records loaded.
+            </div>
+          )}
         </div>
       )}
     </div>
