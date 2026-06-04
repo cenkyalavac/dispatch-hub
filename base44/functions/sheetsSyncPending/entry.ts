@@ -176,33 +176,96 @@ Deno.serve(async (req) => {
     }
 
     let synced = 0;
+    let skippedDuplicates = 0;
     const writes = [];
 
+    // Duplicate-prevention pipeline (per bucket):
+    //   1. CLAIM   — flip sheets_synced=true BEFORE append, so an overlapping
+    //                cron run won't re-fetch these tasks. Closes the race
+    //                window where two runs both see sheets_synced=false.
+    //   2. READ    — scan column A of the destination tab to find task_ids
+    //                already present. Defends against pre-existing duplicates
+    //                and any race that slipped through (e.g. claim already
+    //                committed but a prior run's append landed first).
+    //   3. APPEND  — only rows whose task_id is NOT already in the sheet.
+    //   4. ROLLBACK on append failure — flip sheets_synced back to false so
+    //                the next run retries.
     for (const [, { dest, portalKey, tasks }] of buckets) {
       const colCount = columnsFor(portalKey);
       const colRange = `A:${colLetter(colCount)}`;
       const range = dest.tab_name ? `${encodeURIComponent(dest.tab_name)}!${colRange}` : colRange;
-      const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${dest.spreadsheet_id}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
 
+      // 1. CLAIM — mark all candidate tasks as synced before touching Sheets.
+      //    A concurrent run's filter({sheets_synced:false}) will skip them.
+      await Promise.all(
+        tasks.map(t => base44.asServiceRole.entities.AcceptedTask.update(t.id, { sheets_synced: true }))
+      );
+
+      // 2. READ — what's already in column A of this tab?
+      //    Sheets row-count is bounded (typical: hundreds to a few thousand);
+      //    this single GET is cheap compared to one-per-task lookups.
+      const tabRef = dest.tab_name ? `${encodeURIComponent(dest.tab_name)}!A:A` : 'A:A';
+      const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${dest.spreadsheet_id}/values/${tabRef}`;
+      const readRes = await fetch(readUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      });
+      let existingIds = new Set();
+      if (readRes.ok) {
+        const readData = await readRes.json();
+        for (const row of (readData.values || [])) {
+          const v = row?.[0];
+          if (v != null && v !== '') existingIds.add(String(v));
+        }
+      } else {
+        // Read failure isn't fatal — log and proceed with append (preserves
+        // pre-guard behaviour). Rollback path below still handles append errors.
+        console.warn(`Sheets read failed for ${dest.spreadsheet_id} (proceeding without dedup):`, readRes.status);
+      }
+
+      // 3. Filter out tasks whose task_id is already in the sheet.
+      const tasksToAppend = [];
+      const alreadyInSheet = [];
+      for (const t of tasks) {
+        if (existingIds.has(String(t.task_id ?? ''))) {
+          alreadyInSheet.push(t);
+        } else {
+          tasksToAppend.push(t);
+        }
+      }
+      skippedDuplicates += alreadyInSheet.length;
+      for (const t of alreadyInSheet) {
+        skipped.push({ task_id: t.task_id, portal: t.portal, reason: 'already in sheet (dedup)' });
+      }
+
+      if (tasksToAppend.length === 0) {
+        // Nothing new to append — claim already done, move on.
+        continue;
+      }
+
+      // 4. APPEND the remaining (new) tasks.
+      const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${dest.spreadsheet_id}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
       const res = await fetch(appendUrl, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values: tasks.map(buildRow) })
+        body: JSON.stringify({ values: tasksToAppend.map(buildRow) })
       });
 
       if (!res.ok) {
         const err = await res.text();
         console.error(`Sheets append failed for ${dest.spreadsheet_id}:`, res.status, err);
         const reason = `HTTP ${res.status}`;
-        for (const t of tasks) skipped.push({ task_id: t.task_id, portal: t.portal, reason, _failed_task: t });
+        // ROLLBACK the claim so the next run retries.
+        await Promise.all(
+          tasksToAppend.map(t =>
+            base44.asServiceRole.entities.AcceptedTask.update(t.id, { sheets_synced: false }).catch(() => null)
+          )
+        );
+        for (const t of tasksToAppend) skipped.push({ task_id: t.task_id, portal: t.portal, reason, _failed_task: t });
         continue;
       }
 
-      writes.push({ via: dest.via, portal: portalKey, count: tasks.length, columns: colCount });
-      await Promise.all(
-        tasks.map(t => base44.asServiceRole.entities.AcceptedTask.update(t.id, { sheets_synced: true }))
-      );
-      synced += tasks.length;
+      writes.push({ via: dest.via, portal: portalKey, count: tasksToAppend.length, columns: colCount });
+      synced += tasksToAppend.length;
     }
 
     // Surface sheet-write failures to the bell menu so silent data loss is
@@ -244,7 +307,7 @@ Deno.serve(async (req) => {
 
     // Strip internal _failed_task before returning (kept only for notification logic above).
     const skippedOut = skipped.map(({ _failed_task, ...rest }) => rest);
-    return Response.json({ success: true, synced, writes, skipped: skippedOut, notified });
+    return Response.json({ success: true, synced, skipped_duplicates: skippedDuplicates, writes, skipped: skippedOut, notified });
 
   } catch (error) {
     console.error('sheetsSyncPending error:', error.message);
