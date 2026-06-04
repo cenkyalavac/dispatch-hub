@@ -190,6 +190,24 @@ Deno.serve(async (req) => {
     //   3. APPEND  — only rows whose task_id is NOT already in the sheet.
     //   4. ROLLBACK on append failure — flip sheets_synced back to false so
     //                the next run retries.
+
+    // Throttled bulk update — entity API can choke when 500 tasks are updated
+    // in a single Promise.all. Chunk into 25-row batches; sequential between
+    // chunks, parallel within. Same shape used for rollback below.
+    const CHUNK = 25;
+    const bulkUpdateSheetsSynced = async (taskList, value) => {
+      for (let i = 0; i < taskList.length; i += CHUNK) {
+        const slice = taskList.slice(i, i + CHUNK);
+        await Promise.all(
+          slice.map(t =>
+            base44.asServiceRole.entities.AcceptedTask
+              .update(t.id, { sheets_synced: value })
+              .catch((e) => console.error(`AcceptedTask.update(${t.id}, sheets_synced=${value}) failed:`, e.message))
+          )
+        );
+      }
+    };
+
     for (const [, { dest, portalKey, tasks }] of buckets) {
       const colCount = columnsFor(portalKey);
       const colRange = `A:${colLetter(colCount)}`;
@@ -197,9 +215,7 @@ Deno.serve(async (req) => {
 
       // 1. CLAIM — mark all candidate tasks as synced before touching Sheets.
       //    A concurrent run's filter({sheets_synced:false}) will skip them.
-      await Promise.all(
-        tasks.map(t => base44.asServiceRole.entities.AcceptedTask.update(t.id, { sheets_synced: true }))
-      );
+      await bulkUpdateSheetsSynced(tasks, true);
 
       // 2. READ — what's already in column A of this tab?
       //    Sheets row-count is bounded (typical: hundreds to a few thousand);
@@ -254,12 +270,8 @@ Deno.serve(async (req) => {
         const err = await res.text();
         console.error(`Sheets append failed for ${dest.spreadsheet_id}:`, res.status, err);
         const reason = `HTTP ${res.status}`;
-        // ROLLBACK the claim so the next run retries.
-        await Promise.all(
-          tasksToAppend.map(t =>
-            base44.asServiceRole.entities.AcceptedTask.update(t.id, { sheets_synced: false }).catch(() => null)
-          )
-        );
+        // ROLLBACK the claim so the next run retries — throttled.
+        await bulkUpdateSheetsSynced(tasksToAppend, false);
         for (const t of tasksToAppend) skipped.push({ task_id: t.task_id, portal: t.portal, reason, _failed_task: t });
         continue;
       }

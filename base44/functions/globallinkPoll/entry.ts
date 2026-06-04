@@ -110,9 +110,46 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, skipped: true, reason: 'Portal disabled', summary: { upserted: 0 } });
     }
 
+    // Concurrency lease — broker-proxied PD calls + per-submission language
+    // expansion can run 5-10 min; cron tick is 5 min, so overlap is realistic.
+    // Same pattern Process fns use (AppSetting JSON {token, expires_at}; stale
+    // = released). TTL = 10 min, comfortably above worst-case run.
+    const LEASE_KEY = 'globallink_poll_lease';
+    const LEASE_TTL_MS = 10 * 60 * 1000;
+    const leaseToken = crypto.randomUUID();
+    const nowMs = Date.now();
+    const existingLeaseRows = await base44.asServiceRole.entities.AppSetting
+      .filter({ key: LEASE_KEY }).catch(() => []);
+    const existingLease = existingLeaseRows[0] || null;
+    if (existingLease?.value) {
+      try {
+        const parsed = JSON.parse(existingLease.value);
+        if (parsed?.expires_at && parsed.expires_at > nowMs) {
+          console.log(`globallinkPoll skipped: concurrent run holds lease until ${new Date(parsed.expires_at).toISOString()}`);
+          return Response.json({ success: true, skipped: true, reason: 'Concurrent run in progress', summary: { upserted: 0 } });
+        }
+      } catch { /* malformed lease — treat as stale */ }
+    }
+    const leaseValue = JSON.stringify({ token: leaseToken, expires_at: nowMs + LEASE_TTL_MS });
+    if (existingLease) {
+      await base44.asServiceRole.entities.AppSetting.update(existingLease.id, { value: leaseValue })
+        .catch((e) => console.error('lease update failed (continuing):', e.message));
+    } else {
+      await base44.asServiceRole.entities.AppSetting.create({ key: LEASE_KEY, value: leaseValue, description: 'Concurrency lease for globallinkPoll. Auto-managed.' })
+        .catch((e) => console.error('lease create failed (continuing):', e.message));
+    }
+    const releaseLease = async () => {
+      const rows = await base44.asServiceRole.entities.AppSetting.filter({ key: LEASE_KEY }).catch(() => []);
+      if (rows[0]) {
+        await base44.asServiceRole.entities.AppSetting.update(rows[0].id, { value: '' })
+          .catch((e) => console.error('lease release failed (will expire naturally):', e.message));
+      }
+    };
+
     const brokerUrl = (Deno.env.get('BROKER_URL') || '').replace(/\/$/, '');
     const brokerKey = Deno.env.get('BROKER_KEY');
     if (!brokerUrl || !brokerKey) {
+      await releaseLease();
       return Response.json({ success: false, error: 'BROKER_URL or BROKER_KEY secret missing' }, { status: 503 });
     }
 
@@ -323,9 +360,17 @@ Deno.serve(async (req) => {
     base44.functions.invoke('resolveSystemIssues', { type: 'poll_failure', portal: 'globallink' })
       .catch((e) => console.error('resolveSystemIssues failed:', e.message));
 
+    await releaseLease();
+
     return Response.json({ success: true, summary, total_submissions: submissions.length });
   } catch (error) {
     console.error('globallinkPoll error:', error.message);
+    // Best-effort lease release on error — stale lease will expire naturally.
+    try {
+      const b2 = createClientFromRequest(req);
+      const rows = await b2.asServiceRole.entities.AppSetting.filter({ key: 'globallink_poll_lease' });
+      if (rows[0]) await b2.asServiceRole.entities.AppSetting.update(rows[0].id, { value: '' });
+    } catch { /* lease expires on TTL */ }
     // Visibility: a broken poll silently means "no new offers seen". Record an
     // issue so an operator notices broker/PD/cron failures before they cost
     // us submissions. Auto-resolves on the next successful run.

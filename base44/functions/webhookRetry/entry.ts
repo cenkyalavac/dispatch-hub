@@ -84,6 +84,30 @@ async function attemptDelivery(base44, delivery) {
   await base44.asServiceRole.entities.WebhookSubscription.update(sub.id, {
     last_status: errorMsg || `HTTP ${httpStatus || 'err'}`,
   });
+
+  // Give-up: flip the linked Project to failed_to_sync + raise SystemIssue.
+  // Without this, BMS subscribers silently miss events after MAX_ATTEMPTS
+  // and there's no visible signal anywhere — the Project stays "accepted"
+  // forever and the WebhookDelivery row sits in 'failed' state untouched.
+  if (giveUp && delivery.project_id) {
+    await base44.asServiceRole.entities.Project
+      .update(delivery.project_id, {
+        state: 'failed_to_sync',
+        sync_error: `Webhook ${delivery.event} failed after ${MAX_ATTEMPTS} attempts: ${errorMsg || `HTTP ${httpStatus}`}`,
+      })
+      .catch((e) => console.error('Project.update(failed_to_sync) failed:', e.message));
+    base44.functions.invoke('recordSystemIssue', {
+      type: 'info',
+      severity: 'warning',
+      portal: '',
+      function_name: 'webhookRetry',
+      external_ref: delivery.project_id,
+      dedup_key: `webhook_giveup:${delivery.subscription_id}`,
+      title: `Webhook gave up: ${sub.name || sub.url}`,
+      description: `Delivery ${delivery.id} for project ${delivery.project_id} (event ${delivery.event}) failed ${MAX_ATTEMPTS}× — last error: ${errorMsg || `HTTP ${httpStatus}`}. Project marked failed_to_sync. Recover via Projects > Reset sync once the subscriber is healthy.`,
+    }).catch((e) => console.error('recordSystemIssue failed:', e.message));
+  }
+
   return { ok: false, attempt: nextAttempt, gaveUp: giveUp, nextRetryAt };
 }
 

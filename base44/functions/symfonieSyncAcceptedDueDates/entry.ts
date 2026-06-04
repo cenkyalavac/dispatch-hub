@@ -81,6 +81,42 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, skipped: true, reason: 'Portal disabled' });
     }
 
+    // Concurrency lease — 2000-task batch with Symfonie chunked OData can run
+    // long when the API is under load. Cron overlap would mean duplicate
+    // due_date entity updates → duplicate webhook + sheet rewrites for the
+    // same diff. TTL = 8 min.
+    const LEASE_KEY = 'symfonie_sync_due_lease';
+    const LEASE_TTL_MS = 8 * 60 * 1000;
+    const leaseToken = crypto.randomUUID();
+    const nowMs = Date.now();
+    const existingLeaseRows = await base44.asServiceRole.entities.AppSetting
+      .filter({ key: LEASE_KEY }).catch(() => []);
+    const existingLease = existingLeaseRows[0] || null;
+    if (existingLease?.value) {
+      try {
+        const parsed = JSON.parse(existingLease.value);
+        if (parsed?.expires_at && parsed.expires_at > nowMs) {
+          console.log(`symfonieSyncAcceptedDueDates skipped: concurrent run holds lease until ${new Date(parsed.expires_at).toISOString()}`);
+          return Response.json({ success: true, skipped: true, reason: 'Concurrent run in progress' });
+        }
+      } catch { /* malformed lease — treat as stale */ }
+    }
+    const leaseValue = JSON.stringify({ token: leaseToken, expires_at: nowMs + LEASE_TTL_MS });
+    if (existingLease) {
+      await base44.asServiceRole.entities.AppSetting.update(existingLease.id, { value: leaseValue })
+        .catch((e) => console.error('lease update failed (continuing):', e.message));
+    } else {
+      await base44.asServiceRole.entities.AppSetting.create({ key: LEASE_KEY, value: leaseValue, description: 'Concurrency lease for symfonieSyncAcceptedDueDates. Auto-managed.' })
+        .catch((e) => console.error('lease create failed (continuing):', e.message));
+    }
+    const releaseLease = async () => {
+      const rows = await base44.asServiceRole.entities.AppSetting.filter({ key: LEASE_KEY }).catch(() => []);
+      if (rows[0]) {
+        await base44.asServiceRole.entities.AppSetting.update(rows[0].id, { value: '' })
+          .catch((e) => console.error('lease release failed (will expire naturally):', e.message));
+      }
+    };
+
     // 1. Pull open accepted Symfonie tasks (due_date in the future).
     //    Filter by status + portal in DB, then narrow to future due_dates client-side
     //    (the entity layer doesn't support gt on date strings in all cases).
@@ -95,6 +131,7 @@ Deno.serve(async (req) => {
     );
 
     if (openRows.length === 0) {
+      await releaseLease();
       return Response.json({ success: true, checked: 0, changed: 0, message: 'No open Symfonie tasks to reconcile' });
     }
 
@@ -147,6 +184,8 @@ Deno.serve(async (req) => {
         .catch(() => {});
     }
 
+    await releaseLease();
+
     return Response.json({
       success: true,
       checked: openRows.length,
@@ -156,6 +195,11 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('symfonieSyncAcceptedDueDates error:', error.message);
+    try {
+      const b2 = createClientFromRequest(req);
+      const rows = await b2.asServiceRole.entities.AppSetting.filter({ key: 'symfonie_sync_due_lease' });
+      if (rows[0]) await b2.asServiceRole.entities.AppSetting.update(rows[0].id, { value: '' });
+    } catch { /* lease expires on TTL */ }
     return Response.json({ success: false, error: error.message }, { status: 500 });
   }
 });
