@@ -10,6 +10,7 @@ import ApiKeyCard from '@/components/api/ApiKeyCard';
 import WebhookRow from '@/components/api/WebhookRow';
 import NewKeyDialog from '@/components/api/NewKeyDialog';
 import EmptyState from '@/components/ui/EmptyState';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function ApiAccess() {
@@ -17,6 +18,9 @@ export default function ApiAccess() {
   const [newKeyName, setNewKeyName] = useState('');
   const [newToken, setNewToken] = useState(null);
   const [hookForm, setHookForm] = useState({ name: '', url: '', secret: '', tenant_id: 'default' });
+  // Single state slot for confirm dialogs (key revoke + webhook delete). Holds
+  // { title, body, confirmLabel, danger, onConfirm } or null when closed.
+  const [confirmState, setConfirmState] = useState(null);
 
   const { data: keys = [], isLoading: keysLoading } = useQuery({
     queryKey: ['api-keys'],
@@ -56,11 +60,18 @@ export default function ApiAccess() {
     } catch (err) { toast.error(err.message); }
   };
 
-  const revokeKey = async (key) => {
-    if (!confirm(`Revoke "${key.name}"? This cannot be undone.`)) return;
-    await base44.entities.ApiKey.update(key.id, { revoked_at: new Date().toISOString() });
-    qc.invalidateQueries({ queryKey: ['api-keys'] });
-    toast.success('Key revoked');
+  const revokeKey = (key) => {
+    setConfirmState({
+      title: `Revoke "${key.name}"?`,
+      body: 'This cannot be undone. Any BMS using this key will start receiving 401 responses immediately.',
+      confirmLabel: 'Revoke key',
+      danger: true,
+      onConfirm: async () => {
+        await base44.entities.ApiKey.update(key.id, { revoked_at: new Date().toISOString() });
+        qc.invalidateQueries({ queryKey: ['api-keys'] });
+        toast.success('Key revoked');
+      },
+    });
   };
 
   const createHook = async (e) => {
@@ -84,11 +95,18 @@ export default function ApiAccess() {
     qc.invalidateQueries({ queryKey: ['webhook-subs'] });
   };
 
-  const deleteHook = async (sub) => {
-    if (!confirm(`Delete webhook "${sub.name || sub.url}"?`)) return;
-    await base44.entities.WebhookSubscription.delete(sub.id);
-    qc.invalidateQueries({ queryKey: ['webhook-subs'] });
-    toast.success('Webhook deleted');
+  const deleteHook = (sub) => {
+    setConfirmState({
+      title: `Delete webhook "${sub.name || sub.url}"?`,
+      body: 'The subscriber will stop receiving project.* events. Past delivery logs are preserved.',
+      confirmLabel: 'Delete webhook',
+      danger: true,
+      onConfirm: async () => {
+        await base44.entities.WebhookSubscription.delete(sub.id);
+        qc.invalidateQueries({ queryKey: ['webhook-subs'] });
+        toast.success('Webhook deleted');
+      },
+    });
   };
 
   const input = 'w-full h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4';
@@ -252,6 +270,7 @@ export default function ApiAccess() {
       )}
 
       {newToken && <NewKeyDialog token={newToken} onClose={() => setNewToken(null)} />}
+      <ConfirmDialog state={confirmState} onClose={() => setConfirmState(null)} />
     </div>
   );
 }
