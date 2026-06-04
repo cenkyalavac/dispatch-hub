@@ -130,6 +130,9 @@ Deno.serve(async (req) => {
     };
     // Project entity stores client_name/project_name/source/target only at
     // top level; account_id and project_id live under `origin` if present.
+    // These are the same upstream identifiers apiProjectsList surfaces under
+    // the top-level `raw` block — kept here as a local var so both `raw`
+    // (BMS routing) and `friendly` (UI rumuz overlay) read from one source.
     const taskLike = {
       portal: project.portal,
       client_name:  project.client_name,
@@ -188,6 +191,18 @@ Deno.serve(async (req) => {
           account_name:  resolveFriendly('account'),
           project_name:  resolveFriendly('project'),
           workflow_name: resolveFriendly('workflow'),
+        },
+        // Raw upstream identifiers — mirrors apiProjectsList.serializeProject.raw
+        // so List and Get expose the same shape. BMS clients use these to route
+        // an end-customer / workflow downstream without digging into the
+        // portal-specific `origin` blob. account_id is the stable upstream ID
+        // (Symfonie ProjectId, GlobalLink paClientTicket, Junction not yet
+        // emitted). null when the originating portal didn't supply one.
+        raw: {
+          account_name:  taskLike.account_name,
+          account_id:    taskLike.account_id != null ? String(taskLike.account_id) : null,
+          project_id:    taskLike.project_id != null ? String(taskLike.project_id) : null,
+          workflow_name: taskLike.workflow_name,
         },
         mapping_applied: applied,
         unmapped,

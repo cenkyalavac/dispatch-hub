@@ -76,10 +76,21 @@ function colLetter(n) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    // Auth gate: allows admin (manual sync from UI) and scheduled/system runs
-    // (no user context). Rejects regular users — they can't write to sheets.
+    // Auth gate: allows admin (manual UI sync) AND service callers (scheduled
+    // runs, nested invokes from accept paths). The earlier `user !== null &&
+    // role !== 'admin'` check was BUGGY for service callers — nested invokes
+    // (asServiceRole.functions.invoke OR fire-and-forget functions.invoke from
+    // acceptViaToken / *AcceptTask) surface a synthetic user with
+    // is_service=true OR email='service+...@no-reply.base44.com' AND no admin
+    // role. That sentinel passed `user !== null` and failed the role check →
+    // sheets sync silently 403'd from accept paths and tasks stayed
+    // sheets_synced=false until manual recovery. Mirrors the pattern used in
+    // notifyNewTask / sheetsUpdateTaskRow / handleDueDateChange.
     const user = await base44.auth.me().catch(() => null);
-    if (user !== null && user?.role !== 'admin') {
+    const isService = !user
+      || user.is_service === true
+      || (typeof user.email === 'string' && user.email.startsWith('service+'));
+    if (!isService && user?.role !== 'admin') {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 

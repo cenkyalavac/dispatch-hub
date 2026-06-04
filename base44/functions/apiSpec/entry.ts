@@ -3,7 +3,7 @@
 Deno.serve(async () => {
   const spec = {
     name: 'Dispatch Hub — BMS Integration API',
-    version: '2.3.0-vendor',
+    version: '2.3.1-vendor',
     // Contract stability policy — Dispatch's adapter is pinned to v2.x and
     // uses these fields to decide whether to parse safely or alert ops.
     // Read on adapter boot; treat as the canonical guard input.
@@ -49,8 +49,8 @@ Deno.serve(async () => {
         function: 'apiProjectsGet',
         scope: 'read:projects',
         body: { id: 'string' },
-        returns: '{ project: { origin, destination, friendly, mapping_applied, attachments_count, cat_analysis, vendor_payment, project_notes } }',
-        notes: 'destination is null-on-miss (BMS safety). friendly is passthrough — short rumuz when one exists, else raw upstream name. cat_analysis exposes the same leverage breakdown as apiProjectsList. vendor_payment / project_notes mirror the list shape.',
+        returns: '{ project: { origin, raw, destination, friendly, mapping_applied, attachments_count, cat_analysis, vendor_payment, project_notes } }',
+        notes: 'destination is null-on-miss (BMS safety). raw mirrors the apiProjectsList raw block — upstream account/project/workflow identifiers for BMS routing. friendly is passthrough — short rumuz when one exists, else raw upstream name. cat_analysis exposes the same leverage breakdown as apiProjectsList. vendor_payment / project_notes mirror the list shape.',
       },
       {
         name: 'Acknowledge project',
@@ -156,6 +156,7 @@ Deno.serve(async () => {
       'Faz 2.1: cat_analysis surfaces the leverage breakdown + weighted_wc on every project payload (list and detail).',
       'Faz 2.2: Junction MTPE — tasks may carry mt_post_edit (machine-translation post-edit words). WWC formula includes this band with a portal-specific weight (Junction default = 0.70). Other portals (GlobalLink, Symfonie) typically have mt_post_edit = 0.',
       'Faz 2.3: Symfonie WWC source-of-truth shifted to CalculatedQuantity (customer\'s real per-band grid). The generic 0.2/0.35/0.45/0.6 formula remains only as a fallback when Symfonie didn\'t emit a calculated value. vendor_payment + project_notes added to project payloads.',
+      'Faz 2.4 (2026-06-04, additive): GlobalLink projects now carry raw.account_id (PD paClientTicket) and raw.workflow_name — earlier these were captured on the submission row but dropped at Project create, so BMS clients always saw null. apiProjectsGet now returns the same `raw` block as apiProjectsList (List ↔ Get parity restored). Symfonie manual accepts: Project body now reads from the enriched task record (was: raw HTTP body, sparse for one-click email-token accepts); CAT analysis enrichment uses regular functions.invoke (was: asServiceRole.functions.invoke which the platform 403\'d, silently dropping weighted_wc + leverage bands). Sheets sync auth gate now accepts service callers (was: silent 403 from email-token accept paths, tasks stayed sheets_synced=false). All changes additive — no schema, contract, or client-code breaks.',
       'Multi-tenant ready: every record is scoped by tenant_id. Default tenant is "default".',
     ],
   };

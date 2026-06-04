@@ -205,26 +205,35 @@ Deno.serve(async (req) => {
     }
     const projects = await base44.asServiceRole.entities.Project.filter(filter, '-accepted_at', limit);
 
-    // Hydrate clients + friendly rumuz rows + AcceptedTask CAT data in parallel.
-    // AcceptedTask is fetched via parallel .get() per project — bounded by
-    // `limit` (max 500). Previous batched-list-then-intersect approach silently
-    // dropped CAT data when the AcceptedTask page-cap was exceeded; parallel
-    // gets are exact and cost the same on the wire.
+    // Hydrate clients + friendly rumuz rows + AcceptedTask CAT data.
+    // Clients + friendly run in parallel (each is a single list call). The
+    // AcceptedTask fan-out is chunked because a naive Promise.all over `limit`
+    // (up to 500) projects hit the entity SDK's per-second rate-limit and
+    // tipped the whole endpoint into 429 — observed in production logs
+    // (2026-06-04). 25-per-chunk + sequential between chunks keeps us well
+    // under the budget; sub-second latency per chunk holds total latency
+    // close to the original parallel path.
     const acceptedTaskIds = projects.map(p => p.accepted_task_id).filter(Boolean);
-    const [allClients, friendlyRows, acceptedTaskResults] = await Promise.all([
+    const [allClients, friendlyRows] = await Promise.all([
       projects.some(p => p.client_id)
         ? base44.asServiceRole.entities.Client.list('-created_date', 500)
         : Promise.resolve([]),
       base44.asServiceRole.entities.FriendlyName.list('-created_date', 2000).catch(() => []),
-      Promise.all(acceptedTaskIds.map(id =>
-        base44.asServiceRole.entities.AcceptedTask.get(id).catch(() => null)
-      )),
     ]);
+
+    const CHUNK = 25;
+    const acceptedTaskById = new Map();
+    for (let i = 0; i < acceptedTaskIds.length; i += CHUNK) {
+      const slice = acceptedTaskIds.slice(i, i + CHUNK);
+      const results = await Promise.all(slice.map(id =>
+        base44.asServiceRole.entities.AcceptedTask.get(id).catch(() => null)
+      ));
+      results.forEach((at, j) => { if (at) acceptedTaskById.set(slice[j], at); });
+    }
+
     const clientById = new Map();
     allClients.forEach(c => clientById.set(c.id, c));
     const friendlyIndex = buildFriendlyIndex(friendlyRows);
-    const acceptedTaskById = new Map();
-    acceptedTaskResults.forEach((at, i) => { if (at) acceptedTaskById.set(acceptedTaskIds[i], at); });
 
     return Response.json({
       count: projects.length,
