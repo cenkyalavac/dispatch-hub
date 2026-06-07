@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
       }
     }));
 
-    return Response.json({ connectors });
+    return Response.json({ connectors, checked_at: new Date().toISOString() });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

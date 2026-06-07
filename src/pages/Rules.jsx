@@ -62,7 +62,7 @@ export default function Rules() {
           <select
             value={portalFilter}
             onChange={(e) => setPortalFilter(e.target.value)}
-            className="h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
+            className="field-control h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
           >
             <option value="all">All portals</option>
             {portals.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
@@ -113,12 +113,15 @@ export default function Rules() {
                     <span className="text-[11px] text-ink-3">priority {rule.priority ?? EM}</span>
                   </div>
                   {rule.conditions && rule.conditions.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
                       {rule.conditions.map((c, i) => (
-                        <span key={i} className="text-[11px] text-ink-2 bg-surface-2 px-2 py-0.5 rounded">
-                          <span className="font-mono text-ink-3">{c.field}</span>
-                          <span className="mx-1 text-ink-4">{c.operator}</span>
-                          <span className="font-medium">{c.value || EM}</span>
+                        <span key={i} className="inline-flex items-center gap-1.5 text-[11px] bg-surface-2 border border-line-1 rounded-md pl-2 pr-2 py-1">
+                          <span className="font-medium text-ink-1">{c.field}</span>
+                          <span className="font-mono text-[10px] text-accent-ink bg-accent-soft px-1.5 py-0.5 rounded">{c.operator}</span>
+                          <span className="font-medium text-ink-1">{c.value || EM}</span>
+                          {i < rule.conditions.length - 1 && (
+                            <span className="ml-0.5 text-[9px] uppercase tracking-wider text-ink-4 font-semibold">and</span>
+                          )}
                         </span>
                       ))}
                     </div>

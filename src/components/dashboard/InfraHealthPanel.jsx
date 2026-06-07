@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { formatDistanceToNow } from 'date-fns';
 import { CheckCircle2, XCircle, PauseCircle, PlugZap } from 'lucide-react';
 
 // Infrastructure health at a glance — the plumbing every accept path needs:
@@ -40,11 +41,15 @@ export default function InfraHealthPanel({ portals = [] }) {
       <div className="flex items-center gap-2 mb-3">
         <PlugZap className="w-3.5 h-3.5 text-ink-3" />
         <h2 className="text-[14px] font-semibold text-ink-1">Infrastructure</h2>
-        {anyConnectorDown && (
+        {anyConnectorDown ? (
           <span className="ml-auto text-[10px] font-semibold uppercase tracking-wider text-danger bg-danger-soft px-1.5 py-0.5 rounded">
             Action needed
           </span>
-        )}
+        ) : health?.checked_at ? (
+          <span className="ml-auto text-[10px] text-ink-4 italic-editorial" title={new Date(health.checked_at).toLocaleString()}>
+            checked {formatDistanceToNow(new Date(health.checked_at), { addSuffix: true })}
+          </span>
+        ) : null}
       </div>
 
       <div className="border border-line-1 rounded-md divide-y divide-line-1">

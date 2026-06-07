@@ -47,8 +47,8 @@ const numericFields = [
   'lev_9599', 'lev_8594', 'lev_7584', 'lev_5074', 'lev_no_match',
 ];
 
-const fieldCls = 'w-full h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4';
-const selectSm = 'h-8 px-2 rounded border border-line-1 bg-surface-1 text-[12px] outline-none';
+const fieldCls = 'field-control w-full h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4';
+const selectSm = 'field-control h-8 px-2 rounded border border-line-1 bg-surface-1 text-[12px] outline-none';
 
 export default function RuleForm({ rule, portals = [], onClose }) {
   const [name, setName] = useState(rule?.name || '');

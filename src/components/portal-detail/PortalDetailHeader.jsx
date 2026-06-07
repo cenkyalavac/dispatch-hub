@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, AlertCircle, XCircle, Globe, Building2, Network, Plug, Boxes, Briefcase, Cloud } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import PortalDocsMenu from './PortalDocsMenu';
+import ConnectionStatusNote from './ConnectionStatusNote';
 
 const ICON_MAP = { Globe, Building2, Network, Plug, Boxes, Briefcase, Cloud };
 
@@ -39,6 +40,7 @@ export default function PortalDetailHeader({ portal, onToggleActive }) {
             <p className="text-[13px] text-ink-3 mt-1 italic-editorial">
               {portal.description || 'No description'}
             </p>
+            <ConnectionStatusNote portal={portal} tone={portal.connection_status} />
           </div>
         </div>
 

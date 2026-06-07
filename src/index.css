@@ -110,6 +110,19 @@
     border-radius: 6px;
   }
 
+  /* Shared form control surface — applied across native select / input so
+     every form element shares one focus-ring, hover, and placeholder language. */
+  .field-control {
+    transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+  }
+  .field-control:hover { border-color: var(--line-2); }
+  .field-control:focus,
+  .field-control:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
   .toast-success { border-left: 3px solid var(--success); }
   .toast-warning { border-left: 3px solid var(--warning); }
   .toast-danger  { border-left: 3px solid var(--danger); }

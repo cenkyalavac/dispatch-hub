@@ -120,7 +120,7 @@ export default function TopBar() {
                 {pendingActive && <span className="absolute -bottom-[13px] left-2 right-2 h-[2px] bg-accent rounded-full" />}
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-[180px]">
+            <DropdownMenuContent align="start" className="min-w-[180px] max-w-[calc(100vw-2rem)]">
               {activePortals.length === 0 ? (
                 <DropdownMenuItem disabled>No active portals</DropdownMenuItem>
               ) : (

@@ -128,7 +128,7 @@ export default function Dashboard() {
           <select
             value={selectedPortal}
             onChange={(e) => setSelectedPortal(e.target.value)}
-            className="h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 hover:bg-surface-2 transition-colors duration-tab outline-none"
+            className="field-control h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
           >
             <option value="all">All connectors</option>
             {portals.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
@@ -139,7 +139,11 @@ export default function Dashboard() {
             className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-accent text-white text-[13px] font-medium hover:bg-[var(--accent-hover)] transition-colors duration-tab disabled:opacity-40"
           >
             {isRunning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-            {isRunning ? 'Running' : 'Run automation'}
+            {isRunning
+              ? 'Running'
+              : selectedPortal === 'all'
+                ? 'Run automation'
+                : `Run ${selectedPortalObj?.name || ''}`}
           </button>
         </div>
       </header>
@@ -147,8 +151,13 @@ export default function Dashboard() {
       <div className="space-y-4">
         {loading ? (
           <>
-            <Skeleton className="h-32" />
-            <Skeleton className="h-64" />
+            <Skeleton className="h-28" />
+            <Skeleton className="h-44" />
+            <Skeleton className="h-72" />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Skeleton className="h-56" />
+              <Skeleton className="h-56" />
+            </div>
             <Skeleton className="h-48" />
           </>
         ) : (

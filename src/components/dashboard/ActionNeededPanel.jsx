@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { ArrowRight, Inbox, AlertCircle } from 'lucide-react';
+import { ArrowRight, Inbox, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { fmtNumber, EM } from '@/lib/format';
@@ -32,8 +32,19 @@ function PortalBlock({ portal, pending, isLoading }) {
   const count = pending?.length || 0;
   const top = (pending || []).slice(0, 5);
 
+  // Visual priority: a connection error is the loudest signal (red), a portal
+  // with work waiting gets a subtle accent edge, and a quiet/caught-up portal
+  // stays neutral. This lets the operator's eye jump straight to trouble.
+  const isError = portal.connection_status === 'error';
+  const hasWork = count > 0;
+  const frame = isError
+    ? 'border-danger/40 bg-danger-soft/30'
+    : hasWork
+      ? 'border-accent/30'
+      : 'border-line-1';
+
   return (
-    <div className="border border-line-1 rounded-md bg-surface-1">
+    <div className={`border rounded-md bg-surface-1 transition-colors ${frame}`}>
       <div className="flex items-center gap-2 px-3 py-2 border-b border-line-1">
         <span
           className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot.cls}`}
@@ -55,9 +66,9 @@ function PortalBlock({ portal, pending, isLoading }) {
       {isLoading ? (
         <div className="p-2 space-y-1">{[1, 2].map(i => <Skeleton key={i} className="h-8" />)}</div>
       ) : count === 0 ? (
-        <div className="px-3 py-4 text-center text-[12px] text-ink-3 italic-editorial">
-          <Inbox className="w-3.5 h-3.5 mx-auto text-ink-4 mb-1" />
-          Nothing waiting.
+        <div className="flex items-center justify-center gap-1.5 px-3 py-3 text-[12px] text-ink-3">
+          <CheckCircle2 className="w-3.5 h-3.5 text-success" />
+          <span className="italic-editorial">All caught up.</span>
         </div>
       ) : (
         <div className="divide-y divide-line-1">

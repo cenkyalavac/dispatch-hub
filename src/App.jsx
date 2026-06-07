@@ -112,7 +112,7 @@ function App() {
         <Router>
           <AuthenticatedApp />
         </Router>
-        <Toaster position="top-right" duration={2200} />
+        <Toaster position="top-right" duration={2200} closeButton gap={8} className="max-w-[calc(100vw-2rem)]" />
       </QueryClientProvider>
     </AuthProvider>
   )
