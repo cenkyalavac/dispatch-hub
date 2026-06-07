@@ -12,6 +12,7 @@ import {
 import CommandPalette from './CommandPalette';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import UserMenu from './UserMenu';
+import AppSwitcher from './AppSwitcher';
 
 // Pending is a dropdown — one item per active portal. Clicking opens that
 // portal's dedicated pending page (/pending/:key, or /globallink/pending for
@@ -180,6 +181,7 @@ export default function TopBar() {
           >
             <Settings className="w-3.5 h-3.5" />
           </NavLink>
+          <AppSwitcher />
           <UserMenu />
         </div>
       </header>
