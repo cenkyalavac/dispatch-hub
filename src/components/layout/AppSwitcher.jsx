@@ -3,8 +3,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
@@ -55,10 +53,6 @@ export default function AppSwitcher() {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64 p-1.5">
-        <DropdownMenuLabel className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-3">
-          Eltur services
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
         {SERVICES.map((svc) => {
           const active = isCurrent(svc);
           return (
