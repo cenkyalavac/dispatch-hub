@@ -36,7 +36,16 @@ Deno.serve(async (req) => {
       const res = await base44.functions.invoke('sheetsSyncPending', {});
       syncResult = res?.data || null;
     } catch (e) {
-      console.error('watchdog: sheetsSyncPending invoke failed:', e.message);
+      // Fall back to a service-role invoke if the user-context invoke is
+      // rejected (the platform's invoke layer can 403 a nested call depending
+      // on the caller's context). The stale alarm below runs regardless, so a
+      // failed retry only delays recovery by one tick — it never blinds us.
+      try {
+        const res = await base44.asServiceRole.functions.invoke('sheetsSyncPending', {});
+        syncResult = res?.data || null;
+      } catch (e2) {
+        console.error('watchdog: sheetsSyncPending retry failed (alarm still runs):', e.message, '/', e2.message);
+      }
     }
 
     // 2. STALE ALARM — scan unsynced accepted tasks, find the oldest.
