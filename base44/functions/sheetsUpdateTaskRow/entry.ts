@@ -95,7 +95,16 @@ Deno.serve(async (req) => {
       return Response.json({ skipped: 'task not yet synced to sheets' });
     }
 
-    const { accessToken } = await base44.asServiceRole.connectors.getConnection('googlesheets');
+    // getConnection throws when the connector isn't authorized — guard it so a
+    // dropped Google Sheets connection surfaces as a clean 503 instead of an
+    // unhandled throw. The backlog watchdog + sheetsSyncPending own the visible
+    // SystemIssue for the connector outage; here we just fail gracefully.
+    let accessToken;
+    try {
+      ({ accessToken } = await base44.asServiceRole.connectors.getConnection('googlesheets'));
+    } catch (connErr) {
+      return Response.json({ error: `Google Sheets connector not authorized: ${connErr.message}` }, { status: 503 });
+    }
     if (!accessToken) {
       return Response.json({ error: 'Google Sheets connector not authorized' }, { status: 400 });
     }

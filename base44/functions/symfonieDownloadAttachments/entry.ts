@@ -116,7 +116,27 @@ Deno.serve(async (req) => {
     }
 
     const symfonieToken = await getSymfonieToken();
-    const { accessToken: dropboxToken } = await base44.asServiceRole.connectors.getConnection('dropbox');
+    // Dropbox connector resolution. getConnection THROWS when the connector
+    // isn't authorized (or its token lapsed) — and because this function is
+    // invoked fire-and-forget from the accept paths, a throw here vanishes into
+    // a `.catch(console.error)` with zero operator visibility. Raise a deduped
+    // SystemIssue so a wedged Dropbox handoff surfaces on the Issues page.
+    let dropboxToken;
+    try {
+      ({ accessToken: dropboxToken } = await base44.asServiceRole.connectors.getConnection('dropbox'));
+    } catch (connErr) {
+      base44.functions.invoke('recordSystemIssue', {
+        type: 'broker_offline',
+        severity: 'critical',
+        portal: 'symfonie',
+        function_name: 'symfonieDownloadAttachments',
+        external_ref: String(task_id),
+        dedup_key: 'dropbox_connector',
+        title: 'Dropbox connector not connected',
+        description: `Handoff for task ${task_id} could not run because the Dropbox connector is not authorized: ${connErr.message}\n\nAccepted tasks are NOT getting their files copied to Dropbox until an admin reconnects Dropbox. Reconnect from the integrations panel; handoffs for subsequent accepts will resume automatically.`,
+      }).catch((e) => console.error('recordSystemIssue failed:', e.message));
+      return Response.json({ error: `Dropbox connector not authorized: ${connErr.message}` }, { status: 503 });
+    }
 
     // 1) Attachment listesini cek
     const listRes = await symfonieFetch(

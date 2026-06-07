@@ -94,7 +94,26 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
-    const { accessToken } = await base44.asServiceRole.connectors.getConnection('googlesheets');
+    // Google Sheets connector resolution. If the connector isn't authorized,
+    // getConnection THROWS (it doesn't return a null token) — so we wrap it and
+    // raise a visible, deduped SystemIssue instead of failing silently. This is
+    // the exact failure that left 12 days of GlobalLink tasks unsynced with
+    // zero operator visibility: every cron tick 500'd here and nobody knew.
+    let accessToken;
+    try {
+      ({ accessToken } = await base44.asServiceRole.connectors.getConnection('googlesheets'));
+    } catch (connErr) {
+      base44.functions.invoke('recordSystemIssue', {
+        type: 'broker_offline',
+        severity: 'critical',
+        portal: '',
+        function_name: 'sheetsSyncPending',
+        dedup_key: 'googlesheets_connector',
+        title: 'Google Sheets connector not connected',
+        description: `sheetsSyncPending cannot write to Google Sheets because the connector is not authorized: ${connErr.message}\n\nAll accepted tasks are stuck with sheets_synced=false until an admin reconnects Google Sheets. Reconnect from the chat/integrations panel, then this issue auto-resolves on the next successful sync.`,
+      }).catch((e) => console.error('recordSystemIssue failed:', e.message));
+      return Response.json({ error: `Google Sheets connector not authorized: ${connErr.message}` }, { status: 503 });
+    }
     if (!accessToken) {
       return Response.json({ error: 'Google Sheets connector not authorized' }, { status: 400 });
     }
@@ -327,6 +346,12 @@ Deno.serve(async (req) => {
       }).catch((e) => console.error('UserNotification create failed:', e.message));
       notified++;
     }
+
+    // Self-heal: a successful run means the Google Sheets connector is back.
+    // Auto-resolve any open "connector not connected" issue so the bell + Issues
+    // page clear without manual intervention.
+    base44.functions.invoke('resolveSystemIssues', { type: 'broker_offline', dedup_key: 'googlesheets_connector' })
+      .catch((e) => console.error('resolveSystemIssues (sheets connector) failed:', e.message));
 
     // Strip internal _failed_task before returning (kept only for notification logic above).
     const skippedOut = skipped.map(({ _failed_task, ...rest }) => rest);

@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import TodayPanel from '@/components/dashboard/TodayPanel';
 import ActionNeededPanel from '@/components/dashboard/ActionNeededPanel';
+import InfraHealthPanel from '@/components/dashboard/InfraHealthPanel';
 import TopListsPanel from '@/components/dashboard/TopListsPanel';
 import RecentDeliveriesPanel from '@/components/dashboard/RecentDeliveriesPanel';
 import WebhookTimelinePanel from '@/components/dashboard/WebhookTimelinePanel';
@@ -153,6 +154,7 @@ export default function Dashboard() {
         ) : (
           <>
             <TodayPanel tasks={allTasks} />
+            <InfraHealthPanel portals={portals} />
             <ActionNeededPanel portals={portals} />
             {/* Two-up: shipped-this-week + recent webhooks. Side by side on
                 desktop so the eye scans success (left) → integration health

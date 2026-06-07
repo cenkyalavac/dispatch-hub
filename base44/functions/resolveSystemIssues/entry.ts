@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
     const body = await req.json().catch(() => ({}));
-    const { issue_id, issue_ids, type, portal, note = '' } = body || {};
+    const { issue_id, issue_ids, type, portal, dedup_key, note = '' } = body || {};
 
     const nowIso = new Date().toISOString();
     const resolver = user?.email || 'auto';
@@ -70,6 +70,10 @@ Deno.serve(async (req) => {
     // `.filter({type, portal: ''}, ...)` would otherwise auto-resolve every
     // open warning whose portal happens to be empty — across types.
     const filterSpec = portal ? { type, portal } : { type };
+    // Narrow further by dedup_key when provided — lets a caller auto-resolve a
+    // SPECIFIC issue signature (e.g. the googlesheets_connector outage) without
+    // closing every other open issue of the same type.
+    if (dedup_key) filterSpec.dedup_key = dedup_key;
     const candidates = await base44.asServiceRole.entities.SystemIssue
       .filter(filterSpec, '-last_seen_at', 100)
       .catch(() => []);
