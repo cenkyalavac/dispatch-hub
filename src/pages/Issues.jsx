@@ -285,14 +285,14 @@ export default function Issues() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search project, client, error message"
-                className="w-full h-9 pl-9 pr-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4"
+                className="field-control w-full h-9 pl-9 pr-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4"
               />
             </div>
             {portals.length > 1 && (
               <select
                 value={portalFilter}
                 onChange={e => setPortalFilter(e.target.value)}
-                className="h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
+                className="field-control h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none"
               >
                 <option value="all">All portals</option>
                 {portals.map(p => <option key={p} value={p}>{p}</option>)}

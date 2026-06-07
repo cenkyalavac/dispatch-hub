@@ -39,7 +39,7 @@ export default function FriendlyNameForm({ portals, onSubmit }) {
     setForm({ ...form, source_value: '', display_name: '', notes: '' });
   };
 
-  const input = 'h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4';
+  const input = 'field-control h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4';
 
   return (
     <form onSubmit={submit} className="bg-surface-2 border border-line-1 rounded-md p-4 mb-4">

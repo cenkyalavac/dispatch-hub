@@ -8,12 +8,14 @@ import { toast } from 'sonner';
 import RuleForm from '@/components/rules/RuleForm';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { EM } from '@/lib/format';
 
 export default function Rules() {
   const [showForm, setShowForm] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
   const [portalFilter, setPortalFilter] = useState('all');
+  const [confirmState, setConfirmState] = useState(null);
   const qc = useQueryClient();
 
   const { data: portals = [] } = useQuery({
@@ -141,7 +143,13 @@ export default function Rules() {
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button
-                    onClick={() => { if (confirm(`Delete "${rule.name}"?`)) deleteMutation.mutate(rule.id); }}
+                    onClick={() => setConfirmState({
+                      title: `Delete "${rule.name}"?`,
+                      body: 'This rule will stop being applied to incoming tasks. This cannot be undone.',
+                      confirmLabel: 'Delete',
+                      danger: true,
+                      onConfirm: () => deleteMutation.mutate(rule.id),
+                    })}
                     className="inline-flex items-center justify-center h-8 w-8 rounded text-ink-3 hover:bg-danger-soft hover:text-danger transition-colors duration-tab"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -152,6 +160,8 @@ export default function Rules() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog state={confirmState} onClose={() => setConfirmState(null)} />
     </div>
   );
 }

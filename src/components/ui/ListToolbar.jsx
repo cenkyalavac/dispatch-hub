@@ -31,7 +31,7 @@ export default function ListToolbar({
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full h-9 pl-9 pr-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4 focus:border-accent transition-colors duration-tab"
+          className="field-control w-full h-9 pl-9 pr-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4"
         />
         {search && (
           <button
@@ -77,7 +77,7 @@ export function ToolbarSelect({ value, onChange, children, ariaLabel }) {
       value={value}
       onChange={(e) => onChange(e.target.value)}
       aria-label={ariaLabel}
-      className="h-9 px-3 pr-8 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none hover:bg-surface-2 focus:border-accent transition-colors duration-tab cursor-pointer"
+      className="field-control h-9 px-3 pr-8 rounded-md border border-line-1 bg-surface-1 text-[13px] text-ink-1 outline-none cursor-pointer"
     >
       {children}
     </select>

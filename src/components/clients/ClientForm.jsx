@@ -5,7 +5,7 @@ import { Save, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { slugify, uniqueSlug } from '@/lib/slug';
 
-const input = 'w-full h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4';
+const input = 'field-control w-full h-9 px-3 rounded-md border border-line-1 bg-surface-1 text-[13px] outline-none placeholder:text-ink-4';
 
 // Create or edit a Client. `client` is the row when editing; null/undefined for new.
 // `existingSlugs` is the list of slugs already in use so we can warn / auto-suffix.
