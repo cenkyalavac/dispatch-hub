@@ -80,7 +80,7 @@ const PORTAL_MT_WEIGHT = {
 // portals). Pass `portal: 'junction'` to apply the Welocalize formula. Pass
 // `mtWeight` to override the program default (e.g. for a customer-specific
 // rate negotiated outside TikTok's defaults).
-export function computeWwc(lev, { portal, mtWeight } = {}) {
+export function computeWwc(lev, /** @type {{ portal?: string, mtWeight?: number }} */ { portal, mtWeight } = {}) {
   if (!lev) return 0;
 
   if (portal === 'junction') {

@@ -67,22 +67,22 @@ export default function Notifications() {
   };
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.NotificationRule.update(id, data),
+    mutationFn: (/** @type {{ id: string, data: Record<string, any> }} */ { id, data }) => base44.entities.NotificationRule.update(id, data),
     onSuccess: invalidateAll,
   });
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.NotificationRule.delete(id),
+    mutationFn: (/** @type {string} */ id) => base44.entities.NotificationRule.delete(id),
     onSuccess: () => { toast.success('Rule deleted'); invalidateAll(); },
   });
 
   // NotificationSetting (event rules) — toggle/delete mutations. Edit goes
   // through EventRuleForm's own save mutation so we don't duplicate it here.
   const settingToggleMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.NotificationSetting.update(id, data),
+    mutationFn: (/** @type {{ id: string, data: Record<string, any> }} */ { id, data }) => base44.entities.NotificationSetting.update(id, data),
     onSuccess: invalidateAll,
   });
   const settingDeleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.NotificationSetting.delete(id),
+    mutationFn: (/** @type {string} */ id) => base44.entities.NotificationSetting.delete(id),
     onSuccess: () => { toast.success('Rule deleted'); invalidateAll(); },
   });
 
@@ -103,7 +103,7 @@ export default function Notifications() {
     const BATCH = 8;
     for (let i = 0; i < unread.length; i += BATCH) {
       const slice = unread.slice(i, i + BATCH);
-      // eslint-disable-next-line no-await-in-loop
+       
       await Promise.all(slice.map(n =>
         base44.entities.UserNotification.update(n.id, { read_at: now }).catch(() => null)
       ));

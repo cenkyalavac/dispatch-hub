@@ -56,7 +56,7 @@ export default function MappingGroup({ field, mappings, conflictIds, ...rowHandl
               key={m.id}
               mapping={m}
               hasConflict={conflictIds.has(m.id)}
-              {...rowHandlers}
+              {...(/** @type {{ onToggle: any, onDelete: any, onSave: any }} */ (rowHandlers))}
             />
           ))}
         </div>

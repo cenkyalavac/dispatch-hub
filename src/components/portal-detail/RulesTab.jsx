@@ -26,11 +26,11 @@ export default function RulesTab({ portal }) {
   };
 
   const toggleMutation = useMutation({
-    mutationFn: ({ id, is_active }) => base44.entities.Rule.update(id, { is_active }),
+    mutationFn: (/** @type {{ id: string, is_active: boolean }} */ { id, is_active }) => base44.entities.Rule.update(id, { is_active }),
     onSuccess: invalidate,
   });
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.Rule.delete(id),
+    mutationFn: (/** @type {string} */ id) => base44.entities.Rule.delete(id),
     onSuccess: () => { toast.success('Rule deleted'); invalidate(); },
   });
 

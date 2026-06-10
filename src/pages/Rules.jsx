@@ -38,11 +38,11 @@ export default function Rules() {
   };
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Rule.update(id, data),
+    mutationFn: (/** @type {{ id: string, data: Record<string, any> }} */ { id, data }) => base44.entities.Rule.update(id, data),
     onSuccess: invalidateAllRuleQueries,
   });
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.Rule.delete(id),
+    mutationFn: (/** @type {string} */ id) => base44.entities.Rule.delete(id),
     onSuccess: () => { toast.success('Rule deleted'); invalidateAllRuleQueries(); },
   });
 

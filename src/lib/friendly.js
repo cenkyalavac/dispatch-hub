@@ -1,7 +1,7 @@
 // Friendly-name helpers — single source of truth for the UI side.
 //
 // What this is:
-//   FriendlyName entities are a human-display sözlük. We map opaque
+//   FriendlyName entities are a human-display dictionary. We map opaque
 //   upstream identifiers ("Amazon.com Services, Inc.", project_id 47110)
 //   to short, readable labels ("Amazon", "Adloc Shopper").
 //

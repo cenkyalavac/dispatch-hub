@@ -12,12 +12,12 @@ const SCOPE_COLOR = {
 export default function EndpointBlock({
   fn,
   scope = 'read:projects',
-  title,
-  description,
-  body,
-  response,
-  curl,
-  notes,
+  title = null,
+  description = null,
+  body = null,
+  response = null,
+  curl = null,
+  notes = null,
 }) {
   return (
     <div className="border border-line-1 rounded-md bg-surface-1 overflow-hidden">

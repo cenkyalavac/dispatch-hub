@@ -6,7 +6,7 @@ import { CheckCircle2, XCircle, X, Loader2 } from 'lucide-react';
 // user can watch sequential calls march along instead of staring at a dead button.
 export default function BulkActionBar({
   count, busy, progress = null,
-  onAccept, onReject, onClear,
+  onAccept = null, onReject = null, onClear,
   canReject = true,
   acceptLabel = 'Accept selected',
   rejectLabel = 'Reject selected',

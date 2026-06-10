@@ -11,7 +11,7 @@ const fieldCls = 'w-full h-9 px-3 rounded-md border border-line-1 bg-surface-1 t
 // `savedSpreadsheetId` is the value currently persisted in the DB — needed because the
 // backend reads from the Portal record, so the button must reflect saved state, not
 // in-flight edits.
-export default function PortalSheetsFields({ portalKey, spreadsheetId, tabName, savedSpreadsheetId, onChange }) {
+export default function PortalSheetsFields({ portalKey, spreadsheetId, tabName, savedSpreadsheetId = null, onChange }) {
   const [creating, setCreating] = useState(false);
 
   const sheetUrl = spreadsheetId

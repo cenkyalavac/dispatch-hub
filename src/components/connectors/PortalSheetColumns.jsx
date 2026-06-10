@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Columns3, Plus, Trash2, GripVertical, ChevronUp, ChevronDown, Info, X } from 'lucide-react';
+import { Columns3, Plus, Trash2, ChevronUp, ChevronDown, Info, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { getSourceFieldsForPortal } from '@/lib/sheet-source-fields';
 import SheetColumnHeaderInput from '@/components/connectors/SheetColumnHeaderInput';

@@ -49,7 +49,7 @@ export default function NotificationRuleForm({ rule, portals = [], onClose }) {
   const [recipientsError, setRecipientsError] = useState('');
 
   const saveMutation = useMutation({
-    mutationFn: async (data) =>
+    mutationFn: async (/** @type {Record<string, any>} */ data) =>
       rule?.id
         ? base44.entities.NotificationRule.update(rule.id, data)
         : base44.entities.NotificationRule.create(data),

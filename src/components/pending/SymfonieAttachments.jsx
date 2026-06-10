@@ -41,25 +41,29 @@ function safeDateShort(value) {
 function AttachmentRow({ att, taskId }) {
   const [busy, setBusy] = useState(false);
 
-  // Download flow: invoke the function with axios (responseType blob), then
-  // trigger a synthetic <a download> click. We do NOT navigate the user away
-  // or open a new tab — keeps the pending list scroll position intact.
+  // Download flow: stream the bytes via functions.fetch() (raw Response),
+  // then trigger a synthetic <a download> click. We do NOT navigate the user
+  // away or open a new tab — keeps the pending list scroll position intact.
+  //
+  // invoke() can't be used here: its 2-arg signature has no per-call axios
+  // options, so the response always goes through the default JSON/text
+  // transform which corrupts binary payloads.
   const handleDownload = async () => {
     setBusy(true);
     try {
-      const res = await base44.functions.invoke(
-        'symfonieAttachments',
-        { task_id: taskId, attachment_id: att.id },
-        { responseType: 'blob' }
-      );
-      // When the backend errors it returns JSON, not a blob — detect that.
-      const ct = res.headers?.['content-type'] || '';
-      if (ct.includes('application/json')) {
-        const text = await res.data.text();
-        const parsed = (() => { try { return JSON.parse(text); } catch { return null; } })();
+      const res = await base44.functions.fetch('symfonieAttachments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: taskId, attachment_id: att.id }),
+      });
+      // When the backend errors it returns JSON, not file bytes — detect that.
+      const ct = res.headers.get('content-type') || '';
+      if (!res.ok || ct.includes('application/json')) {
+        const parsed = await res.json().catch(() => null);
         throw new Error(parsed?.error || 'Download failed');
       }
-      const url = URL.createObjectURL(res.data);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = att.name || `attachment_${att.id}`;

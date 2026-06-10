@@ -1,4 +1,4 @@
-export default function FormField({ label, hint, helper, error, required, htmlFor, children, className = '' }) {
+export default function FormField({ label, hint = null, helper = null, error = null, required = false, htmlFor = undefined, children, className = '' }) {
   // `helper` and `hint` are aliases — both render the same secondary line.
   const secondary = error || hint || helper;
   return (

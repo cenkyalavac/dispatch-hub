@@ -37,6 +37,8 @@ function parseJwtDays(message) {
 // "Open" affordance — click anywhere outside the toggle/docs link to navigate.
 export default function ConnectorCard({
   portal, onToggle, missingSecrets = [], client = null,
+  // underscore-renamed so the unused-vars rule stays quiet (see note above)
+  testing: _testing = false, onTest: _onTest = null, onDelete: _onDelete = null,
 }) {
   const navigate = useNavigate();
   const status = STATUS_MAP[portal.connection_status || 'not_configured'];

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { RefreshCw, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { EM } from '@/lib/format';
 
 export default function IssueRow({ project, busy, onReset, selected, onToggleSelect }) {

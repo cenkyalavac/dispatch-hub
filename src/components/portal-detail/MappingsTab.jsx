@@ -92,6 +92,14 @@ export default function MappingsTab({ portal }) {
     toast.success('Mapping deleted');
   };
 
+  // MappingRow's inline edit flow calls onSave(mapping, patch); without this
+  // handler the Save button crashed on this tab (it was only wired on /mappings).
+  const save = async (m, patch) => {
+    await base44.entities.FieldMapping.update(m.id, patch);
+    invalidate();
+    toast.success('Mapping updated');
+  };
+
   return (
     <div>
       <p className="text-[13px] text-ink-3 italic-editorial mb-4">
@@ -164,7 +172,7 @@ export default function MappingsTab({ portal }) {
       ) : (
         <div className="space-y-2">
           {filtered.map((m) => (
-            <MappingRow key={m.id} mapping={m} onToggle={toggle} onDelete={remove} />
+            <MappingRow key={m.id} mapping={m} onToggle={toggle} onDelete={remove} onSave={save} />
           ))}
         </div>
       )}

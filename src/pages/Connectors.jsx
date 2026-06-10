@@ -50,7 +50,7 @@ export default function Connectors() {
   const clientById = new Map(clients.map(c => [c.id, c]));
 
   const saveMutation = useMutation({
-    mutationFn: (data) =>
+    mutationFn: (/** @type {Record<string, any>} */ data) =>
       editing?.id
         ? base44.entities.Portal.update(editing.id, data)
         : base44.entities.Portal.create(data),
@@ -70,7 +70,7 @@ export default function Connectors() {
   // Doing this with useMutation introduced a race against the awaited test/update
   // calls below; a plain function call gives us deterministic ordering.
   const optimisticPatch = (id, patch) => {
-    qc.setQueryData(['portals-all'], (old) =>
+    qc.setQueryData(['portals-all'], (/** @type {any[]} */ old) =>
       (old || []).map((p) => (p.id === id ? { ...p, ...patch } : p))
     );
   };
@@ -156,7 +156,7 @@ export default function Connectors() {
   };
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.Portal.delete(id),
+    mutationFn: (/** @type {string} */ id) => base44.entities.Portal.delete(id),
     onSuccess: () => {
       toast.success('Connector removed');
       qc.invalidateQueries({ queryKey: ['portals-all'] });

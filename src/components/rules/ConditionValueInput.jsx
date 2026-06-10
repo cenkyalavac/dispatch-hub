@@ -43,7 +43,7 @@ export default function ConditionValueInput({ portal, field, value, onChange }) 
   };
 
   // Refetch whenever portal or field changes.
-  useEffect(() => { load(false); /* eslint-disable-next-line */ }, [portal, field]);
+  useEffect(() => { load(false);   }, [portal, field]);
 
   // Close on outside click.
   useEffect(() => {

@@ -10,13 +10,16 @@ const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s).trim());
 
 export default function InviteUserForm({ onClose }) {
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState('user');
+  const [role, setRole] = useState(/** @type {'user'|'admin'} */ ('user'));
   const [error, setError] = useState('');
 
   const inviteMutation = useMutation({
     // Base44 sends the invite email and creates a pending User record. The
     // invitee accepts via the email link — no manual user provisioning needed.
-    mutationFn: ({ email, role }) => base44.users.inviteUser(email, role),
+    // base44.users exists at runtime but is missing from the SDK's client
+    // type declarations (v0.8.x) — hence the any-cast.
+    mutationFn: (/** @type {{ email: string, role: 'user'|'admin' }} */ { email, role }) =>
+      /** @type {any} */ (base44).users.inviteUser(email, role),
     onSuccess: () => { toast.success(`Invite sent to ${email}`); onClose(); },
     onError: (err) => toast.error(err?.message || 'Invite failed'),
   });
@@ -52,7 +55,7 @@ export default function InviteUserForm({ onClose }) {
           </FormField>
         </div>
         <FormField label="Role" helper="Admin can manage everything">
-          <select value={role} onChange={e => setRole(e.target.value)} className={fieldCls}>
+          <select value={role} onChange={e => setRole(/** @type {'user'|'admin'} */ (e.target.value))} className={fieldCls}>
             <option value="user">User</option>
             <option value="admin">Admin</option>
           </select>

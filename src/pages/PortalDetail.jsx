@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity, ListChecks, ArrowLeftRight, Split, Settings, BarChart3, Webhook, Inbox } from 'lucide-react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -35,7 +35,7 @@ export default function PortalDetail() {
   useEffect(() => {
     const next = searchParams.get('tab') || 'overview';
     if (next !== tab) setTab(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [searchParams]);
 
   const handleTabChange = (next) => {
@@ -89,7 +89,7 @@ export default function PortalDetail() {
   // sync against the authoritative server write.
   const handleToggle = async (next) => {
     await qc.cancelQueries({ queryKey: ['portal-detail', key] });
-    qc.setQueryData(['portal-detail', key], (old) => old ? { ...old, is_active: next } : old);
+    qc.setQueryData(['portal-detail', key], (/** @type {any} */ old) => old ? { ...old, is_active: next } : old);
 
     const finalize = () => {
       qc.invalidateQueries({ queryKey: ['portal-detail', key] });
@@ -100,7 +100,7 @@ export default function PortalDetail() {
       try {
         await base44.entities.Portal.update(portal.id, { is_active: false });
       } catch (err) {
-        qc.setQueryData(['portal-detail', key], (old) => old ? { ...old, is_active: true } : old);
+        qc.setQueryData(['portal-detail', key], (/** @type {any} */ old) => old ? { ...old, is_active: true } : old);
         toast.error('Toggle failed: ' + err.message);
       } finally { finalize(); }
       return;
@@ -111,7 +111,7 @@ export default function PortalDetail() {
         await base44.entities.Portal.update(portal.id, { is_active: true });
         toast.warning(`${portal.name} enabled — no test function configured.`);
       } catch (err) {
-        qc.setQueryData(['portal-detail', key], (old) => old ? { ...old, is_active: false } : old);
+        qc.setQueryData(['portal-detail', key], (/** @type {any} */ old) => old ? { ...old, is_active: false } : old);
         toast.error('Toggle failed: ' + err.message);
       } finally { finalize(); }
       return;
@@ -132,13 +132,13 @@ export default function PortalDetail() {
         last_checked_at: new Date().toISOString(),
       });
       if (!success) {
-        qc.setQueryData(['portal-detail', key], (old) => old ? { ...old, is_active: false } : old);
+        qc.setQueryData(['portal-detail', key], (/** @type {any} */ old) => old ? { ...old, is_active: false } : old);
       }
       if (success) toast.success(`${portal.name}: enabled & connected`);
       else toast.error(`${portal.name}: ${data?.error || 'test failed'} — disabled`);
     } catch (err) {
       const detail = err.response?.data?.error || err.response?.data?.message || err.message;
-      qc.setQueryData(['portal-detail', key], (old) => old ? { ...old, is_active: false } : old);
+      qc.setQueryData(['portal-detail', key], (/** @type {any} */ old) => old ? { ...old, is_active: false } : old);
       try {
         await base44.entities.Portal.update(portal.id, {
           is_active: false,

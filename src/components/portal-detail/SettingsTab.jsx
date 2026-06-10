@@ -33,7 +33,7 @@ export default function SettingsTab({ portal, onDeleted }) {
   // edits are preserved by comparing key/id only.
   useEffect(() => {
     setForm((prev) => ({ ...normalize(portal), ...(prev.id === portal.id ? userEditableSubset(prev) : {}) }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [portal.id, portal.key]);
 
   // Stable JSON for dirty check — keys sorted so insertion order doesn't matter.
@@ -41,7 +41,7 @@ export default function SettingsTab({ portal, onDeleted }) {
   const dirty = stable(form) !== stable(normalize(portal));
 
   const saveMutation = useMutation({
-    mutationFn: (data) => base44.entities.Portal.update(portal.id, data),
+    mutationFn: (/** @type {Record<string, any>} */ data) => base44.entities.Portal.update(portal.id, data),
     onSuccess: () => {
       toast.success('Settings saved');
       setSavedAt(Date.now());

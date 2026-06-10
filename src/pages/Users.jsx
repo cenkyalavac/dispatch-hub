@@ -23,13 +23,13 @@ export default function Users() {
   });
 
   const updateRole = useMutation({
-    mutationFn: ({ id, role }) => base44.entities.User.update(id, { role }),
+    mutationFn: (/** @type {{ id: string, role: string }} */ { id, role }) => base44.entities.User.update(id, { role }),
     onSuccess: () => { toast.success('Role updated'); qc.invalidateQueries({ queryKey: ['users'] }); },
     onError: (err) => toast.error(err?.message || 'Update failed'),
   });
 
   const removeUser = useMutation({
-    mutationFn: (id) => base44.entities.User.delete(id),
+    mutationFn: (/** @type {string} */ id) => base44.entities.User.delete(id),
     onSuccess: () => { toast.success('User removed'); qc.invalidateQueries({ queryKey: ['users'] }); },
     onError: (err) => toast.error(err?.message || 'Remove failed'),
   });

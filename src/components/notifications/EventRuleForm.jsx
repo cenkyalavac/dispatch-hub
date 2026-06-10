@@ -60,7 +60,7 @@ export default function EventRuleForm({ rule, portals, onClose }) {
   const [recipInput, setRecipInput] = useState('');
 
   const mutation = useMutation({
-    mutationFn: (data) =>
+    mutationFn: (/** @type {Record<string, any>} */ data) =>
       rule
         ? base44.entities.NotificationSetting.update(rule.id, data)
         : base44.entities.NotificationSetting.create(data),

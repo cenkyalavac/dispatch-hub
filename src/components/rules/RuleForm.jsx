@@ -59,7 +59,7 @@ export default function RuleForm({ rule, portals = [], onClose }) {
   const [nameError, setNameError] = useState('');
 
   const saveMutation = useMutation({
-    mutationFn: async (data) =>
+    mutationFn: async (/** @type {Record<string, any>} */ data) =>
       rule?.id ? base44.entities.Rule.update(rule.id, data) : base44.entities.Rule.create(data),
     onSuccess: () => { toast.success(rule?.id ? 'Rule updated' : 'Rule created'); onClose(); },
     onError: (err) => toast.error(err.message),

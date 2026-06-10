@@ -1,6 +1,8 @@
 const isNode = typeof window === 'undefined';
-const windowObj = isNode ? { localStorage: new Map() } : window;
-const storage = windowObj.localStorage;
+// Storage-shaped no-op shim so the node/SSR path can't crash on Map's
+// different API (Map has .set/.get, not .setItem/.getItem).
+const nodeStorageShim = { setItem: () => {}, getItem: () => null, removeItem: () => {} };
+const storage = isNode ? nodeStorageShim : window.localStorage;
 
 const toSnakeCase = (str) => {
 	return str.replace(/([A-Z])/g, '_$1').toLowerCase();

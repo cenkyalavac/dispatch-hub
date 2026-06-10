@@ -7,10 +7,10 @@ export default function SystemIssuesTable({
   issues,
   selectable = false,
   selectedIds = new Set(),
-  onToggleSelect,
-  onToggleSelectAll,
+  onToggleSelect = null,
+  onToggleSelectAll = null,
   resolvingIds = new Set(),
-  onResolve,
+  onResolve = null,
   resolved = false,
 }) {
   return (

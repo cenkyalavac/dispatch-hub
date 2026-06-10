@@ -169,7 +169,7 @@ function GlobalLinkPending({ portal }) {
   });
 
   const dropRow = (id) => {
-    qc.setQueryData(['portal-pending', portal.key], (old = []) => old.filter((r) => r.id !== id));
+    qc.setQueryData(['portal-pending', portal.key], (/** @type {any[]} */ old = []) => old.filter((r) => r.id !== id));
     qc.invalidateQueries({ queryKey: ['recent-accepted'] });
   };
 
@@ -415,7 +415,7 @@ function FetchFnPending({ portal }) {
   const dropRowFromCache = (taskId) => {
     if (taskId == null) return;
     const listKey = ['portal-pending', portal.key, isJunction ? offerType : null];
-    qc.setQueryData(listKey, (old) => {
+    qc.setQueryData(listKey, (/** @type {any} */ old) => {
       if (!old?.tasks) return old;
       return { ...old, tasks: old.tasks.filter((t) => t.id !== taskId) };
     });

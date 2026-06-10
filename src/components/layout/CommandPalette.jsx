@@ -4,7 +4,10 @@ import { Search } from 'lucide-react';
 
 const ITEMS = [
   { label: 'Overview',          to: '/' },
-  { label: 'Pending',           to: '/pending' },
+  // Pending queues live per-portal (/portals/:key?tab=pending) — land on the
+  // connector grid where each card links into its own pending tab. A bare
+  // /pending route does not exist; the old entry 404'd.
+  { label: 'Pending',           to: '/portals' },
   { label: 'Issues',            to: '/issues' },
   { label: 'History',           to: '/history' },
   { label: 'Activity',          to: '/tasks' },

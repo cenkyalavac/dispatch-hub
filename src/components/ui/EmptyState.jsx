@@ -1,4 +1,4 @@
-export default function EmptyState({ title, body, cta, action }) {
+export default function EmptyState({ title, body, cta = null, action = null }) {
   return (
     <div className="bg-surface-1 border border-dashed border-line-2 rounded-md px-8 py-12 text-center">
       <h3 className="text-[14px] font-semibold text-ink-1">{title}</h3>
