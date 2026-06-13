@@ -353,13 +353,14 @@ Deno.serve(async (req) => {
 
     const results = { sent: 0, skipped: 0, errors: 0, deliveries: [] };
 
-    // Resend's free tier caps at 5 requests/second. When symfonieProcessTasks
-    // notifies several unmatched tasks back-to-back (or a rule has multiple
-    // recipients), bursts easily exceed that and a slice of the mails comes
-    // back as 429 'rate_limit_exceeded'. We pace ourselves at ~4 req/sec
-    // (250ms gap) which keeps a comfortable margin under the limit.
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-    let isFirstSend = true;
+    // Collect all emails before making any Resend calls. We then send the
+    // entire batch in ONE API request via /emails/batch. A single batch call
+    // counts as 1 request against the 5 req/sec rate limit regardless of how
+    // many recipients it contains — fixing the 429 bursts that occurred when
+    // symfonieProcessTasks fired multiple concurrent notifyNewTask invocations
+    // (each invocation was pacing itself internally, but all fired Resend
+    // calls at the same time cross-invocation).
+    const outbox = []; // { recipient, rule, token, html, subject }
 
     for (const rule of rules) {
       // Rules can target friendly_* fields too — pass the enriched payload.
@@ -371,47 +372,51 @@ Deno.serve(async (req) => {
         const dedupeKey = `${rule.id}::${recipient}`;
         if (alreadySentKey.has(dedupeKey)) { results.skipped++; continue; }
 
-        // Pace successive Resend calls. First send fires immediately; every
-        // subsequent send waits 250ms so we stay under the 5 req/sec ceiling.
-        if (!isFirstSend) await sleep(250);
-        isFirstSend = false;
-
         const token = mintToken();
         // Pretty public URL — APP_PUBLIC_URL already points at the SPA's
         // /accept page which proxies to acceptViaToken under the hood.
         const acceptUrl = `${acceptBase}?token=${token}`;
-
         const html = buildEmail({ portal, task: taskWithFriendly, acceptUrl, rule });
         const subject = `New ${({ symfonie: 'Symfonie', junction: 'Junction', globallink: 'GlobalLink' })[portal] || portal} task — ${task_payload.task_name || taskIdStr}`;
 
-        // On a 429, back off 1.2s and retry once. That's enough to clear the
-        // 1-second rolling window Resend's free tier uses. Other errors are
-        // not retried — they're either auth / payload bugs (won't fix by
-        // waiting) or temporary upstream issues we'd rather surface fast.
-        let resendId = null, sendError = null;
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            const r = await fetch(RESEND_API, {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ from, to: [recipient], subject, html }),
-            });
-            const text = await r.text();
-            if (r.ok) {
-              try { resendId = JSON.parse(text).id || null; } catch { /* keep null */ }
-              sendError = null;
-              break;
-            }
-            sendError = `Resend ${r.status}: ${text.slice(0, 200)}`;
-            if (r.status === 429 && attempt === 0) { await sleep(1200); continue; }
-            break;
-          } catch (e) {
-            sendError = e.message;
+        outbox.push({ recipient, rule, token, html, subject });
+      }
+    }
+
+    if (outbox.length > 0) {
+      // POST /emails/batch — one HTTP request for all N emails.
+      // Response: { data: [{ id }, ...] } in the same order as the input array.
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      let batchIds = null, batchError = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const r = await fetch('https://api.resend.com/emails/batch', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(outbox.map(({ recipient, html, subject }) => ({
+              from, to: [recipient], subject, html,
+            }))),
+          });
+          const text = await r.text();
+          if (r.ok) {
+            try { batchIds = JSON.parse(text).data?.map((d) => d.id ?? null) ?? []; } catch { batchIds = []; }
             break;
           }
+          batchError = `Resend ${r.status}: ${text.slice(0, 200)}`;
+          // On 429 back off 1.2s and retry once.
+          if (r.status === 429 && attempt === 0) { await sleep(1200); continue; }
+          break;
+        } catch (e) {
+          batchError = e.message;
+          break;
         }
-        if (sendError) results.errors++; else results.sent++;
+      }
 
+      // Write NotificationDelivery rows for every outbox entry.
+      await Promise.all(outbox.map(async ({ recipient, rule, token }, i) => {
+        const resendId = batchIds ? (batchIds[i] ?? null) : null;
+        const sendError = batchError ?? null;
+        if (sendError) results.errors++; else results.sent++;
         try {
           const row = await base44.asServiceRole.entities.NotificationDelivery.create({
             portal,
@@ -432,7 +437,7 @@ Deno.serve(async (req) => {
           console.error('NotificationDelivery insert failed:', e.message);
           results.errors++;
         }
-      }
+      }));
     }
 
     return Response.json({ success: true, ...results });
