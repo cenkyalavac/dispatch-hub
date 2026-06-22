@@ -1,62 +1,69 @@
 // base44/functions/wsProjectNew/entry.ts
-// Called by worldserver-broker when a new WS project is discovered.
-// Creates or updates a WsProject entity.
+// Broker-callable. The external worldserver-broker calls this when it discovers a
+// new WorldServer project: upserts a WsProject (by pgId) with scoping + source link.
+// Auth: shared secret header X-Broker-Key must match BROKER_KEY env var.
+// The broker owns every field except assignedPm / internalNote (UI-only) — never touch those.
 
-import { WsProject } from '../entities/WsProject';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const WS_BROKER_KEY = process.env.WS_BROKER_KEY;
-
-export default async function wsProjectNew(req: Request): Promise<Response> {
-  // Auth check
-  const key = req.headers.get('x-broker-key');
-  if (WS_BROKER_KEY && key !== WS_BROKER_KEY) {
-    return Response.json({ error: 'unauthorized' }, { status: 401 });
-  }
-
-  const body = await req.json();
-  const {
-    pgId,
-    pgName,
-    vendor,
-    locale,
-    translationRequestId,
-    totalWords,
-    sourceDropboxUrl,
-    scopingRaw,
-    dueDate,
-    creationDate
-  } = body;
-
-  if (!pgId || !vendor) {
-    return Response.json({ error: 'pgId and vendor required' }, { status: 400 });
-  }
-
-  // Upsert — if project already exists (e.g. re-processed), don't overwrite delivery status
-  const existing = await WsProject.filter({ pgId }).getFirst().catch(() => null);
-
-  if (existing) {
-    // Already recorded — update scoping if it improved
-    if (totalWords && totalWords > (existing.totalWords || 0)) {
-      await existing.update({ totalWords, scopingRaw });
+Deno.serve(async (req) => {
+  try {
+    if (req.method !== 'POST') {
+      return Response.json({ error: 'Method not allowed' }, { status: 405 });
     }
-    return Response.json({ ok: true, action: 'skipped', id: existing.id });
+
+    const expected = Deno.env.get('BROKER_KEY');
+    const got = req.headers.get('x-broker-key');
+    if (!expected || !got || got !== expected) {
+      return Response.json({ error: 'invalid broker key' }, { status: 401 });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const {
+      pgId, pgName, vendor, locale, translationRequestId,
+      totalWords, sourceDropboxUrl, scopingRaw, dueDate, creationDate,
+    } = body || {};
+    if (!pgId || !vendor) {
+      return Response.json({ error: 'pgId and vendor required' }, { status: 400 });
+    }
+
+    const base44 = createClientFromRequest(req);
+    const existing = await base44.asServiceRole.entities.WsProject.filter({ pgId });
+
+    if (existing && existing.length > 0) {
+      // Already recorded — only improve scoping; never clobber delivery status or UI-only fields.
+      const cur = existing[0];
+      const patch = {};
+      if (typeof totalWords === 'number' && totalWords > (cur.totalWords || 0)) {
+        patch.totalWords = totalWords;
+        if (scopingRaw && typeof scopingRaw === 'object') patch.scopingRaw = scopingRaw;
+      }
+      if (Object.keys(patch).length) {
+        await base44.asServiceRole.entities.WsProject.update(cur.id, patch);
+      }
+      return Response.json({ ok: true, action: 'skipped', id: cur.id });
+    }
+
+    const created = await base44.asServiceRole.entities.WsProject.create({
+      pgId,
+      pgName: pgName || '',
+      vendor,
+      locale: locale || '',
+      translationRequestId: translationRequestId || '',
+      totalWords: typeof totalWords === 'number' ? totalWords : 0,
+      sourceDropboxUrl: sourceDropboxUrl || '',
+      translatedDropboxUrl: '',
+      dueDate: dueDate || '',
+      creationDate: creationDate || '',
+      deliveredAt: '',
+      status: 'new',
+      scopingRaw: scopingRaw && typeof scopingRaw === 'object' ? scopingRaw : {},
+    });
+
+    console.log(`[wsProjectNew] created pgId=${pgId} vendor=${vendor} words=${totalWords || 0}`);
+    return Response.json({ ok: true, action: 'created', id: created.id });
+  } catch (error) {
+    console.error('[wsProjectNew] error:', error.message);
+    return Response.json({ error: error.message }, { status: 500 });
   }
-
-  const project = await WsProject.create({
-    pgId,
-    pgName,
-    vendor,
-    locale,
-    translationRequestId,
-    totalWords: totalWords || 0,
-    sourceDropboxUrl: sourceDropboxUrl || null,
-    translatedDropboxUrl: null,
-    dueDate: dueDate || null,
-    creationDate: creationDate || null,
-    deliveredAt: null,
-    status: 'new',
-    scopingRaw: scopingRaw || null
-  });
-
-  return Response.json({ ok: true, action: 'created', id: project.id });
-}
+});

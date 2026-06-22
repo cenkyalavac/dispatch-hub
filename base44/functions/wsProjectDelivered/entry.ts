@@ -1,55 +1,60 @@
 // base44/functions/wsProjectDelivered/entry.ts
-// Called by worldserver-broker when translator delivers (step past Translate).
-// Updates WsProject status and stores translated WSXZ Dropbox URL.
+// Broker-callable. The external worldserver-broker calls this when a translator delivers
+// (TranslationRequest moved past the Translate step): marks the WsProject delivered and
+// stores the translated WSXZ Dropbox link.
+// Auth: shared secret header X-Broker-Key must match BROKER_KEY env var.
 
-import { WsProject } from '../entities/WsProject';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const WS_BROKER_KEY = process.env.WS_BROKER_KEY;
+Deno.serve(async (req) => {
+  try {
+    if (req.method !== 'POST') {
+      return Response.json({ error: 'Method not allowed' }, { status: 405 });
+    }
 
-export default async function wsProjectDelivered(req: Request): Promise<Response> {
-  const key = req.headers.get('x-broker-key');
-  if (WS_BROKER_KEY && key !== WS_BROKER_KEY) {
-    return Response.json({ error: 'unauthorized' }, { status: 401 });
-  }
+    const expected = Deno.env.get('BROKER_KEY');
+    const got = req.headers.get('x-broker-key');
+    if (!expected || !got || got !== expected) {
+      return Response.json({ error: 'invalid broker key' }, { status: 401 });
+    }
 
-  const body = await req.json();
-  const {
-    pgId,
-    vendor,
-    locale,
-    translationRequestId,
-    translatedDropboxUrl,
-    deliveredAt
-  } = body;
+    const body = await req.json().catch(() => ({}));
+    const { pgId, vendor, locale, translationRequestId, translatedDropboxUrl, deliveredAt } = body || {};
+    if (!pgId) {
+      return Response.json({ error: 'pgId required' }, { status: 400 });
+    }
 
-  if (!pgId) {
-    return Response.json({ error: 'pgId required' }, { status: 400 });
-  }
+    const base44 = createClientFromRequest(req);
+    const existing = await base44.asServiceRole.entities.WsProject.filter({ pgId });
+    const now = deliveredAt || new Date().toISOString();
 
-  const existing = await WsProject.filter({ pgId }).getFirst().catch(() => null);
+    if (existing && existing.length > 0) {
+      await base44.asServiceRole.entities.WsProject.update(existing[0].id, {
+        translatedDropboxUrl: translatedDropboxUrl || '',
+        deliveredAt: now,
+        status: 'delivered',
+      });
+      console.log(`[wsProjectDelivered] updated pgId=${pgId}`);
+      return Response.json({ ok: true, action: 'updated', id: existing[0].id });
+    }
 
-  if (!existing) {
-    // Rare: delivered before wsProjectNew ran — create a minimal record
-    await WsProject.create({
+    // Rare: delivery seen before wsProjectNew ran — create a minimal delivered record.
+    const created = await base44.asServiceRole.entities.WsProject.create({
       pgId,
       vendor: vendor || 'unknown',
-      locale: locale || 'unknown',
-      translationRequestId: translationRequestId || null,
+      locale: locale || '',
+      translationRequestId: translationRequestId || '',
       totalWords: 0,
-      sourceDropboxUrl: null,
-      translatedDropboxUrl: translatedDropboxUrl || null,
-      deliveredAt: deliveredAt || new Date().toISOString(),
+      sourceDropboxUrl: '',
+      translatedDropboxUrl: translatedDropboxUrl || '',
+      deliveredAt: now,
       status: 'delivered',
-      scopingRaw: null
+      scopingRaw: {},
     });
-    return Response.json({ ok: true, action: 'created-on-delivery' });
+    console.log(`[wsProjectDelivered] created-on-delivery pgId=${pgId}`);
+    return Response.json({ ok: true, action: 'created-on-delivery', id: created.id });
+  } catch (error) {
+    console.error('[wsProjectDelivered] error:', error.message);
+    return Response.json({ error: error.message }, { status: 500 });
   }
-
-  await existing.update({
-    translatedDropboxUrl: translatedDropboxUrl || null,
-    deliveredAt: deliveredAt || new Date().toISOString(),
-    status: 'delivered'
-  });
-
-  return Response.json({ ok: true, action: 'updated', id: existing.id });
-}
+});
