@@ -1,0 +1,78 @@
+{
+  "name": "WsProject",
+  "type": "object",
+  "description": "Apple WorldServer translation project. Ingested automatically by the external worldserver-broker via the wsProjectNew and wsProjectDelivered backend functions. UI is read + light triage only \u2014 the broker owns every field except assignedPm and internalNote.",
+  "properties": {
+    "pgId": {
+      "type": "string",
+      "description": "WorldServer projectgroup ID \u2014 unique business key, used to dedupe."
+    },
+    "pgName": {
+      "type": "string",
+      "description": "Human-readable project name."
+    },
+    "vendor": {
+      "type": "string",
+      "description": "Vendor + language pair slug (lionbridge-en-tr, rws-en-tr, toin-en-tr, toin-en-ar, toin-en-ru)."
+    },
+    "locale": {
+      "type": "string",
+      "description": "Target locale display name (Turkish | Arabic | Russian)."
+    },
+    "translationRequestId": {
+      "type": "string",
+      "description": "WorldServer translation request ID."
+    },
+    "totalWords": {
+      "type": "number",
+      "description": "Total word count for the project."
+    },
+    "sourceDropboxUrl": {
+      "type": "string",
+      "description": "Dropbox link to the source WSXZ package."
+    },
+    "translatedDropboxUrl": {
+      "type": "string",
+      "description": "Dropbox link to the delivered/translated WSXZ package. Null until delivered."
+    },
+    "dueDate": {
+      "type": "string",
+      "description": "WorldServer due date (ISO or WS string)."
+    },
+    "creationDate": {
+      "type": "string",
+      "description": "WorldServer creation date."
+    },
+    "deliveredAt": {
+      "type": "string",
+      "description": "ISO timestamp when delivery was detected."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "new",
+        "in_translate",
+        "delivered"
+      ],
+      "default": "new",
+      "description": "Lifecycle status."
+    },
+    "scopingRaw": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Raw scoping data from WorldServer (word-count breakdown)."
+    },
+    "assignedPm": {
+      "type": "string",
+      "description": "UI-only triage field \u2014 assigned project manager. Not written by the broker."
+    },
+    "internalNote": {
+      "type": "string",
+      "description": "UI-only triage field \u2014 internal note. Not written by the broker."
+    }
+  },
+  "required": [
+    "pgId",
+    "vendor"
+  ]
+}
