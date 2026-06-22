@@ -24,6 +24,7 @@ import AcceptToken from './pages/AcceptToken.jsx';
 import FriendlyNames from './pages/FriendlyNames.jsx';
 import Clients from './pages/Clients.jsx';
 import WorldServerInbox from './pages/WorldServerInbox.jsx';
+import ConnectorCredentials from './pages/ConnectorCredentials.jsx';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -100,6 +101,7 @@ const AuthenticatedApp = () => {
         <Route path="/users" element={<Users />} />
         <Route path="/clients" element={<Clients />} />
         <Route path="/worldserver" element={<WorldServerInbox />} />
+        <Route path="/credentials" element={<ConnectorCredentials />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />

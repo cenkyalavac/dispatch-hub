@@ -21,6 +21,7 @@ const TABS = [
   { to: '/',          label: 'Overview',   matches: ['/'] },
   { to: '/portals',   label: 'Connectors', matches: ['/portals', '/rules'] },
   { to: '/worldserver', label: 'WorldServer', matches: ['/worldserver'] },
+  { to: '/credentials', label: 'Credentials', matches: ['/credentials'] },
   { to: '/issues',    label: 'Issues',     matches: ['/issues'] },
   { to: '/api',       label: 'API',        matches: ['/api'] },
 ];
