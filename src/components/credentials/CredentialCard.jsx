@@ -37,7 +37,11 @@ export default function CredentialCard({ cred, onChanged }) {
       });
       setNewPw('');
       setShowPwField(false);
-      toast.success('Password updated — broker will re-login');
+      toast.success(
+        cred.mfaType === 'sms' || cred.mfaType === 'email'
+          ? 'Password saved — broker is logging in, the code prompt will appear shortly'
+          : 'Password saved — broker will re-login'
+      );
       onChanged?.();
     } catch (e) {
       toast.error('Could not save', { description: e.message });
@@ -111,6 +115,19 @@ export default function CredentialCard({ cred, onChanged }) {
         <p className="text-[12px] text-ink-2 italic-editorial border-l-2 border-line-2 pl-3 mb-4">
           {cred.statusMessage}
         </p>
+      )}
+
+      {/* Logging in — broker is authenticating; for MFA accounts the code prompt
+          appears once the portal challenges. Shown while we wait for the broker. */}
+      {cred.sessionStatus !== 'awaiting_sms' &&
+        (cred.reauthState === 'requested' || cred.sessionStatus === 'logging_in') &&
+        (cred.mfaType === 'sms' || cred.mfaType === 'email') && (
+        <div className="bg-surface-2 border border-line-1 rounded-md p-3 mb-4">
+          <div className="text-[12px] text-ink-2 inline-flex items-center gap-2">
+            <RotateCw className="w-3.5 h-3.5 animate-spin text-ink-3" />
+            Broker is logging in — the {cred.mfaType === 'sms' ? 'SMS' : 'email'} code prompt will appear here once the portal asks for it.
+          </div>
+        </div>
       )}
 
       {/* Awaiting SMS — prominent OTP entry */}
