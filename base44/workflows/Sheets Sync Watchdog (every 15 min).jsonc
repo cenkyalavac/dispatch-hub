@@ -1,0 +1,44 @@
+{
+  "name": "Sheets Sync Watchdog (every 15 min)",
+  "description": "Safety net for Google Sheets sync. Every 15 min: re-triggers sheetsSyncPending to retry any task left at sheets_synced=false, and raises a critical SystemIssue if any accepted task has been stuck unsynced for over 30 minutes. This is the tripwire that was missing during the 12-day silent Sheets outage.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "interval",
+      "cron_expression": null,
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": 15,
+      "interval_unit": "minutes",
+      "interval_anchor": "2026-06-07T21:06:01.928000",
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "sheets_sync_watchdog_every_15_min",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "sheetsSyncWatchdog",
+            "args": {}
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "sheetsSyncWatchdog"
+  }
+}

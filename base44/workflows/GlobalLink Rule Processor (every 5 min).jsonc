@@ -1,0 +1,44 @@
+{
+  "name": "GlobalLink Rule Processor (every 5 min)",
+  "description": "Runs every 5 minutes \u2014 applies active rules to available GlobalLinkSubmission rows. Matches accept rules trigger the 6-step PD claim chain and create AcceptedTask + Project + webhook. Matches reject rules mark the row skipped. Unmatched rows trigger notifyNewTask for human review. Respects Portal kill switch.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "interval",
+      "cron_expression": null,
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": 5,
+      "interval_unit": "minutes",
+      "interval_anchor": "2026-05-16T10:43:27.852000",
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "globallink_rule_processor_every_5_min",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "globallinkProcessSubmissions",
+            "args": {}
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "globallinkProcessSubmissions"
+  }
+}
